@@ -48,4 +48,4 @@
 
 1. **Download the setup script:**
 ```bash
-curl -fsSL  | bash
+pkg install curl && curl -fsSL https://github.com/simplysteviimods/CAD-Droid.git | bash
