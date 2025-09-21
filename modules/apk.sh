@@ -345,21 +345,9 @@ setup_apk_directory(){
   
   info "APK directory: $target"
   pecho "$PASTEL_PURPLE" "INSTRUCTIONS:"
-  info "  1. Press Enter to open folder (view only)."
-  pecho "$PASTEL_GREEN" "  2. Install *.apk add-ons."
-  info "  3. Return & continue."
-  
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    pecho "$PASTEL_CYAN" "Press Enter to open folder..."
-    read -r || true
-  fi
-  
-  # Try to open file manager
-  if open_file_manager "$target"; then
-    info "File manager opened successfully"
-  else
-    info "Please manually navigate to: $target"
-  fi
+  info "  1. APK files will be downloaded first"
+  pecho "$PASTEL_GREEN" "  2. Install *.apk add-ons after downloads complete"
+  info "  3. Return & continue after installation"
   
   return 0
 }
@@ -432,66 +420,7 @@ download_apk(){
   return $((1 - success))
 }
 
-# Fetch specific Termux addon APK with intelligent fallback
-# Parameters: display_name, package_name, github_repo, github_pattern, output_directory  
-fetch_termux_addon(){
-  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5"
-  local prefer="${PREFER_FDROID:-1}" success=0
-  
-  if [ -z "$name" ] || [ -z "$pkg" ] || [ -z "$outdir" ]; then
-    return 1
-  fi
-  
-  # Ensure output directory exists
-  if ! mkdir -p "$outdir" 2>/dev/null; then
-    return 1
-  fi
-  
-  # Enhanced conflict resolution - check for existing conflicting packages
-  if command -v pm >/dev/null 2>&1; then
-    local existing_pkg
-    existing_pkg=$(pm list packages 2>/dev/null | grep -E "$pkg" | cut -d: -f2 | head -1)
-    if [ -n "$existing_pkg" ]; then
-      info "Found existing package: $existing_pkg - will attempt conflict resolution during installation"
-    fi
-  fi
-  
-  # Prioritize F-Droid by default (prefer=1)
-  if [ "$prefer" = "1" ]; then
-    # Try F-Droid first (preferred)
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
-      success=1
-    fi
-  else
-    # Try GitHub first (preserves original names)
-    if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
-        success=1
-      fi
-    fi
-  fi
-  
-  # Fall back to the other source if the first failed
-  if [ $success -eq 0 ]; then
-    if [ "$prefer" = "1" ]; then
-      # F-Droid was preferred but failed, try GitHub
-      if [ -n "$repo" ] && [ -n "$patt" ]; then
-        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
-          success=1
-        fi
-      fi
-    else
-      # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
-        success=1
-      fi
-    fi
-  fi
-  
-  return $((1 - success))
-}
-
-# Batch download multiple APKs
+# Batch download multiple APKs with progress spinners
 # Parameters: output_directory, apk_list_array_name
 batch_download_apks(){
   local outdir="$1"
@@ -550,6 +479,112 @@ batch_download_apks(){
   
   # Return success if at least some APKs downloaded
   [ "$success_count" -gt 0 ]
+}
+
+# === Enhanced APK Step Function ===
+
+# Enhanced APK step - downloads FIRST, then opens file picker
+step_apk(){
+  if [ "${ENABLE_APK_AUTO:-1}" != "1" ]; then
+    info "APK installation disabled - skipping"
+    mark_step_status "skipped"
+    return 0
+  fi
+  
+  pecho "$PASTEL_PURPLE" "Installing required Termux add-on APKs..."
+  
+  # Step 1: Select APK directory first
+  run_with_progress "Setup APK directory" 5 select_apk_directory
+  setup_apk_directory
+  
+  # Step 2: Download ALL APKs FIRST with progress indicators
+  pecho "$PASTEL_PURPLE" "Downloading APK files from F-Droid..."
+  local download_dir="${USER_SELECTED_APK_DIR:-/storage/emulated/0/Download/CAD-Droid-APKs}"
+  local failed=0
+  
+  # Download Termux:API (required for GitHub setup and other features)
+  if run_with_progress "Download Termux API" 25 \
+     download_apk "Termux-API" "Termux API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$download_dir"; then
+    ok "Downloaded: Termux API"
+  else
+    APK_MISSING+=("Termux:API")
+    failed=$((failed + 1))
+  fi
+  
+  # Download Termux:X11 (required for GUI apps)
+  if run_with_progress "Download Termux X11" 25 \
+     download_apk "Termux-X11" "Termux X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$download_dir"; then
+    ok "Downloaded: Termux X11"
+  else
+    APK_MISSING+=("Termux:X11")
+    failed=$((failed + 1))
+  fi
+  
+  # Download Termux:GUI (additional GUI support)
+  if run_with_progress "Download Termux GUI" 25 \
+     download_apk "Termux-GUI" "Termux GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$download_dir"; then
+    ok "Downloaded: Termux GUI"
+  else
+    APK_MISSING+=("Termux:GUI")
+    failed=$((failed + 1))
+  fi
+  
+  # Download Termux:Widget (productivity shortcuts)
+  if run_with_progress "Download Termux Widget" 25 \
+     download_apk "Termux-Widget" "Termux Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$download_dir"; then
+    ok "Downloaded: Termux Widget"
+  else
+    APK_MISSING+=("Termux:Widget")
+    failed=$((failed + 1))
+  fi
+  
+  # Step 3: Show download results
+  if [ "$failed" -eq 0 ]; then
+    ok "All APKs downloaded successfully to: $download_dir"
+  else
+    warn "$failed APK(s) failed to download"
+    if [ ${#APK_MISSING[@]} -gt 0 ]; then
+      warn "Missing APKs will need manual installation from F-Droid:"
+      for missing in "${APK_MISSING[@]}"; do
+        warn "  - $missing"
+      done
+    fi
+  fi
+  
+  # Step 4: NOW open file manager for installation
+  echo ""
+  draw_card "APK Downloads Complete" "Ready for Installation"
+  echo ""
+  
+  pecho "$PASTEL_PURPLE" "Installation Instructions:"
+  info "1. APK files have been downloaded to your folder"
+  info "2. File manager will open next"
+  info "3. Tap each .apk file to install"
+  info "4. Configure permissions after installation"
+  echo ""
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    pecho "$PASTEL_CYAN" "Press Enter to open file manager for APK installation..."
+    read -r || true
+  fi
+  
+  # Open file manager for installation
+  run_with_progress "Open APK directory" 5 open_file_manager "$download_dir"
+  
+  # Pause for manual installation
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "Install all APK files, configure permissions, then press Enter to continue..."
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay for APK installation"
+    run_with_progress "Wait for APK installation" "${APK_PAUSE_TIMEOUT:-45}" safe_sleep "${APK_PAUSE_TIMEOUT:-45}"
+  fi
+  
+  # Wait for Termux:API to become available
+  run_with_progress "Check for Termux API" 10 wait_for_termux_api || warn "Termux:API setup may be incomplete"
+  
+  mark_step_status "success"
 }
 
 # === APK Verification ===
