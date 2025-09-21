@@ -122,7 +122,6 @@ SELECTED_MIRROR_URL=""   # Mirror URL for package downloads
 
 # Tool availability flags
 WGET_READY=0            # Whether wget is installed and working
-NMAP_READY=0            # Whether nmap is installed and working
 
 # Service health status
 SUNSHINE_HEALTH="unknown"  # Remote desktop streaming service status

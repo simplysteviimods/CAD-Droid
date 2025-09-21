@@ -175,7 +175,6 @@ install_network_tools(){
   pecho "$PASTEL_PURPLE" "Installing network utilities..."
   
   local network_packages=(
-    "nmap"            # Network scanning
     "iproute2"        # Network configuration
     "net-tools"       # Network utilities
     "dnsutils"        # DNS tools
@@ -183,11 +182,7 @@ install_network_tools(){
   )
   
   for pkg in "${network_packages[@]}"; do
-    if run_with_progress "Install $pkg" 10 apt_install_if_needed "$pkg"; then
-      if [ "$pkg" = "nmap" ]; then
-        NMAP_READY=1
-      fi
-    fi
+    run_with_progress "Install $pkg" 10 apt_install_if_needed "$pkg" || true
   done
   
   return 0
@@ -326,13 +321,57 @@ step_mirror(){
   sanitize_sources_main_only
   verify_mirror
   
-  # Test the mirror with better error handling
+  # Test the mirror and automatically fallback if needed
   if run_with_progress "Test mirror connection" 18 bash -c 'apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1'; then
-    ok "Mirror connection successful"
+    ok "Mirror connection successful: ${SELECTED_MIRROR_NAME}"
   else
-    warn "Mirror connection failed, but continuing..."
-    # Force update of package lists
-    run_with_progress "Force apt index update" 25 bash -c 'apt-get clean && apt-get update --fix-missing >/dev/null 2>&1 || true'
+    warn "Selected mirror failed, trying alternatives..."
+    
+    # Iterate through official mirrors first, then others
+    local fallback_attempted=false
+    local max_attempts=3
+    local attempt=0
+    
+    for i in "${!urls[@]}"; do
+      # Skip the already tried mirror
+      if [ "$i" -eq "$idx" ]; then
+        continue
+      fi
+      
+      # Limit attempts to prevent hanging
+      if [ "$attempt" -ge "$max_attempts" ]; then
+        break
+      fi
+      
+      local test_url="${urls[$i]}"
+      local test_name="${names[$i]}"
+      
+      info "Trying ${test_name}..."
+      
+      # Write test mirror configuration
+      echo "deb ${test_url} stable main" > "$PREFIX/etc/apt/sources.list"
+      
+      # Test the mirror
+      if run_with_progress "Test ${test_name}" 18 bash -c 'apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=8 >/dev/null 2>&1'; then
+        # Success! Update the selected mirror variables
+        SELECTED_MIRROR_NAME="$test_name"
+        SELECTED_MIRROR_URL="$test_url"
+        ok "Mirror connection successful: ${test_name}"
+        fallback_attempted=true
+        break
+      else
+        warn "${test_name} also failed"
+      fi
+      
+      attempt=$((attempt + 1))
+    done
+    
+    # If all mirrors failed, inform user but continue
+    if [ "$fallback_attempted" = false ]; then
+      warn "All tested mirrors failed, continuing with best effort"
+      # Force update attempt
+      run_with_progress "Force apt index update" 25 bash -c 'apt-get clean && apt-get update --fix-missing >/dev/null 2>&1 || true'
+    fi
   fi
   
   mark_step_status "success"

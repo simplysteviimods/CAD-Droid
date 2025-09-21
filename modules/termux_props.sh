@@ -164,8 +164,38 @@ wait_for_termux_api(){
   done
   
   TERMUX_API_VERIFIED="no"
-  warn "Termux:API unavailable."
+  debug "Termux:API unavailable after ${max_attempts} attempts"
   return 1
+}
+
+# Configure bash prompt theme in ~/.bashrc
+configure_bash_prompt(){
+  local bashrc="$HOME/.bashrc"
+  
+  # Check if prompt is already configured
+  if grep -q "# CAD-Droid prompt theme" "$bashrc" 2>/dev/null; then
+    debug "Bash prompt theme already configured"
+    return 0
+  fi
+  
+  info "Configuring pink username and purple input theme..."
+  
+  # Add prompt configuration to ~/.bashrc
+  cat >> "$bashrc" << 'BASH_PROMPT_EOF'
+
+# CAD-Droid prompt theme
+# Pink username, purple typed text
+# Format: username@phonetype:directory$ (in purple for input)
+export PS1="\[\033[38;2;255;182;193m\]${TERMUX_USERNAME:-\u}\[\033[0m\]@\[\033[38;2;255;182;193m\]${TERMUX_PHONETYPE:-\h}\[\033[0m\]:\[\033[38;2;173;216;230m\]\w\[\033[0m\]\[\033[38;2;144;238;144m\]\$\[\033[0m\] \[\033[38;2;221;160;221m\]"
+
+# Reset color after each command
+export PROMPT_COMMAND="echo -ne '\033[0m'"
+BASH_PROMPT_EOF
+  
+  # Set proper permissions
+  chmod 644 "$bashrc" 2>/dev/null || true
+  
+  ok "Bash prompt theme configured in ~/.bashrc"
 }
 
 # === Termux Configuration ===
@@ -221,14 +251,6 @@ extra-keys = [[ \\
   {key: RIGHT, popup: {macro: "CTRL f", display: "char right"}}, \\
   {key: PGDN, popup: {macro: "CTRL k", display: "del to end"}} \\
 ]]
-
-# ===== CUSTOM TERMINAL PROMPT =====
-# Pink username, purple typed text
-# Format: username@phonetype:directory$ (in purple for input)
-PS1="\\[\\033[38;2;255;182;193m\\]${TERMUX_USERNAME:-\\u}\\[\\033[0m\\]@\\[\\033[38;2;255;182;193m\\]${TERMUX_PHONETYPE:-\\h}\\[\\033[0m\\]:\\[\\033[38;2;173;216;230m\\]\\w\\[\\033[0m\\]\\[\\033[38;2;144;238;144m\\]\\$\\[\\033[0m\\] \\[\\033[38;2;221;160;221m\\]"
-
-# Reset color after each command
-PROMPT_COMMAND="echo -ne '\\033[0m'"
 
 # ===== KEYBOARD SHORTCUTS =====
 # Volume keys as additional input methods

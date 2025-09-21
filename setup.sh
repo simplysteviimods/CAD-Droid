@@ -180,6 +180,7 @@ step_usercfg(){
   info "Configuring user environment..."
   detect_phone
   configure_termux_properties || true
+  configure_bash_prompt || true
   mark_step_status "success"
 }
 
@@ -327,9 +328,7 @@ run_diagnostics(){
   
   # Test Termux API
   if have_termux_api; then
-    ok "Termux:API: Available"  
-  else
-    warn "Termux:API: Not available"
+    ok "Termux:API detected"  
   fi
 }
 

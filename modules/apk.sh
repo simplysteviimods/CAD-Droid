@@ -168,7 +168,22 @@ fetch_fdroid_page(){
 
 # === GitHub Releases Functions ===
 
-# Fetch APK from GitHub releases
+# Get friendly name for common Termux addon APKs
+get_friendly_apk_name(){
+  local package_name="$1"
+  local app_name="$2"
+  
+  # Map common Termux addons to friendly names
+  case "$package_name" in
+    "com.termux.api") echo "Termux API.apk" ;;
+    "com.termux.x11") echo "Termux X11.apk" ;;
+    "com.termux.gui") echo "Termux GUI.apk" ;;
+    "com.termux.widget") echo "Termux Widget.apk" ;;
+    *) echo "${app_name}.apk" ;;
+  esac
+}
+
+# Fetch APK from GitHub releases with friendly naming
 # Parameters: repo, pattern, output_directory, app_name
 # Returns: 0 if successful, 1 if failed
 fetch_github_release(){
@@ -215,18 +230,32 @@ fetch_github_release(){
     return 1
   fi
   
-  # Use original filename if available, otherwise use app name
-  local output_file
-  if [ -n "$original_filename" ] && [[ "$original_filename" == *.apk ]]; then
-    output_file="$outdir/$original_filename"
-  else
-    output_file="$outdir/${app_name}.apk"
-  fi
+  # Use friendly naming for Termux addons
+  local friendly_name
+  friendly_name=$(get_friendly_apk_name "$app_name" "$app_name")
   
-  # Download the APK
-  if http_fetch "$url" "$output_file"; then
+  # Download to temporary file first, then rename to friendly name
+  local temp_file="$outdir/.tmp_${app_name}_$$.apk"
+  local final_file="$outdir/$friendly_name"
+  
+  # Download the APK to temp file
+  if http_fetch "$url" "$temp_file"; then
     rm -f "$data_file" 2>/dev/null
-    ensure_min_size "$output_file"
+    
+    # Verify file size
+    if ensure_min_size "$temp_file"; then
+      # Move to final location with friendly name
+      if mv "$temp_file" "$final_file" 2>/dev/null; then
+        ok "Downloaded: $friendly_name"
+      else
+        warn "Failed to rename to friendly name"
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+      fi
+    else
+      rm -f "$temp_file" 2>/dev/null
+      return 1
+    fi
   else
     rm -f "$data_file" 2>/dev/null
     return 1
@@ -331,7 +360,7 @@ setup_apk_directory(){
 
 # === High-level APK Download Functions ===
 
-# Download APK with intelligent source selection
+# Download APK with intelligent source selection and friendly naming
 # Parameters: package_name, display_name, fdroid_pkg, github_repo, github_pattern, output_directory
 download_apk(){
   local name="$1"
@@ -344,11 +373,21 @@ download_apk(){
   local success=0
   local prefer="${PREFER_FDROID:-1}"
   
+  # Get friendly filename
+  local friendly_name
+  friendly_name=$(get_friendly_apk_name "$pkg" "$name")
+  local target_file="$outdir/$friendly_name"
+  
   # Try preferred source first
   if [ "$prefer" = "1" ]; then
-    # F-Droid preferred (default)
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
-      success=1
+    # F-Droid preferred (default) - download to temp then rename
+    local temp_fdroid="$outdir/.tmp_fdroid_${name}_$$.apk"
+    if fetch_fdroid_api "$pkg" "$temp_fdroid" || fetch_fdroid_page "$pkg" "$temp_fdroid"; then
+      if mv "$temp_fdroid" "$target_file" 2>/dev/null; then
+        success=1
+      else
+        rm -f "$temp_fdroid" 2>/dev/null
+      fi
     fi
   else
     # GitHub preferred
@@ -370,8 +409,13 @@ download_apk(){
       fi
     else
       # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
-        success=1
+      local temp_fdroid="$outdir/.tmp_fdroid_${name}_$$.apk"
+      if fetch_fdroid_api "$pkg" "$temp_fdroid" || fetch_fdroid_page "$pkg" "$temp_fdroid"; then
+        if mv "$temp_fdroid" "$target_file" 2>/dev/null; then
+          success=1
+        else
+          rm -f "$temp_fdroid" 2>/dev/null
+        fi
       fi
     fi
   fi

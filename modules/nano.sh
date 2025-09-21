@@ -29,7 +29,6 @@ set titlebar        # Show the filename at the top
 set statusbar       # Show helpful info at the bottom  
 set linenumbers     # Show line numbers on the left
 set softwrap        # Wrap long lines nicely
-set softwrap
 # Show cursor position constantly
 set constantshow
 # Enable smooth scrolling
@@ -110,11 +109,11 @@ set historylog
 # ===== TERMINAL COMPATIBILITY =====
 # Fix common terminal issues
 set zap
-# Better color support
-set titlecolor brightwhite,blue
-set statuscolor brightwhite,green
+# Gentle color support
+set titlecolor brightmagenta
+set statuscolor brightcyan
 set errorcolor brightwhite,red
-set selectedcolor brightwhite,magenta
+set selectedcolor brightwhite
 set numbercolor cyan
 set keycolor brightcyan
 set functioncolor yellow
