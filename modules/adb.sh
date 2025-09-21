@@ -68,9 +68,9 @@ detect_device_ip(){
     ip=$(ifconfig wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | head -1)
   fi
   
-  # Last resort - use localhost (for USB debugging)
+  # Return empty if no IP found
   if [ -z "$ip" ]; then
-    ip="127.0.0.1"
+    ip=""
   fi
   
   echo "$ip"
@@ -249,131 +249,79 @@ open_developer_settings(){
 
 # === ADB Wireless Setup Workflow ===
 
-# Complete ADB wireless setup process
+# Complete ADB wireless setup process with simplified manual approach
 adb_wireless_helper(){
   if [ "$ENABLE_ADB" != "1" ]; then
     return 0
   fi
   
-  info "ADB Wireless Setup with Smart Port Detection"
-  
-  # Check if we have the required tools
-  if [ "$NMAP_READY" != "1" ] && ! command -v ss >/dev/null 2>&1; then
-    warn "Neither nmap nor ss available for port scanning"
-    return 1
-  fi
-  
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    info "This will monitor for new wireless debugging ports."
-    info "Please enable 'Wireless debugging' in Android Developer Options."
-    pecho "$PASTEL_CYAN" "Press Enter when ready to start monitoring..."
-    read -r || true
-  fi
-  
-  # Detect device IP
-  local ip
-  ip=$(detect_device_ip)
-  
-  if [ -z "$ip" ] || [ "$ip" = "127.0.0.1" ]; then
-    warn "Could not detect Wi-Fi IP address, using localhost"
-    ip="127.0.0.1"
-  else
-    info "Detected device IP: $ip"
-  fi
-  
-  # Get baseline of open ports
-  info "Scanning for existing ADB ports (baseline)..."
-  local baseline_ports
-  baseline_ports=$(scan_device_ports "$ip" 37000 44999)
-  
-  info "Found ${#baseline_ports[@]} existing ADB ports"
+  info "ADB Wireless Setup - Manual Configuration"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    info "Now please:"
-    info "1. In Android Settings > Developer Options"
-    info "2. Tap 'Pair device with pairing code'"
-    info "3. Note the pairing code and port shown"
+    pecho "$PASTEL_PURPLE" "Please follow these steps:"
     echo ""
+    pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
+    pecho "$PASTEL_PINK" "2. In Settings > System > Developer Options"
+    pecho "$PASTEL_PINK" "3. Enable 'Wireless debugging'"  
+    pecho "$PASTEL_PINK" "4. Tap 'Pair device with pairing code'"
+    pecho "$PASTEL_PINK" "5. Note the IP address, port, and 6-digit code shown"
+    echo ""
+    
     pecho "$PASTEL_CYAN" "Press Enter when you see the pairing dialog..."
     read -r || true
   fi
   
-  # Scan for new ports (pairing port should appear)
-  info "Scanning for new pairing port..."
-  local new_ports current_ports
-  local attempts=0 max_attempts=10
-  
-  while [ "$attempts" -lt "$max_attempts" ]; do
-    current_ports=$(scan_device_ports "$ip" 37000 44999)
-    new_ports=$(comm -13 <(printf '%s\n' $baseline_ports | sort) <(printf '%s\n' $current_ports | sort))
-    
-    if [ -n "$new_ports" ]; then
-      info "Found new port(s): $new_ports"
-      break
-    fi
-    
-    info "No new ports detected (attempt $((attempts + 1))/$max_attempts)..."
-    safe_sleep 3
-    attempts=$((attempts + 1))
-  done
-  
-  if [ -z "$new_ports" ]; then
-    warn "Could not detect new pairing port"
-    info "Please ensure 'Wireless debugging' is enabled and try again"
-    return 1
-  fi
-  
-  # Use the first new port for pairing
-  local pairing_port
-  pairing_port=$(echo "$new_ports" | head -1)
+  # Get pairing details from user
+  local ip pairing_port pairing_code
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    info "Detected pairing port: $pairing_port"
     echo ""
-    local pairing_code
-    read_nonempty "Enter the 6-digit pairing code shown on your device" pairing_code
+    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip
+    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "port"  
+    read_nonempty "Enter the 6-digit pairing code" pairing_code
+    
+    # Basic validation
+    if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      warn "Invalid IP address format"
+      return 1
+    fi
+    
+    if ! [[ "$pairing_port" =~ ^[0-9]+$ ]] || [ "$pairing_port" -lt 1 ] || [ "$pairing_port" -gt 65535 ]; then
+      warn "Invalid port number"
+      return 1
+    fi
+    
+    if ! [[ "$pairing_code" =~ ^[0-9]{6}$ ]]; then
+      warn "Pairing code should be exactly 6 digits"
+      return 1  
+    fi
     
     # Attempt pairing
+    info "Attempting to pair with $ip:$pairing_port..."
     if pair_adb_device "$ip" "$pairing_port" "$pairing_code"; then
       ok "Device paired successfully!"
       
-      # Now look for the debugging port
-      info "Looking for wireless debugging port..."
-      safe_sleep 2
+      # Prompt for debugging port
+      echo ""
+      local debug_port
+      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "port"
       
-      # Scan again for the persistent debugging port
-      local final_ports debug_port
-      final_ports=$(scan_device_ports "$ip" 37000 44999)
-      
-      # The debugging port is usually different from the pairing port
-      for port in $final_ports; do
-        if [ "$port" != "$pairing_port" ]; then
-          debug_port="$port"
-          break
-        fi
-      done
-      
-      if [ -n "$debug_port" ]; then
-        info "Found debugging port: $debug_port"
-        if connect_adb_device "$ip" "$debug_port"; then
-          ok "ADB wireless debugging setup complete!"
-          info "You can now use ADB commands wirelessly"
-          info "Device address: $ip:$debug_port"
-          return 0
-        fi
+      if connect_adb_device "$ip" "$debug_port"; then
+        ok "ADB wireless debugging setup complete!"
+        info "Device connected at: $ip:$debug_port"
+        return 0
       else
-        warn "Could not find persistent debugging port"
+        warn "Failed to connect to debugging port"
       fi
     else
-      err "Device pairing failed"
+      err "Device pairing failed. Please check the code and try again."
     fi
   else
-    info "Non-interactive mode: skipping pairing step"
-    info "Manual pairing required with port: $pairing_port"
+    info "Non-interactive mode: manual ADB setup required"
+    info "Run: adb pair <ip:port> then adb connect <ip:debug_port>"
   fi
   
-  info "Please ensure 'Wireless debugging' is enabled and try again"
   return 1
 }
 
@@ -398,27 +346,27 @@ step_adb(){
     draw_card "Android Debug Bridge (ADB) Wireless Setup" "Optional - Enable wireless debugging for development"
     echo ""
     
-    info "What is ADB Wireless Debugging?"
+    pecho "$PASTEL_PURPLE" "What is ADB Wireless Debugging?"
     format_body_text "ADB allows you to connect wirelessly to your device for development and debugging. This is useful for advanced development workflows, file transfers, and device management, but is optional for basic usage."
     echo ""
     
-    info "Complete Setup Process:"
+    pecho "$PASTEL_PURPLE" "Setup Instructions:"
     echo ""
-    pecho "$PASTEL_YELLOW" "1. Enable Developer Options:"
+    pecho "$PASTEL_PINK" "1. Enable Developer Options:"
     info "   • Go to Settings > About phone"
     info "   • Tap 'Build number' 7 times rapidly"
     info "   • Developer options will be enabled"
     echo ""
-    pecho "$PASTEL_YELLOW" "2. Enable Wireless Debugging:"
+    pecho "$PASTEL_PINK" "2. Split-screen Setup:"
+    info "   • Split your screen between Settings and Termux"
     info "   • Go to Settings > System > Developer Options"
     info "   • Turn ON 'Wireless debugging'"
     info "   • Tap 'Pair device with pairing code'"
-    info "   • Note the IP address and port number shown"
+    info "   • Note the IP address, port, and 6-digit code"
     echo ""
-    pecho "$PASTEL_YELLOW" "3. Setup will then:"
-    info "   • Open Android Settings for you"
-    info "   • Monitor for the new debugging port"
-    info "   • Show a dialog to enter the pairing code"
+    pecho "$PASTEL_PINK" "3. Manual Entry:"
+    info "   • Setup will prompt for IP, port, and pairing code"
+    info "   • Then prompt for the debugging port"
     info "   • Automatically pair your device"
     echo ""
     

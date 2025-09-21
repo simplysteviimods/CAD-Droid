@@ -268,7 +268,7 @@ upgrade_packages(){
 
 # Step: Mirror selection for faster downloads
 step_mirror(){
-  info "Choose Termux mirror:"
+  pecho "$PASTEL_PURPLE" "Choose Termux mirror:"
   
   # Available mirrors with geographic distribution
   local urls=(
@@ -305,7 +305,7 @@ step_mirror(){
   else
     local max_index
     max_index=$(sub_int "${#names[@]}" 1)
-    printf "%bMirror (0-%s default 0): %b" "$FALLBACK_COLOR" "$max_index" '\033[0m'
+    printf "%bMirror (0-%s default 0): %b" "$PASTEL_PINK" "$max_index" '\033[0m'
     read -r idx
   fi
   

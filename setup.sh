@@ -96,6 +96,9 @@ load_module "logging"
 load_module "color"
 load_module "spinner"
 
+# Initialize color support immediately after color module is loaded
+init_pastel_colors
+
 # 3. Specialized modules (can be loaded in any order)
 load_module "termux_props"
 load_module "apk"
@@ -103,7 +106,7 @@ load_module "adb"
 load_module "core_packages"
 load_module "nano"
 
-echo "✓ All modules loaded successfully"
+pecho "$PASTEL_PINK" "✓ All modules loaded successfully"
 
 # === Post-Module Initialization ===
 
@@ -113,8 +116,7 @@ validate_timeout_vars
 validate_spinner_delay
 validate_apk_size
 
-# Initialize color support and environment
-init_pastel_colors
+# Set up environment
 ensure_tmpdir || {
   echo "Error: Cannot establish working temporary directory" >&2
   exit 1
@@ -279,7 +281,7 @@ HELP_EOF
 
 show_final_completion(){
   draw_card "🎉 CAD-Droid Setup Complete! 🎉" "Your Android development environment is ready"
-  info "Key features now available:"
+  pecho "$PASTEL_PURPLE" "Key features now available:"
   info "  • Full Linux desktop with XFCE"
   info "  • Development tools and editors" 
   info "  • Package management with APT"
@@ -287,15 +289,15 @@ show_final_completion(){
   if [ "$ENABLE_ADB" = "1" ]; then
     info "  • ADB wireless debugging"
   fi
-  info ""
-  info "Next steps:"
+  echo ""
+  pecho "$PASTEL_PURPLE" "Next steps:"
   info "  • Restart Termux to see new prompt colors"
   info "  • Use 'nano filename' to edit files"
   info "  • Check ~/.bashrc for environment settings"
 }
 
 run_diagnostics(){
-  echo "=== CAD-Droid System Diagnostics ==="
+  pecho "$PASTEL_PURPLE" "=== CAD-Droid System Diagnostics ==="
   
   # Check environment
   validate_termux_environment || true
@@ -405,4 +407,4 @@ done
 # === Main Execution ===
 
 # Execute main installation flow
-main_execution "$@"
+main_execution
