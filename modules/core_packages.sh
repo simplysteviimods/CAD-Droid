@@ -22,7 +22,7 @@ pkg_available() {
   apt-cache show "$1" >/dev/null 2>&1
 }
 
-# Install a package only if it's not already installed
+# Install a package only if it's not already installed - treating exit code 100 as success
 apt_install_if_needed(){
   local pkg="$1"
   
@@ -35,6 +35,412 @@ apt_install_if_needed(){
     warn "Package not available: $pkg"
     return 1
   fi
+  
+  info "Installing $pkg..."
+  # Exit code 100 means already installed - treat as success
+  if run_with_progress "Install $pkg" 18 bash -c "apt-get -y install $pkg >/dev/null 2>&1 || [ \$? -eq 100 ]"; then
+    ok "$pkg installed successfully"
+    return 0
+  else
+    warn "Failed to install $pkg"
+    return 1
+  fi
+}
+
+# Fix broken APT packages
+apt_fix_broken() {
+  info "Fixing broken packages..."
+  run_with_progress "Fix broken packages" 30 bash -c '
+    apt-get -y -f install >/dev/null 2>&1 &&
+    dpkg --configure -a >/dev/null 2>&1 &&
+    apt-get -y autoremove >/dev/null 2>&1
+  '
+}
+
+# Ensure essential download tools are available
+ensure_download_tool(){
+  local tool_ready=0
+  
+  # Check for wget (preferred for APK downloads)
+  if ! command -v wget >/dev/null 2>&1; then
+    info "Installing wget..."
+    if run_with_progress "Install wget" 15 bash -c "apt-get update >/dev/null 2>&1 && apt-get -y install wget >/dev/null 2>&1 || [ \$? -eq 100 ]"; then
+      WGET_READY=1
+      tool_ready=1
+    fi
+  else
+    WGET_READY=1
+    tool_ready=1
+  fi
+  
+  # Check for curl as backup
+  if [ "$tool_ready" -eq 0 ]; then
+    if ! command -v curl >/dev/null 2>&1; then
+      info "Installing curl..."
+      if run_with_progress "Install curl" 15 bash -c "apt-get -y install curl >/dev/null 2>&1 || [ \$? -eq 100 ]"; then
+        tool_ready=1
+      fi
+    else
+      tool_ready=1
+    fi
+  fi
+  
+  if [ "$tool_ready" -eq 0 ]; then
+    err "No download tools available"
+    return 1
+  fi
+  
+  return 0
+}
+
+# === Mirror Management ===
+
+# Clean up apt sources to prevent conflicts
+sanitize_sources_main_only(){
+  local d="$PREFIX/etc/apt/sources.list.d"
+  if [ ! -d "$d" ]; then
+    return 0
+  fi
+  
+  # Remove non-essential source files (keep only X11 related)
+  find "$d" -name "*.list" -type f 2>/dev/null | while read -r f; do
+    if ! echo "$f" | grep -qi x11; then
+      rm -f "$f" 2>/dev/null || true
+    fi
+  done
+}
+
+# Verify and set package mirror configuration
+verify_mirror(){
+  local sources_file="$PREFIX/etc/apt/sources.list"
+  local url
+  
+  if [ -f "$sources_file" ]; then
+    url=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
+  fi
+  
+  if [ -n "$url" ]; then 
+    SELECTED_MIRROR_URL="$url"
+    if [ -z "$SELECTED_MIRROR_NAME" ]; then
+      SELECTED_MIRROR_NAME="(current)"
+    fi
+  else
+    # Set default mirror if none configured
+    echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$sources_file"
+    SELECTED_MIRROR_NAME="Default"
+    SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
+  fi
+}
+
+# === Core Package Installation ===
+
+# Install core productivity packages with spinners
+install_core_packages(){
+  pecho "$PASTEL_PURPLE" "Installing core productivity packages..."
+  
+  local essential_packages=(
+    "jq"              # JSON processing
+    "git"             # Version control
+    "curl"            # HTTP client
+    "wget"            # Download tool
+    "nano"            # Text editor
+    "vim"             # Advanced editor
+    "tmux"            # Terminal multiplexer
+    "python"          # Python language
+    "openssh"         # SSH client/server
+    "pulseaudio"      # Audio system
+    "dbus"            # System bus
+    "fontconfig"      # Font management
+    "ttf-dejavu"      # Fonts
+  )
+  
+  local success_count=0
+  local total=${#essential_packages[@]}
+  
+  for pkg in "${essential_packages[@]}"; do
+    if run_with_progress "Install $pkg" 15 bash -c "apt-get -y install $pkg >/dev/null 2>&1 || [ \$? -eq 100 ]"; then
+      success_count=$((success_count + 1))
+    fi
+  done
+  
+  info "Core packages installed: $success_count/$total"
+  
+  # Update download count
+  DOWNLOAD_COUNT=$((DOWNLOAD_COUNT + success_count))
+  
+  return 0
+}
+
+# Install network tools
+install_network_tools(){
+  pecho "$PASTEL_PURPLE" "Installing network utilities..."
+  
+  local network_packages=(
+    "iproute2"        # Network configuration
+    "net-tools"       # Network utilities
+    "dnsutils"        # DNS tools
+    "netcat-openbsd"  # Network Swiss Army knife
+  )
+  
+  for pkg in "${network_packages[@]}"; do
+    run_with_progress "Install $pkg" 10 bash -c "apt-get -y install $pkg >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
+  done
+  
+  return 0
+}
+
+# === Specialized Package Operations ===
+
+# Install proot-distro and container support
+install_container_support(){
+  pecho "$PASTEL_PURPLE" "Installing container support..."
+  
+  if ! dpkg_is_installed "proot-distro"; then
+    if run_with_progress "Install proot-distro" 20 bash -c "apt-get -y install proot-distro >/dev/null 2>&1 || [ \$? -eq 100 ]"; then
+      ok "Container support installed"
+    else
+      warn "Failed to install container support"
+      return 1
+    fi
+  else
+    debug "Container support already available"
+  fi
+  
+  return 0
+}
+
+# Install X11 packages for GUI support on Termux side
+install_x11_packages(){
+  pecho "$PASTEL_PURPLE" "Installing X11 GUI support on Termux..."
+  
+  # First ensure x11-repo is installed
+  run_with_progress "Install x11-repo" 20 bash -c "apt-get update >/dev/null 2>&1 && apt-get -y install x11-repo >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  
+  # Update package lists to include X11 packages
+  run_with_progress "Update package lists with X11" 15 bash -c "apt-get update >/dev/null 2>&1"
+  
+  local x11_packages=(
+    "xfce4"           # Desktop environment
+    "xfce4-terminal"  # Terminal emulator
+    "firefox"         # Web browser
+    "tigervnc"        # VNC server
+    "xfce4-goodies"   # Additional XFCE components
+  )
+  
+  for pkg in "${x11_packages[@]}"; do
+    run_with_progress "Install $pkg" 25 bash -c "apt-get -y install $pkg >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
+  done
+  
+  return 0
+}
+
+# === System Updates ===
+
+# Update package lists with retry logic
+update_package_lists(){
+  info "Updating package lists..."
+  
+  local attempts=0
+  local max_attempts=3
+  
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    if run_with_progress "Update package lists (attempt $((attempts + 1)))" 30 bash -c '
+      apt-get clean >/dev/null 2>&1 || true
+      apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
+    '; then
+      ok "Package lists updated"
+      return 0
+    else
+      attempts=$((attempts + 1))
+      if [ "$attempts" -lt "$max_attempts" ]; then
+        warn "Package list update failed, retrying..."
+        safe_sleep 2
+      fi
+    fi
+  done
+  
+  warn "Package list update failed after $max_attempts attempts"
+  return 1
+}
+
+# Upgrade all packages
+upgrade_packages(){
+  info "Upgrading packages..."
+  
+  if run_with_progress "Upgrade packages" 60 bash -c '
+    apt-get -y upgrade >/dev/null 2>&1
+  '; then
+    ok "Packages upgraded successfully"
+    return 0
+  else
+    warn "Package upgrade had issues"
+    return 1
+  fi
+}
+
+# === Step Functions ===
+
+# Step: Mirror selection for faster downloads with enhanced testing
+step_mirror(){
+  pecho "$PASTEL_PURPLE" "Choose Termux mirror:"
+  
+  # Available mirrors with geographic distribution
+  local urls=(
+    "https://packages.termux.dev/apt/termux-main"
+    "https://packages-cf.termux.dev/apt/termux-main"
+    "https://fau.mirror.termux.dev/apt/termux-main"
+    "https://mirror.bfsu.edu.cn/termux/apt/termux-main"
+    "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+    "https://grimler.se/termux/termux-main"
+    "https://termux.mentality.rip/termux/apt/termux-main"
+  )
+  
+  local names=(
+    "Default"
+    "Cloudflare (US Anycast)"
+    "FAU (DE)"
+    "BFSU (CN)"
+    "Tsinghua (CN)"
+    "Grimler (SE)"
+    "Mentality (UK)"
+  )
+  
+  # Display mirror options with colors
+  local i
+  for i in "${!names[@]}"; do 
+    local seq
+    seq=$(color_for_index "$i")
+    printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
+  done
+  
+  local idx=""
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    idx=0
+  else
+    local max_index
+    max_index=$(sub_int "${#names[@]}" 1)
+    printf "%bMirror (0-%s default 0): %b" "$PASTEL_PINK" "$max_index" '\033[0m'
+    read -r idx
+  fi
+  
+  # Validate selection
+  case "$idx" in
+    *[!0-9]*) idx=0 ;;
+    *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
+  esac
+  
+  SELECTED_MIRROR_NAME="${names[$idx]}"
+  SELECTED_MIRROR_URL="${urls[$idx]}"
+  
+  # Write mirror configuration
+  run_with_progress "Write mirror config" 5 bash -c "echo 'deb ${SELECTED_MIRROR_URL} stable main' > '$PREFIX/etc/apt/sources.list'"
+  
+  # Reload settings and clean up sources
+  run_with_progress "Reload termux settings" 5 bash -c 'command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || exit 0'
+  sanitize_sources_main_only
+  verify_mirror
+  
+  # Test the mirror and automatically fallback if needed
+  if run_with_progress "Test mirror connection" 18 bash -c 'apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1'; then
+    ok "Mirror connection successful: ${SELECTED_MIRROR_NAME}"
+  else
+    warn "Selected mirror failed, trying alternatives..."
+    
+    # Iterate through official mirrors first, then others
+    local fallback_attempted=false
+    local max_attempts=3
+    local attempt=0
+    
+    for i in "${!urls[@]}"; do
+      # Skip the already tried mirror
+      if [ "$i" -eq "$idx" ]; then
+        continue
+      fi
+      
+      # Limit attempts to prevent hanging
+      if [ "$attempt" -ge "$max_attempts" ]; then
+        break
+      fi
+      
+      local test_url="${urls[$i]}"
+      local test_name="${names[$i]}"
+      
+      info "Trying ${test_name}..."
+      
+      # Write test mirror configuration
+      echo "deb ${test_url} stable main" > "$PREFIX/etc/apt/sources.list"
+      
+      # Test the mirror
+      if run_with_progress "Test ${test_name}" 18 bash -c 'apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=8 >/dev/null 2>&1'; then
+        # Success! Update the selected mirror variables
+        SELECTED_MIRROR_NAME="$test_name"
+        SELECTED_MIRROR_URL="$test_url"
+        ok "Mirror connection successful: ${test_name}"
+        fallback_attempted=true
+        break
+      else
+        warn "${test_name} also failed"
+      fi
+      
+      attempt=$((attempt + 1))
+    done
+    
+    # If all mirrors failed, inform user but continue
+    if [ "$fallback_attempted" = false ]; then
+      warn "All tested mirrors failed, continuing with best effort"
+      # Force update attempt
+      run_with_progress "Force apt index update" 25 bash -c 'apt-get clean && apt-get update --fix-missing >/dev/null 2>&1 || true'
+    fi
+  fi
+  
+  mark_step_status "success"
+}
+
+# Step: System bootstrap and essential tools
+step_bootstrap(){
+  run_with_progress "Clean package cache" 5 bash -c 'apt-get clean >/dev/null 2>&1 || true'
+  update_package_lists || true
+  ensure_download_tool
+  mark_step_status "success"
+}
+
+# Step: Add X11 repository
+step_x11repo(){
+  run_with_progress "Add X11 repository" 15 bash -c 'apt-get -y install x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+  run_with_progress "Update package lists with X11" 10 bash -c 'apt-get update >/dev/null 2>&1'
+  mark_step_status "success"
+}
+
+# Step: Configure APT for non-interactive use
+step_aptni(){
+  run_with_progress "Configure APT" 10 bash -c '
+    echo "APT::Get::Assume-Yes \"true\";" > $PREFIX/etc/apt/apt.conf.d/90-noninteractive
+    echo "APT::Get::Fix-Broken \"true\";" >> $PREFIX/etc/apt/apt.conf.d/90-noninteractive
+    echo "Dpkg::Options { \"--force-confdef\"; \"--force-confold\"; }" >> $PREFIX/etc/apt/apt.conf.d/90-noninteractive
+  '
+  mark_step_status "success"
+}
+
+# Step: System update
+step_systemup(){
+  if update_package_lists; then
+    upgrade_packages || true
+  fi
+  mark_step_status "success"
+}
+
+# Step: Install network tools
+step_nettools(){
+  install_network_tools
+  mark_step_status "success"
+}
+
+# Step: Install core packages
+step_coreinst(){
+  install_core_packages
+  apt_fix_broken || true
+  mark_step_status "success"
+}  fi
   
   info "Installing $pkg..."
   
