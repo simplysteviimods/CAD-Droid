@@ -180,16 +180,37 @@ configure_bash_prompt(){
   
   info "Configuring pink username and purple input theme..."
   
+  # Persist current TERMUX_USERNAME/PHONETYPE to environment
+  if ! grep -q '^export TERMUX_USERNAME=' "$bashrc" 2>/dev/null; then
+    printf "export TERMUX_USERNAME=%q\n" "${TERMUX_USERNAME:-}" >> "$bashrc"
+  fi
+  if ! grep -q '^export TERMUX_PHONETYPE=' "$bashrc" 2>/dev/null; then
+    printf "export TERMUX_PHONETYPE=%q\n" "${TERMUX_PHONETYPE:-}" >> "$bashrc"
+  fi
+
   # Add prompt configuration to ~/.bashrc
   cat >> "$bashrc" << 'BASH_PROMPT_EOF'
 
 # CAD-Droid prompt theme
 # Pink username, purple typed text
-# Format: username@phonetype:directory$ (in purple for input)
-export PS1="\[\033[38;2;255;182;193m\]${TERMUX_USERNAME:-\u}\[\033[0m\]@\[\033[38;2;255;182;193m\]${TERMUX_PHONETYPE:-\h}\[\033[0m\]:\[\033[38;2;173;216;230m\]\w\[\033[0m\]\[\033[38;2;144;238;144m\]\$\[\033[0m\] \[\033[38;2;221;160;221m\]"
+# Username uses TERMUX_USERNAME if set, otherwise \u@\h
+cad_reset='\[\e[0m\]'
+cad_pink='\[\e[38;5;205m\]'
+cad_sky='\[\e[38;5;117m\]'
+cad_purple_input='\[\e[38;5;141m\]'
 
-# Reset color after each command
-export PROMPT_COMMAND="echo -ne '\033[0m'"
+# Compose display name from TERMUX_USERNAME or fallback to \u@\h
+if [ -n "${TERMUX_USERNAME:-}" ]; then
+  cad_name="${TERMUX_USERNAME}"
+else
+  cad_name='\u@\h'
+fi
+
+# Prompt: <pink>name</pink>:<sky>cwd</sky> and leave purple color active for typed text
+PS1="${cad_pink}\${cad_name}${cad_reset}:${cad_sky}\w${cad_reset} ${cad_purple_input}"
+
+# Reset color after each command so output returns to normal
+PROMPT_COMMAND="echo -ne '\033[0m'"
 BASH_PROMPT_EOF
   
   # Set proper permissions
@@ -234,22 +255,22 @@ allow-external-apps = true
 # Enhanced extra keys row with power-user shortcuts
 # Layout: ESC | / | - | HOME | UP | END | PGUP
 #         TAB | CTRL | ALT | LEFT | DOWN | RIGHT | PGDN
-extra-keys = [[ \\
-  {key: ESC, popup: {macro: "CTRL f d", display: "tmux exit"}}, \\
-  {key: "/", popup: "?"}, \\
-  {key: "-", popup: "_"}, \\
-  {key: HOME, popup: {macro: "CTRL a", display: "line start"}}, \\
-  {key: UP, popup: {macro: "CTRL p", display: "prev cmd"}}, \\
-  {key: END, popup: {macro: "CTRL e", display: "line end"}}, \\
-  {key: PGUP, popup: {macro: "CTRL u", display: "del line"}} \\
-], [ \\
-  {key: TAB, popup: {macro: "CTRL i", display: "tab"}}, \\
-  {key: CTRL, popup: {macro: "CTRL SHIFT c CTRL SHIFT v", display: "copy/paste"}}, \\
-  {key: ALT, popup: {macro: "ALT b ALT f", display: "word nav"}}, \\
-  {key: LEFT, popup: {macro: "CTRL b", display: "char left"}}, \\
-  {key: DOWN, popup: {macro: "CTRL n", display: "next cmd"}}, \\
-  {key: RIGHT, popup: {macro: "CTRL f", display: "char right"}}, \\
-  {key: PGDN, popup: {macro: "CTRL k", display: "del to end"}} \\
+extra-keys = [[ \
+  {key: ESC, popup: {macro: "CTRL f d", display: "tmux exit"}}, \
+  {key: "/", popup: "?"}, \
+  {key: "-", popup: "_"}, \
+  {key: HOME, popup: {macro: "CTRL a", display: "line start"}}, \
+  {key: UP, popup: {macro: "CTRL p", display: "prev cmd"}}, \
+  {key: END, popup: {macro: "CTRL e", display: "line end"}}, \
+  {key: PGUP, popup: {macro: "CTRL u", display: "del line"}} \
+], [ \
+  {key: TAB, popup: {macro: "CTRL i", display: "tab"}}, \
+  {key: CTRL, popup: {macro: "CTRL SHIFT c CTRL SHIFT v", display: "copy/paste"}}, \
+  {key: ALT, popup: {macro: "ALT b ALT f", display: "word nav"}}, \
+  {key: LEFT, popup: {macro: "CTRL b", display: "char left"}}, \
+  {key: DOWN, popup: {macro: "CTRL n", display: "next cmd"}}, \
+  {key: RIGHT, popup: {macro: "CTRL f", display: "char right"}}, \
+  {key: PGDN, popup: {macro: "CTRL k", display: "del to end"}} \
 ]]
 
 # ===== KEYBOARD SHORTCUTS =====
@@ -373,17 +394,19 @@ read_credential() {
   fi
 }
 
-# Secure password input with confirmation
+# Secure password input with confirmation (harden positional params)
 secure_password_input() {
-  local prompt="$1"
-  local var_name="$2"
+  local prompt="${1:-Enter password}"
+  local var_name="${2:-CAD_PASSWORD}"
   local password confirm_password
+
+  : "${MIN_PASSWORD_LENGTH:=8}"
   
   while true; do
     if [ "$NON_INTERACTIVE" = "1" ]; then
       # In non-interactive mode, generate a random password
       password=$(head -c 12 /dev/urandom | base64 | tr -d '/+' | head -c 16)
-      eval "$var_name='$password'"
+      eval "$var_name='\$password'"
       info "Generated password for $var_name (non-interactive mode)"
       return 0
     fi
@@ -407,7 +430,7 @@ secure_password_input() {
     printf "\n"
     
     if [ "$password" = "$confirm_password" ]; then
-      eval "$var_name='$password'"
+      eval "$var_name='\$password'"
       return 0
     else
       warn "Passwords do not match. Please try again."
@@ -476,10 +499,21 @@ step_usercfg(){
       TERMUX_USERNAME="${TERMUX_USERNAME}@${TERMUX_PHONETYPE}"
     fi
   fi
+
+  # Persist username and phonetype for new shells
+  if ! grep -q '^export TERMUX_USERNAME=' "$HOME/.bashrc" 2>/dev/null; then
+    printf "export TERMUX_USERNAME=%q\n" "$TERMUX_USERNAME" >> "$HOME/.bashrc"
+  else
+    # Update existing export (sed in-place safe)
+    sed -i "s/^export TERMUX_USERNAME=.*/export TERMUX_USERNAME=$(printf "%q" "$TERMUX_USERNAME")/" "$HOME/.bashrc" 2>/dev/null || true
+  fi
+  if ! grep -q '^export TERMUX_PHONETYPE=' "$HOME/.bashrc" 2>/dev/null; then
+    printf "export TERMUX_PHONETYPE=%q\n" "$TERMUX_PHONETYPE" >> "$HOME/.bashrc"
+  fi
   
   ok "User: $TERMUX_USERNAME"
   
-  # Git configuration with timeout handling
+  # Git configuration with confirmation
   configure_git_with_timeout
   mark_step_status "success"
 }
@@ -488,17 +522,31 @@ step_usercfg(){
 configure_git_with_timeout() {
   pecho "$PASTEL_PURPLE" "Configuring Git for version control..."
   
-  # Get git username
-  read_nonempty "Enter Git username" GIT_USERNAME "${TERMUX_USERNAME%%@*}"
-  
-  # Get git email with validation
-  read_nonempty "Enter Git email" GIT_EMAIL "user@example.com"
-  
-  # Validate email format
-  if ! echo "$GIT_EMAIL" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
-    warn "Invalid email format, using default"
-    GIT_EMAIL="user@example.com"
-  fi
+  while true; do
+    # Get git username
+    read_nonempty "Enter Git username" GIT_USERNAME "${TERMUX_USERNAME%%@*}"
+    
+    # Get git email with validation
+    read_nonempty "Enter Git email" GIT_EMAIL "user@example.com"
+    
+    # Validate email format
+    if ! echo "$GIT_EMAIL" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+      warn "Invalid email format, using default"
+      GIT_EMAIL="user@example.com"
+    fi
+
+    # Confirmation prompt
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      echo "Git will be configured as: $GIT_USERNAME <$GIT_EMAIL>"
+      if ask_yes_no "Proceed with these Git settings?" "y"; then
+        break
+      else
+        info "Re-enter Git details..."
+      fi
+    else
+      break
+    fi
+  done
   
   # Configure git
   if command -v git >/dev/null 2>&1; then
