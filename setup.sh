@@ -109,6 +109,14 @@ load_module "adb"
 load_module "core_packages"
 load_module "nano"
 
+# 4. Enhanced feature modules
+load_module "snapshots"
+load_module "sunshine"  
+load_module "plugins"
+load_module "widgets"
+load_module "diagnostics"
+load_module "complete_steps"
+
 pecho "$PASTEL_PINK" "✓ All modules loaded successfully"
 
 # === Post-Module Initialization ===
@@ -272,13 +280,24 @@ OPTIONS:
   --non-interactive         Run without asking questions
   --only-step <N|name>      Run just one specific step
   --doctor                  Check your system for problems
+  --apk-diagnose           Test APK download connections
+  --sunshine-test          Verify remote desktop streaming
+  --snapshot-create <name> Save current state to backup
+  --snapshot-restore <name> Load saved state from backup
+  --list-snapshots         Show available backups
 
 ENVIRONMENT VARIABLES:
   NON_INTERACTIVE=1         Answer yes to everything automatically
   AUTO_GITHUB=1             Skip GitHub SSH key setup  
+  AUTO_APK=1                Skip APK installation confirmations
   ENABLE_SUNSHINE=0         Don't install remote desktop streaming
+  ENABLE_WIDGETS=0          Skip productivity widgets installation
+  ENABLE_SNAPSHOTS=0        Disable backup/restore functionality
   SKIP_ADB=1                Skip ADB wireless debugging setup
   DEBUG=1                   Show extra details about what's happening
+  APK_PAUSE_TIMEOUT=45      APK installation timeout (seconds)
+  GITHUB_PROMPT_TIMEOUT_OPEN=30    GitHub browser timeout (seconds)
+  PLUGIN_DIR=~/.cad/plugins Custom plugins directory
   
 HELP_EOF
 }
@@ -301,34 +320,39 @@ show_final_completion(){
 }
 
 run_diagnostics(){
-  pecho "$PASTEL_PURPLE" "=== CAD-Droid System Diagnostics ==="
-  
-  # Check environment
-  validate_termux_environment || true
-  
-  # Check critical tools
-  local tools=("pkg" "apt-get" "git" "curl" "wget" "nano")
-  for tool in "${tools[@]}"; do
-    if command -v "$tool" >/dev/null 2>&1; then
-      ok "$tool: Available"
-    else
-      warn "$tool: Not found"
-    fi
-  done
-  
-  # Check disk space
-  check_disk_space "$HOME" 500 || true
-  
-  # Test network connectivity
-  if probe_github; then
-    ok "GitHub connectivity: Working"
+  # Use enhanced diagnostics if available, otherwise fall back to basic
+  if declare -f run_enhanced_diagnostics >/dev/null 2>&1; then
+    run_enhanced_diagnostics
   else
-    warn "GitHub connectivity: Failed"
-  fi
-  
-  # Test Termux API
-  if have_termux_api; then
-    ok "Termux:API detected"  
+    pecho "$PASTEL_PURPLE" "=== CAD-Droid System Diagnostics ==="
+    
+    # Check environment
+    validate_termux_environment || true
+    
+    # Check critical tools
+    local tools=("pkg" "apt-get" "git" "curl" "wget" "nano")
+    for tool in "${tools[@]}"; do
+      if command -v "$tool" >/dev/null 2>&1; then
+        ok "$tool: Available"
+      else
+        warn "$tool: Not found"
+      fi
+    done
+    
+    # Check disk space
+    check_disk_space "$HOME" 500 || true
+    
+    # Test network connectivity
+    if probe_github; then
+      ok "GitHub connectivity: Working"
+    else
+      warn "GitHub connectivity: Failed"
+    fi
+    
+    # Test Termux API
+    if have_termux_api; then
+      ok "Termux:API detected"  
+    fi
   fi
 }
 
@@ -400,6 +424,11 @@ while [ $# -gt 0 ]; do
     --non-interactive) NON_INTERACTIVE=1 ;;
     --only-step) shift; ONLY_STEP="$1" ;;
     --doctor) run_diagnostics; exit 0 ;;
+    --apk-diagnose) test_apk_connections; exit 0 ;;
+    --sunshine-test) test_sunshine_streaming; exit 0 ;;
+    --snapshot-create) shift; create_snapshot "$1"; exit 0 ;;
+    --snapshot-restore) shift; restore_snapshot "$1"; exit 0 ;;
+    --list-snapshots) list_snapshots; exit 0 ;;
     --self-test) echo "Self-test functionality available in utils module"; exit 0 ;;
     *) warn "Unknown option: $1" ;;
   esac

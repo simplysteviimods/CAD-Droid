@@ -49,6 +49,18 @@ ENABLE_APK_AUTO="${ENABLE_APK_AUTO:-1}"      # Automatic APK downloading
 ENABLE_SUNSHINE="${ENABLE_SUNSHINE:-1}"      # Remote desktop streaming
 PREFER_FDROID="${PREFER_FDROID:-1}"          # Prefer F-Droid over GitHub by default
 
+# Enhanced environment variables for advanced configuration
+AUTO_GITHUB="${AUTO_GITHUB:-0}"              # Skip GitHub SSH key setup interactions
+AUTO_APK="${AUTO_APK:-0}"                    # Skip APK installation confirmations
+TERMUX_API_FORCE_SKIP="${TERMUX_API_FORCE_SKIP:-0}"  # Force skip Termux:API detection
+TERMUX_API_WAIT_MAX="${TERMUX_API_WAIT_MAX:-4}"       # Maximum API detection attempts
+TERMUX_API_WAIT_DELAY="${TERMUX_API_WAIT_DELAY:-3}"   # Delay between API detection attempts
+
+# Timeout settings for various operations
+APK_PAUSE_TIMEOUT="${APK_PAUSE_TIMEOUT:-45}"          # APK installation timeout in seconds
+GITHUB_PROMPT_TIMEOUT_OPEN="${GITHUB_PROMPT_TIMEOUT_OPEN:-30}"    # GitHub browser open timeout
+GITHUB_PROMPT_TIMEOUT_CONFIRM="${GITHUB_PROMPT_TIMEOUT_CONFIRM:-60}" # GitHub confirmation timeout
+
 # Environment timeouts and control variables  
 APK_PAUSE_TIMEOUT="${APK_PAUSE_TIMEOUT:-45}"                    # APK installation timeout
 GITHUB_PROMPT_TIMEOUT_OPEN="${GITHUB_PROMPT_TIMEOUT_OPEN:-30}" # GitHub browser open timeout  
