@@ -117,12 +117,12 @@ EVENT_LOG=""             # Event log file path
 STATE_JSON=""            # JSON state file path
 
 # User and system configuration
-TERMUX_USERNAME=""       # Username for Termux environment
-TERMUX_PHONETYPE="unknown"  # Detected phone manufacturer
-DISTRO="ubuntu"          # Selected Linux distribution
-UBUNTU_USERNAME=""       # Username for Linux container
-GIT_USERNAME=""          # Git configuration username
-GIT_EMAIL=""             # Git configuration email
+TERMUX_USERNAME=""           # Username for Termux environment
+TERMUX_PHONETYPE="unknown"   # Detected phone manufacturer
+DISTRO="ubuntu"              # Selected Linux distribution
+UBUNTU_USERNAME=""           # Username for Linux container  
+GIT_USERNAME=""              # Git configuration username
+GIT_EMAIL=""                 # Git configuration email
 
 # Installation tracking
 DOWNLOAD_COUNT=0         # Number of packages processed

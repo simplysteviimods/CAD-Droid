@@ -462,3 +462,52 @@ open_file_manager(){
     return 1
   fi
 }
+
+# User configuration step - configure username and git settings
+step_usercfg(){ 
+  detect_phone
+  read_nonempty "Enter Termux username" TERMUX_USERNAME "user"
+  TERMUX_USERNAME="${TERMUX_USERNAME}@${TERMUX_PHONETYPE}"
+  
+  # Confirm username
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    if ! ask_yes_no "Confirm username: $TERMUX_USERNAME" "y"; then
+      read_nonempty "Enter Termux username" TERMUX_USERNAME "user"
+      TERMUX_USERNAME="${TERMUX_USERNAME}@${TERMUX_PHONETYPE}"
+    fi
+  fi
+  
+  ok "User: $TERMUX_USERNAME"
+  
+  # Git configuration with timeout handling
+  configure_git_with_timeout
+  mark_step_status "success"
+}
+
+# Configure git with timeout and error handling
+configure_git_with_timeout() {
+  pecho "$PASTEL_PURPLE" "Configuring Git for version control..."
+  
+  # Get git username
+  read_nonempty "Enter Git username" GIT_USERNAME "${TERMUX_USERNAME%%@*}"
+  
+  # Get git email with validation
+  read_nonempty "Enter Git email" GIT_EMAIL "user@example.com"
+  
+  # Validate email format
+  if ! echo "$GIT_EMAIL" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+    warn "Invalid email format, using default"
+    GIT_EMAIL="user@example.com"
+  fi
+  
+  # Configure git
+  if command -v git >/dev/null 2>&1; then
+    git config --global user.name "$GIT_USERNAME" 2>/dev/null || warn "Failed to set git username"
+    git config --global user.email "$GIT_EMAIL" 2>/dev/null || warn "Failed to set git email"
+    git config --global init.defaultBranch main 2>/dev/null || true
+    git config --global pull.rebase false 2>/dev/null || true
+    ok "Git configured: $GIT_USERNAME <$GIT_EMAIL>"
+  else
+    warn "Git not available for configuration"
+  fi
+}

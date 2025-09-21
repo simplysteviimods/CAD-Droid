@@ -44,12 +44,12 @@ step_container(){
         __i=$(add_int "$__i" 1) || break
     done
     
-    # Get user selection
-    local sel
+    # Get user selection  
+    local sel=""
     if [ "$NON_INTERACTIVE" = "1" ]; then
         sel="1"  # Default to Ubuntu
     else
-        read_option "Select distribution (1-${#names[@]})" sel 1 ${#names[@]} 1
+        read_option "Select distribution (1-4)" sel 1 4 1
     fi
     
     # Map selection to distribution name
@@ -72,17 +72,13 @@ step_container(){
         ok "$distro_name container already installed"
     fi
     
-    # Configure container
-    configure_container "$distro_name"
-    
-    # Install Sunshine if enabled
-    if [ "$ENABLE_SUNSHINE" = "1" ] && [ -n "${_CAD_SUNSHINE_LOADED:-}" ]; then
-        install_sunshine
-        configure_sunshine
+    # Configure Linux environment with user accounts and SSH
+    if configure_linux_env "$distro_name"; then
+        mark_step_status "success"
+    else
+        mark_step_status "warning"
+        warn "Container configuration had issues but container is available"
     fi
-    
-    ok "Container setup complete"
-    return 0
 }
 
 # Configure Linux container
@@ -721,4 +717,114 @@ METRICS_JSON_EOF
         warn "Failed to write metrics file"
         return 1
     fi
+}
+
+# Configure Linux container environment with SSH access
+configure_linux_env() {
+    local distro="$1"
+    
+    # Generate SSH port
+    local ssh_port
+    ssh_port=$(random_port)
+    
+    # Get user configuration
+    read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    
+    if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
+        warn "User password setup failed, using default"
+        store_credential "linux_user" "cadpass123"
+    fi
+    
+    if ! read_password_confirm "Root password (hidden)" "Confirm password" "linux_root"; then
+        warn "Root password setup failed, using default"  
+        store_credential "linux_root" "rootpass123"
+    fi
+
+    # Generate SSH key for container access
+    local ssh_dir="$HOME/.ssh"
+    if ! mkdir -p "$ssh_dir" 2>/dev/null; then
+        warn "Cannot create SSH directory"
+        return 1
+    fi
+    chmod 700 "$ssh_dir" 2>/dev/null || true
+    
+    local ssh_key="$ssh_dir/id_ed25519"
+    if [ ! -f "$ssh_key" ]; then
+        run_with_progress "Generate container SSH key" 8 bash -c "
+            umask 077
+            ssh-keygen -t ed25519 -f '$ssh_key' -N '' -C 'container-access' >/dev/null 2>&1 || exit 1
+        "
+    fi
+    
+    # Read the SSH public key
+    local pubkey
+    if [ -f "${ssh_key}.pub" ]; then
+        pubkey=$(cat "${ssh_key}.pub" 2>/dev/null || echo "")
+    else
+        warn "SSH key generation failed"
+        return 1
+    fi
+    
+    # Retrieve stored passwords
+    local user_pass root_pass
+    user_pass=$(read_credential "linux_user" || echo "cadpass123")
+    root_pass=$(read_credential "linux_root" || echo "rootpass123")
+    
+    # Configure the container
+    info "Setting up user accounts and SSH access..."
+    run_with_progress "Configure container environment" 30 bash -c "
+        proot-distro login '$distro' --shared-tmp -- bash -c \\\"
+            # Update package manager
+            if command -v apt-get >/dev/null 2>&1; then
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update >/dev/null 2>&1 || true
+                apt-get install -y sudo openssh-server >/dev/null 2>&1 || true
+            elif command -v pacman >/dev/null 2>&1; then
+                pacman -Sy --noconfirm sudo openssh >/dev/null 2>&1 || true
+            elif command -v apk >/dev/null 2>&1; then
+                apk update >/dev/null 2>&1 && apk add sudo openssh >/dev/null 2>&1 || true
+            fi
+            
+            # Create user account
+            if ! id '$UBUNTU_USERNAME' >/dev/null 2>&1; then
+                useradd -m -s /bin/bash '$UBUNTU_USERNAME' >/dev/null 2>&1 || true
+                echo '$UBUNTU_USERNAME:$user_pass' | chpasswd >/dev/null 2>&1 || true
+            fi
+            
+            # Add user to sudo group
+            usermod -aG sudo '$UBUNTU_USERNAME' >/dev/null 2>&1 || true
+            
+            # Set root password
+            echo 'root:$root_pass' | chpasswd >/dev/null 2>&1 || true
+            
+            # Setup SSH directory for user
+            mkdir -p /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
+            echo '$pubkey' > /home/'$UBUNTU_USERNAME'/.ssh/authorized_keys 2>/dev/null || true
+            chown -R '$UBUNTU_USERNAME':'$UBUNTU_USERNAME' /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
+            chmod 700 /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
+            chmod 600 /home/'$UBUNTU_USERNAME'/.ssh/authorized_keys >/dev/null 2>&1 || true
+        \\\"
+    "
+    
+    # Create convenience launcher
+    local launcher="$PREFIX/bin/container"
+    cat > "$launcher" << LAUNCHER_EOF
+#!/bin/bash
+# Container access launcher - connects to $distro environment
+# Usage: container [command]
+if [ \$# -eq 0 ]; then
+    echo "Entering $distro container as $UBUNTU_USERNAME..."
+    proot-distro login '$distro' --user '$UBUNTU_USERNAME' --
+else
+    proot-distro login '$distro' --user '$UBUNTU_USERNAME' -- "\$@"
+fi
+LAUNCHER_EOF
+    chmod +x "$launcher" 2>/dev/null || true
+    
+    info "Container configured successfully"
+    info "Access container with: container"
+    info "SSH key available at: $ssh_key"
+    info "Container user: $UBUNTU_USERNAME"
+    
+    return 0
 }

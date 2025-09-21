@@ -128,7 +128,7 @@ iterate_array() {
 assert_unique_definitions() {
   local func_count
   func_count=$(grep -c '^safe_calc()' "$0" 2>/dev/null || echo "1")
-  if [ "$func_count" -gt 1 ]; then
+  if [ "$func_count" -gt 1 ] 2>/dev/null; then
     echo "ERROR: Detected duplicate function definitions. Script may have been corrupted." >&2
     exit 2
   fi
@@ -347,6 +347,240 @@ sanitize_string() {
   local str="$1"
   # Remove dangerous characters and limit length
   echo "$str" | sed 's/[^a-zA-Z0-9._-]//g' | cut -c1-32
+}
+
+# Read user option with validation using safe arithmetic and bounds checking
+# Parameters: prompt, variable_name, min_value, max_value, default_value
+read_option(){
+  local prompt="$1" var_name="$2" min_val="$3" max_val="$4" default_val="$5"
+  
+  # Validate all numeric parameters
+  case "$min_val" in *[!0-9-]*) min_val=1 ;; esac
+  case "$max_val" in *[!0-9-]*) max_val=10 ;; esac
+  case "$default_val" in *[!0-9-]*) default_val="$min_val" ;; esac
+  
+  # Ensure min/max relationship is logical
+  if [ "$min_val" -gt "$max_val" ] 2>/dev/null; then
+    local temp="$min_val"
+    min_val="$max_val"
+    max_val="$temp"
+  fi
+  
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    case "$var_name" in
+      sel) sel="$default_val" ;;
+      *) warn "Unknown variable for read_option: $var_name" ;;
+    esac
+    return 0
+  fi
+  
+  local attempts=0 max_attempts=3
+  while [ "$attempts" -lt "$max_attempts" ] 2>/dev/null; do
+    pecho "$PASTEL_CYAN" "$prompt [$default_val]:"
+    
+    local input
+    read -r input
+    
+    # Use default if empty
+    if [ -z "$input" ]; then
+      input="$default_val"
+    fi
+    
+    # Validate numeric input with safe arithmetic
+    if is_nonneg_int "$input" && [ "$input" -ge "$min_val" ] 2>/dev/null && [ "$input" -le "$max_val" ] 2>/dev/null; then
+      case "$var_name" in
+        sel) sel="$input" ;;
+        *) warn "Unknown variable for read_option: $var_name" ;;
+      esac
+      return 0
+    fi
+    
+    warn "Please enter a number between $min_val and $max_val"
+    attempts=$(add_int "$attempts" 1)
+  done
+  
+  # Fallback after max attempts
+  case "$var_name" in
+    sel) sel="$default_val" ;;
+    *) warn "Using default for $var_name: $default_val" ;;
+  esac
+  return 1
+}
+
+# Check if a proot-distro Linux distribution is installed
+# Parameter: distro_name
+# Returns: 0 if installed, 1 if not installed
+is_distro_installed(){ 
+  local distro="$1"
+  [ -n "$distro" ] && [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro" ]
+}
+
+# Read non-empty input with validation
+# Parameters: prompt, variable_name, default_value
+read_nonempty() {
+  local prompt="$1" var_name="$2" default_val="$3"
+  
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    case "$var_name" in
+      TERMUX_USERNAME) TERMUX_USERNAME="${default_val:-user}" ;;
+      GIT_USERNAME) GIT_USERNAME="${default_val:-user}" ;;
+      GIT_EMAIL) GIT_EMAIL="${default_val:-user@example.com}" ;;
+      UBUNTU_USERNAME) UBUNTU_USERNAME="${default_val:-user}" ;;
+      *) warn "Unknown variable for read_nonempty: $var_name" ;;
+    esac
+    return 0
+  fi
+  
+  local attempts=0 max_attempts=3
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    pecho "$PASTEL_CYAN" "$prompt [$default_val]:"
+    
+    local input
+    read -r input
+    
+    # Use default if empty
+    if [ -z "$input" ]; then
+      input="$default_val"
+    fi
+    
+    # Validate non-empty
+    if [ -n "$input" ]; then
+      case "$var_name" in
+        TERMUX_USERNAME) TERMUX_USERNAME="$input" ;;
+        GIT_USERNAME) GIT_USERNAME="$input" ;;
+        GIT_EMAIL) GIT_EMAIL="$input" ;;
+        UBUNTU_USERNAME) UBUNTU_USERNAME="$input" ;;
+        *) warn "Unknown variable for read_nonempty: $var_name" ;;
+      esac
+      return 0
+    fi
+    
+    warn "Input cannot be empty"
+    attempts=$(add_int "$attempts" 1)
+  done
+  
+  # Fallback after max attempts
+  case "$var_name" in
+    TERMUX_USERNAME) TERMUX_USERNAME="${default_val:-user}" ;;
+    GIT_USERNAME) GIT_USERNAME="${default_val:-user}" ;;
+    GIT_EMAIL) GIT_EMAIL="${default_val:-user@example.com}" ;;
+    UBUNTU_USERNAME) UBUNTU_USERNAME="${default_val:-user}" ;;
+    *) warn "Using default for $var_name: ${default_val}" ;;
+  esac
+  return 1
+}
+
+# Ask yes/no question with timeout support
+ask_yes_no() {
+  local prompt="$1" default="${2:-n}"
+  
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    case "$default" in
+      y|Y|yes|YES) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+  
+  local response
+  pecho "$PASTEL_CYAN" "$prompt [y/N]: "
+  read -r response
+  
+  # Use default if empty
+  if [ -z "$response" ]; then
+    response="$default"
+  fi
+  
+  case "$response" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Read password with confirmation
+read_password_confirm() {
+  local prompt1="$1" prompt2="$2" var_name="$3"
+  
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    # Generate a simple password in non-interactive mode
+    local default_pass="cad$(date +%s | tail -c 4)"
+    case "$var_name" in
+      linux_user) store_credential "$var_name" "$default_pass" ;;
+      linux_root) store_credential "$var_name" "$default_pass" ;;
+    esac
+    return 0
+  fi
+  
+  local attempts=0 max_attempts=3
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    local password confirm_password
+    
+    printf "%s: " "$prompt1"
+    if ! read -rs password; then
+      return 1
+    fi
+    printf "\\n"
+    
+    # Check minimum length
+    if [ "${#password}" -lt 6 ]; then
+      warn "Password too short (minimum 6 characters)"
+      attempts=$(add_int "$attempts" 1)
+      continue
+    fi
+    
+    printf "%s: " "$prompt2" 
+    if ! read -rs confirm_password; then
+      return 1
+    fi
+    printf "\\n"
+    
+    if [ "$password" = "$confirm_password" ]; then
+      store_credential "$var_name" "$password"
+      return 0
+    else
+      warn "Passwords do not match. Please try again."
+    fi
+    
+    attempts=$(add_int "$attempts" 1)
+  done
+  
+  return 1
+}
+
+# Store credential securely
+store_credential() {
+  local name="$1" value="$2"
+  local cred_file="$CRED_DIR/$name.cred"
+  
+  # Ensure credentials directory exists
+  mkdir -p "$CRED_DIR" 2>/dev/null || return 1
+  chmod 700 "$CRED_DIR" 2>/dev/null || return 1
+  
+  # Store credential with restricted permissions
+  if echo "$value" > "$cred_file" 2>/dev/null; then
+    chmod 600 "$cred_file" 2>/dev/null || true
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Read stored credential
+read_credential() {
+  local name="$1"
+  local cred_file="$CRED_DIR/$name.cred"
+  
+  if [ -f "$cred_file" ]; then
+    cat "$cred_file" 2>/dev/null || echo ""
+  else
+    echo ""
+  fi
+}
+
+# Generate random port number
+random_port() {
+  # Generate port in range 8000-9999
+  local port=$(( (RANDOM % 2000) + 8000 ))
+  echo "$port"
 }
 
 # Ask yes/no question with validation

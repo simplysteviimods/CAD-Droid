@@ -370,7 +370,12 @@ step_adb(){
     info "   • Automatically pair your device"
     echo ""
     
-    if ! ask_yes_no "Set up ADB wireless debugging with these steps?" "y"; then
+    pecho "$PASTEL_CYAN" "Please open Settings now and go to:"
+    info "   Settings > System > Developer Options > Wireless debugging"
+    info "   Tap 'Pair device with pairing code' and note the details"
+    echo ""
+    
+    if ! ask_yes_no "Ready to continue with ADB pairing?" "y"; then
       info "Skipping ADB wireless setup"
       mark_step_status "skipped"
       return 0
