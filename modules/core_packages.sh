@@ -37,6 +37,10 @@ apt_install_if_needed(){
   fi
   
   info "Installing $pkg..."
+  
+  # Ensure selected mirror is applied before installing
+  ensure_mirror_applied
+  
   if apt-get -y install "$pkg" >/dev/null 2>&1; then
     ok "$pkg installed successfully"
     return 0
@@ -49,6 +53,10 @@ apt_install_if_needed(){
 # Fix broken APT packages
 apt_fix_broken() {
   info "Fixing broken packages..."
+  
+  # Ensure selected mirror is applied before fixing packages
+  ensure_mirror_applied
+  
   run_with_progress "Fix broken packages" 30 bash -c '
     apt-get -y -f install >/dev/null 2>&1 &&
     dpkg --configure -a >/dev/null 2>&1 &&
@@ -93,6 +101,31 @@ ensure_download_tool(){
 }
 
 # === Mirror Management ===
+
+# Ensure the selected mirror is enforced before any apt operation
+ensure_mirror_applied(){
+  local sources_file="$PREFIX/etc/apt/sources.list"
+  
+  # Skip if no mirror is selected
+  if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
+    debug "No selected mirror to enforce, using current configuration"
+    return 0
+  fi
+  
+  # Always rewrite sources to ensure selected mirror is used
+  debug "Enforcing selected mirror: ${SELECTED_MIRROR_URL}"
+  echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
+  
+  # Clean up any conflicting sources to prevent mirror mixing
+  sanitize_sources_main_only
+  
+  # Add user-facing info for transparency
+  if [ "${SELECTED_MIRROR_NAME:-}" ]; then
+    debug "Using mirror: ${SELECTED_MIRROR_NAME} (${SELECTED_MIRROR_URL})"
+  fi
+  
+  return 0
+}
 
 # Clean up apt sources to prevent conflicts
 sanitize_sources_main_only(){
@@ -233,6 +266,9 @@ install_x11_packages(){
 update_package_lists(){
   info "Updating package lists..."
   
+  # Ensure selected mirror is applied before updating
+  ensure_mirror_applied
+  
   if run_with_progress "Update package lists" 30 bash -c '
     apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
   '; then
@@ -247,6 +283,9 @@ update_package_lists(){
 # Upgrade all packages
 upgrade_packages(){
   info "Upgrading packages..."
+  
+  # Ensure selected mirror is applied before upgrading
+  ensure_mirror_applied
   
   if run_with_progress "Upgrade packages" 60 bash -c '
     apt-get -y upgrade >/dev/null 2>&1
@@ -348,14 +387,14 @@ step_mirror(){
       
       info "Trying ${test_name}..."
       
-      # Write test mirror configuration
-      echo "deb ${test_url} stable main" > "$PREFIX/etc/apt/sources.list"
+      # Update selected mirror variables for fallback testing
+      SELECTED_MIRROR_NAME="$test_name"
+      SELECTED_MIRROR_URL="$test_url"
       
-      # Test the mirror
+      # Apply the fallback mirror and test
+      ensure_mirror_applied
+      
       if run_with_progress "Test ${test_name}" 18 bash -c 'apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=8 >/dev/null 2>&1'; then
-        # Success! Update the selected mirror variables
-        SELECTED_MIRROR_NAME="$test_name"
-        SELECTED_MIRROR_URL="$test_url"
         ok "Mirror connection successful: ${test_name}"
         fallback_attempted=true
         break
@@ -369,7 +408,8 @@ step_mirror(){
     # If all mirrors failed, inform user but continue
     if [ "$fallback_attempted" = false ]; then
       warn "All tested mirrors failed, continuing with best effort"
-      # Force update attempt
+      # Force update attempt with selected mirror enforced
+      ensure_mirror_applied
       run_with_progress "Force apt index update" 25 bash -c 'apt-get clean && apt-get update --fix-missing >/dev/null 2>&1 || true'
     fi
   fi
@@ -386,6 +426,9 @@ step_bootstrap(){
 
 # Step: Add X11 repository
 step_x11repo(){
+  # Ensure selected mirror is applied before installing X11 repo
+  ensure_mirror_applied
+  
   run_with_progress "Add X11 repository" 15 bash -c 'apt-get -y install x11-repo >/dev/null 2>&1 || true'
   mark_step_status "success"
 }

@@ -26,6 +26,11 @@ install_adb_tools(){
   local installed=false
   
   for pkg in "${packages[@]}"; do
+    # Ensure selected mirror is applied before installing ADB packages
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    
     if run_with_progress "Install $pkg" 15 bash -c "
       apt-get update >/dev/null 2>&1 && 
       apt-get -y install $pkg >/dev/null 2>&1

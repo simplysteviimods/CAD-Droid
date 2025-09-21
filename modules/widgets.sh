@@ -358,7 +358,7 @@ create_mobile_shortcuts(){
     
     # Quick Commands shortcut
     create_desktop_entry "quick-commands" "Quick Commands" \
-        "bash -c 'echo \"Quick Commands:\"; echo \"1. System update: apt update && apt upgrade\"; echo \"2. Clean cache: apt autoclean\"; echo \"3. Check space: df -h\"; echo \"4. Process list: ps aux\"; echo \"5. Network status: ip addr\"; read -p \"Enter command number (1-5): \" cmd; case \$cmd in 1) apt update && apt upgrade;; 2) apt autoclean;; 3) df -h;; 4) ps aux;; 5) ip addr;; *) echo \"Invalid choice\";; esac; read -p \"Press Enter to continue...\"'" \
+        "bash -c 'echo \"Quick Commands:\"; echo \"1. System update: apt update && apt upgrade\"; echo \"2. Clean cache: apt autoclean\"; echo \"3. Check space: df -h\"; echo \"4. Process list: ps aux\"; echo \"5. Network status: ip addr\"; read -p \"Enter command number (1-5): \" cmd; case \$cmd in 1) if command -v ensure_mirror_applied >/dev/null 2>&1; then ensure_mirror_applied; fi; apt update && apt upgrade;; 2) apt autoclean;; 3) df -h;; 4) ps aux;; 5) ip addr;; *) echo \"Invalid choice\";; esac; read -p \"Press Enter to continue...\"'" \
         "preferences-system" "Quick system commands"
     
     # Development Tools shortcut

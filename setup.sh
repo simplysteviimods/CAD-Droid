@@ -222,6 +222,10 @@ step_usercfg(){
 
 step_prefetch(){
   info "Prefetching packages for offline use..."
+  
+  # Ensure selected mirror is applied before prefetching packages  
+  ensure_mirror_applied
+  
   run_with_progress "Download package lists" 30 bash -c 'apt-get update >/dev/null 2>&1' || true
   run_with_progress "Download core packages" 30 bash -c 'apt-get -d install "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
   mark_step_status "success"  

@@ -153,6 +153,11 @@ install_nano(){
   
   info "Installing nano text editor..."
   
+  # Ensure selected mirror is applied before installing nano
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   if run_with_progress "Install nano" 10 bash -c 'apt-get -y install nano >/dev/null 2>&1'; then
     ok "Nano installed successfully"
     return 0
@@ -259,6 +264,12 @@ DOCKERFILE_SYNTAX_EOF
 setup_vim_alternative(){
   if ! command -v vim >/dev/null 2>&1; then
     info "Installing vim as alternative editor..."
+    
+    # Ensure selected mirror is applied before installing vim
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    
     run_with_progress "Install vim" 15 bash -c 'apt-get -y install vim >/dev/null 2>&1' || true
   fi
   

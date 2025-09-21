@@ -3882,6 +3882,11 @@ pkg_available(){
 apt_install_if_needed(){
   local p="$1"
   
+  # Ensure selected mirror is applied before updating package lists
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   # Update package lists first
   run_with_progress "Update package lists" 3 bash -c "apt-get update >/dev/null 2>&1"
   
@@ -3909,6 +3914,11 @@ ensure_download_tool(){
   
   if command -v wget >/dev/null 2>&1; then
     return 0
+  fi
+  
+  # Ensure selected mirror is applied before installing wget
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
   fi
   
   # Install wget if neither is available
@@ -4160,6 +4170,10 @@ repair_runtime_libs(){
   local e
   e=$( (date >/dev/null) 2>&1 || true )
   if echo "$e" | grep -qi 'libpcre2-8.so'; then
+    # Ensure selected mirror is applied before repairing libraries
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
     run_with_progress "Repair libpcre2" 12 bash -c 'apt-get -y install pcre2 >/dev/null 2>&1 || true'
   fi
 }
@@ -4189,6 +4203,12 @@ ensure_jq(){
   if command -v jq >/dev/null 2>&1; then
     return 0
   fi
+  
+  # Ensure selected mirror is applied before installing jq
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   run_with_progress "Install jq" 12 bash -c 'apt-get update >/dev/null 2>&1 || true; apt-get -y install jq >/dev/null 2>&1 || true'
 }
 
@@ -4196,6 +4216,12 @@ ensure_jq(){
 step_bootstrap(){ 
   repair_runtime_libs
   network_ready_wait
+  
+  # Ensure selected mirror is applied before bootstrap operations
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   run_with_progress "Baseline apt update" 18 bash -c 'apt-get update >/dev/null 2>&1 || true'
   run_with_progress "Install baseline utils" 28 bash -c 'DEBIAN_FRONTEND=noninteractive apt-get -y -qq install coreutils termux-exec findutils procps grep sed gawk busybox curl jq >/dev/null 2>&1 || true'
   ensure_jq
@@ -4204,6 +4230,11 @@ step_bootstrap(){
 
 # Step 4: Enable X11 repository for desktop packages with safe retry logic
 step_x11repo(){ 
+  # Ensure selected mirror is applied before X11 repo operations
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   local commands=("apt-get update || true" "apt-get -y install x11-repo || [ \$? -eq 100 ] || false" "apt-get update || true") 
   local labels=("Update apt lists" "Install x11-repo" "Refresh lists") 
   local cmd_index=0
@@ -4266,6 +4297,11 @@ APT_CONFIG_EOF
 
 # Step 6: System update and maintenance
 step_systemup(){ 
+  # Ensure selected mirror is applied before system update
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   if run_with_progress "System apt update" 28 bash -c 'apt-get update >/dev/null 2>&1 || true'; then
     :
   else
@@ -4284,6 +4320,11 @@ step_systemup(){
 
 # Step 7: Install network tools with safe array iteration
 step_nettools(){
+  # Ensure selected mirror is applied before installing network tools
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   local tools=("wget" "nmap")
   local tools_count=${#tools[@]} tool_index=0
   
@@ -4525,6 +4566,11 @@ step_prefetch(){
     return 0
   fi
   
+  # Ensure selected mirror is applied before downloading packages
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   # Download packages without installing
   run_with_progress "Download core packages" 28 bash -c "apt-get -y install --download-only ${need[*]} >/dev/null 2>&1 || true"
   mark_step_status "success"
@@ -4585,6 +4631,12 @@ step_adb(){
   # Install ADB if not present
   if ! command -v adb >/dev/null 2>&1; then
     info "Installing ADB..."
+    
+    # Ensure selected mirror is applied before installing android-tools
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    
     run_with_progress "Install android-tools" 15 bash -c 'apt-get update >/dev/null 2>&1 && apt-get -y install android-tools >/dev/null 2>&1 || true'
   fi
   
@@ -4623,6 +4675,11 @@ step_xfce(){
     info "XFCE desktop environment already installed - skipping installation"
     mark_step_status "success"
     return 0
+  fi
+  
+  # Ensure selected mirror is applied before installing XFCE
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
   fi
   
   # Try installing full XFCE meta-package first
@@ -4716,6 +4773,11 @@ step_final(){
 
 # Fix common apt/dpkg issues (moved here to be accessible by step functions)
 apt_fix_broken(){ 
+  # Ensure selected mirror is applied before fixing broken packages
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   run_with_progress "dpkg configure -a" 14 bash -c 'dpkg --configure -a >/dev/null 2>&1 || true'
   run_with_progress "apt -f install" 14 bash -c 'apt-get -y -f install >/dev/null 2>&1 || true'
   run_with_progress "apt clean" 5 bash -c 'apt-get clean >/dev/null 2>&1 || true'
@@ -4769,6 +4831,10 @@ generate_ssh_key_if_needed(){
   
   # Ensure openssh is available for SSH key generation
   if ! dpkg_is_installed "openssh"; then
+    # Ensure selected mirror is applied before installing openssh
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
     run_with_progress "Install openssh" 8 bash -c "apt-get update >/dev/null 2>&1 && apt-get -y install openssh >/dev/null 2>&1 || [ \$? -eq 100 ]"
   fi
   

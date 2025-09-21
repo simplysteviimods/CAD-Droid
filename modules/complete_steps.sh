@@ -547,6 +547,10 @@ case "\$1" in
         ;;
     "update"|"u")
         echo "Updating system packages..."
+        # Ensure selected mirror is applied before updating system packages
+        if command -v ensure_mirror_applied >/dev/null 2>&1; then
+            ensure_mirror_applied
+        fi
         apt update && apt upgrade
         ;;
     "info"|"i")
