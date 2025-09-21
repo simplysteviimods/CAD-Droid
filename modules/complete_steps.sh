@@ -627,7 +627,7 @@ SUMMARY_EOF
 # Show final information to user
 show_final_information(){
     echo ""
-    pecho "$PASTEL_PURPLE" "🎉 CAD-Droid Installation Complete! 🎉"
+    pecho "$PASTEL_PURPLE" "CAD-Droid Installation Complete!"
     echo ""
     pecho "$PASTEL_GREEN" "Your mobile development environment is ready!"
     echo ""

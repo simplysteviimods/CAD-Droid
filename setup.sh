@@ -36,23 +36,30 @@ if [ "$EUID" -eq 0 ]; then
   exit 1
 fi
 
-# Verify we're running inside Termux environment
-if [ ! -d "/data/data/com.termux" ]; then
+# Verify we're running inside Termux environment (allow development mode)
+if [ ! -d "/data/data/com.termux" ] && [ "${DEVELOPMENT_MODE:-0}" != "1" ]; then
   echo "Error: Must run inside Termux" >&2
+  echo "Set DEVELOPMENT_MODE=1 for testing outside Termux" >&2
   exit 1
 fi
 
-# Verify critical paths exist
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-HOME="${HOME:-/data/data/com.termux/files/home}"
+# Verify critical paths exist (flexible for development)
+if [ "${DEVELOPMENT_MODE:-0}" = "1" ]; then
+    PREFIX="${PREFIX:-/usr}"
+    HOME="${HOME:-$HOME}"
+else
+    PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+    HOME="${HOME:-/data/data/com.termux/files/home}"
+fi
 
 if [ ! -d "$PREFIX" ]; then
-  echo "Error: Termux PREFIX directory not found: $PREFIX" >&2
+  echo "Error: PREFIX directory not found: $PREFIX" >&2
+  echo "Set DEVELOPMENT_MODE=1 and appropriate PREFIX/HOME for testing" >&2
   exit 1
 fi
 
 if [ ! -d "$HOME" ]; then
-  echo "Error: Termux HOME directory not found: $HOME" >&2
+  echo "Error: HOME directory not found: $HOME" >&2
   exit 1
 fi
 
@@ -84,57 +91,78 @@ load_module() {
   source "$module_path"
 }
 
-# Load all modules in correct order
-echo "Loading CAD-Droid modules..."
+# Load modules function - called when actually needed
+load_all_modules() {
+  # Load all modules in correct order
+  echo "Loading CAD-Droid modules..."
 
-# 1. Foundation layer (order matters)
-load_module "constants"
-load_module "utils"
+  # 1. Foundation layer (order matters)
+  load_module "constants"
+  load_module "utils"
 
-# 2. Core functionality (depends on foundation)
-load_module "logging" 
-load_module "color"
-load_module "spinner"
+  # 2. Core functionality (depends on foundation)
+  load_module "logging" 
+  load_module "color"
+  load_module "spinner"
 
-# Initialize color support immediately after color module is loaded
-init_pastel_colors
+  # Initialize color support immediately after color module is loaded
+  init_pastel_colors
 
-# Now we can use colors for the rest of the loading
-pecho "$PASTEL_PURPLE" "Loading specialized modules..."
+  # Now we can use colors for the rest of the loading
+  pecho "$PASTEL_PURPLE" "Loading specialized modules..."
 
-# 3. Specialized modules (can be loaded in any order)
-load_module "termux_props"
-load_module "apk"
-load_module "adb"
-load_module "core_packages"
-load_module "nano"
+  # 3. Specialized modules (can be loaded in any order)
+  load_module "termux_props"
+  load_module "apk"
+  load_module "adb"
+  load_module "core_packages"
+  load_module "nano"
 
-# 4. Enhanced feature modules
-load_module "snapshots"
-load_module "sunshine"  
-load_module "plugins"
-load_module "widgets"
-load_module "diagnostics"
-load_module "complete_steps"
+  # 4. Enhanced feature modules
+  load_module "snapshots"
+  load_module "sunshine"  
+  load_module "plugins"
+  load_module "widgets"
+  load_module "diagnostics"
+  load_module "complete_steps"
 
-pecho "$PASTEL_PINK" "✓ All modules loaded successfully"
-
-# === Post-Module Initialization ===
-
-# Apply all validations after modules are loaded
-validate_curl_timeouts
-validate_timeout_vars  
-validate_spinner_delay
-validate_apk_size
-
-# Set up environment
-ensure_tmpdir || {
-  echo "Error: Cannot establish working temporary directory" >&2
-  exit 1
+  pecho "$PASTEL_PINK" "✓ All modules loaded successfully"
+  
+  # Initialize post-module setup
+  initialize_post_modules
 }
 
-# Call duplication detection after all modules loaded
-assert_unique_definitions
+# Load minimal modules for basic functionality
+load_minimal_modules() {
+  load_module "constants"
+  load_module "utils"
+  load_module "logging"
+}
+
+# Check if functions need modules loaded
+ensure_basic_functions() {
+  if ! command -v warn >/dev/null 2>&1; then
+    load_minimal_modules
+  fi
+}
+
+# Post-module initialization - called after modules are loaded
+initialize_post_modules() {
+  # Apply all validations after modules are loaded (with error handling)
+  validate_curl_timeouts || true
+  validate_timeout_vars || true
+  validate_spinner_delay || true
+  validate_apk_size || true
+
+  # Set up environment
+  ensure_tmpdir || {
+    echo "Error: Cannot establish working temporary directory" >&2
+    exit 1
+  }
+
+  # Call duplication detection after all modules loaded
+  assert_unique_definitions || true
+}
 
 # === Step Registration ===
 
@@ -303,7 +331,7 @@ HELP_EOF
 }
 
 show_final_completion(){
-  draw_card "🎉 CAD-Droid Setup Complete! 🎉" "Your Android development environment is ready"
+  draw_card "CAD-Droid Setup Complete!" "Your Android development environment is ready"
   pecho "$PASTEL_PURPLE" "Key features now available:"
   info "  • Full Linux desktop with XFCE"
   info "  • Development tools and editors" 
@@ -359,6 +387,9 @@ run_diagnostics(){
 # === Main Execution Function ===
 
 main_execution(){
+  # Load all modules first
+  load_all_modules
+  
   # Early Termux:API detection for better UX fallbacks
   if have_termux_api 2>/dev/null; then
     TERMUX_API_VERIFIED="yes"
@@ -419,18 +450,43 @@ fi
 # Parse command line arguments
 while [ $# -gt 0 ]; do
   case "$1" in
-    --help) show_help; exit 0 ;;
-    --version) echo "$SCRIPT_VERSION"; exit 0 ;;
+    --help) 
+        show_help; 
+        exit 0 ;;
+    --version) 
+        load_minimal_modules
+        echo "$SCRIPT_VERSION"; 
+        exit 0 ;;
     --non-interactive) NON_INTERACTIVE=1 ;;
     --only-step) shift; ONLY_STEP="$1" ;;
-    --doctor) run_diagnostics; exit 0 ;;
-    --apk-diagnose) test_apk_connections; exit 0 ;;
-    --sunshine-test) test_sunshine_streaming; exit 0 ;;
-    --snapshot-create) shift; create_snapshot "$1"; exit 0 ;;
-    --snapshot-restore) shift; restore_snapshot "$1"; exit 0 ;;
-    --list-snapshots) list_snapshots; exit 0 ;;
+    --doctor) 
+        load_all_modules
+        run_diagnostics; 
+        exit 0 ;;
+    --apk-diagnose) 
+        load_all_modules
+        test_apk_connections; 
+        exit 0 ;;
+    --sunshine-test) 
+        load_all_modules
+        test_sunshine_streaming; 
+        exit 0 ;;
+    --snapshot-create) 
+        load_all_modules
+        shift; create_snapshot "$1"; 
+        exit 0 ;;
+    --snapshot-restore) 
+        load_all_modules
+        shift; restore_snapshot "$1"; 
+        exit 0 ;;
+    --list-snapshots) 
+        load_all_modules
+        list_snapshots; 
+        exit 0 ;;
     --self-test) echo "Self-test functionality available in utils module"; exit 0 ;;
-    *) warn "Unknown option: $1" ;;
+    *) 
+        ensure_basic_functions
+        warn "Unknown option: $1" ;;
   esac
   shift
 done

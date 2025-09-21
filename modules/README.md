@@ -169,16 +169,16 @@ New modules should follow the established patterns:
 
 ## Module Status
 
-- ✅ **constants.sh** - Complete (129 lines)
-- ✅ **utils.sh** - Complete (341 lines)  
-- ✅ **logging.sh** - Complete (364 lines)
-- ✅ **color.sh** - Complete (446 lines)
-- ✅ **spinner.sh** - Complete (380 lines)
-- ✅ **termux_props.sh** - Complete (429 lines)
-- ✅ **apk.sh** - Complete (497 lines)
-- ✅ **adb.sh** - Complete (517 lines)
-- ✅ **core_packages.sh** - Complete (350 lines)
-- ✅ **nano.sh** - Complete (280 lines)
+- [COMPLETE] **constants.sh** - Complete (129 lines)
+- [COMPLETE] **utils.sh** - Complete (341 lines)  
+- [COMPLETE] **logging.sh** - Complete (364 lines)
+- [COMPLETE] **color.sh** - Complete (446 lines)
+- [COMPLETE] **spinner.sh** - Complete (380 lines)
+- [COMPLETE] **termux_props.sh** - Complete (429 lines)
+- [COMPLETE] **apk.sh** - Complete (497 lines)
+- [COMPLETE] **adb.sh** - Complete (517 lines)
+- [COMPLETE] **core_packages.sh** - Complete (350 lines)
+- [COMPLETE] **nano.sh** - Complete (280 lines)
 
 **Total**: 3,933 lines across 10 modules (originally 5,484 lines in single file)
 

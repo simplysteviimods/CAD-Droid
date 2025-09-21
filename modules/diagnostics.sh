@@ -507,11 +507,11 @@ health_check(){
     
     # Summary
     if [ "$issues" -eq 0 ] && [ "$warnings" -eq 0 ]; then
-        pecho "$PASTEL_GREEN" "System health: All systems operational ✅"
+        pecho "$PASTEL_GREEN" "System health: All systems operational - OK"
     elif [ "$issues" -eq 0 ]; then
-        pecho "$PASTEL_CYAN" "System health: Minor warnings ($warnings) ⚠️"
+        pecho "$PASTEL_CYAN" "System health: Minor warnings ($warnings) - WARNING"
     else
-        pecho "$PASTEL_PURPLE" "System health: Issues detected ($issues issues, $warnings warnings) ❌"
+        pecho "$PASTEL_PURPLE" "System health: Issues detected ($issues issues, $warnings warnings) - FAILED"
     fi
     
     return 0

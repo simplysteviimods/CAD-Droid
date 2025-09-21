@@ -356,17 +356,17 @@ list_plugins(){
     while IFS= read -r plugin_name; do
         if [ -n "$plugin_name" ]; then
             local plugin_file="$PLUGIN_DIR/${plugin_name}.sh"
-            local status="❌"
+            local status="INVALID"
             
             # Check if plugin is valid
             if validate_plugin "$plugin_file"; then
-                status="✅"
+                status="VALID"
                 
                 # Check if loaded
                 local loaded_plugin
                 for loaded_plugin in "${LOADED_PLUGINS[@]}"; do
                     if [ "$loaded_plugin" = "$plugin_name" ]; then
-                        status="🟢"  # Green circle for loaded
+                        status="LOADED"  # Loaded status
                         break
                     fi
                 done
@@ -385,7 +385,7 @@ list_plugins(){
     done <<< "$plugins"
     
     pecho "$PASTEL_GREEN" ""
-    pecho "$PASTEL_GREEN" "Legend: ✅ Valid  🟢 Loaded  ❌ Invalid"
+    pecho "$PASTEL_GREEN" "Legend: VALID=Valid  LOADED=Loaded  INVALID=Invalid"
     
     return 0
 }
