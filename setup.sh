@@ -99,6 +99,9 @@ load_module "spinner"
 # Initialize color support immediately after color module is loaded
 init_pastel_colors
 
+# Now we can use colors for the rest of the loading
+pecho "$PASTEL_PURPLE" "Loading specialized modules..."
+
 # 3. Specialized modules (can be loaded in any order)
 load_module "termux_props"
 load_module "apk"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test script for CAD-Droid modules
+# Test script for CAD-Droid color enhancements
 
 # Create mock Termux environment
 PREFIX="/tmp/test_prefix"
@@ -19,7 +19,7 @@ command() {
 }
 
 # Load modules
-echo "Testing module loading..."
+echo "Testing enhanced color system..."
 for module in constants utils logging color; do
     echo "Loading $module..."
     source "$MODULES_DIR/${module}.sh" 2>/dev/null || echo "Error loading $module"
@@ -28,16 +28,39 @@ done
 echo "Testing color initialization..."
 init_pastel_colors 2>/dev/null || echo "Color init failed"
 
-echo "Testing pecho with PASTEL_PINK:"
-pecho "$PASTEL_PINK" "This should be pink text"
+echo ""
+echo "=== Enhanced User Interface Colors ==="
 
-echo "Testing info function:"
-info "This is an info message"
+echo ""
+echo "Section Headers (PASTEL_PURPLE):"
+pecho "$PASTEL_PURPLE" "Installing core productivity packages..."
+pecho "$PASTEL_PURPLE" "APK File Location Setup"
+pecho "$PASTEL_PURPLE" "Setting up a nice text editor for you..."
 
-echo "Testing warn function:" 
-warn "This is a warning message"
+echo ""
+echo "Instructions and Options (PASTEL_PURPLE):"
+pecho "$PASTEL_PURPLE" "Options:"
+pecho "$PASTEL_PURPLE" "INSTRUCTIONS:"
+pecho "$PASTEL_PURPLE" "Nano features enabled:"
 
-echo "Testing ok function:"
-ok "This is a success message"
+echo ""
+echo "Loading Messages (PASTEL_PURPLE → PASTEL_PINK):"
+pecho "$PASTEL_PURPLE" "Loading specialized modules..."
+pecho "$PASTEL_PINK" "✓ All modules loaded successfully"
 
-echo "Module test complete!"
+echo ""
+echo "Status Messages (preserved cyan/green):"
+info "  1. Use default location (recommended)"
+info "  2. Press Enter to open folder (view only)."
+ok "Nano editor configured successfully"
+warn "This is a warning message (preserved yellow)"
+
+echo ""
+echo "Interactive Elements:"
+pecho "$PASTEL_CYAN" "Press Enter to open folder..."
+pecho "$PASTEL_GREEN" "  2. Install *.apk add-ons."
+
+echo ""
+echo "=== Color Enhancement Complete ==="
+echo "User-facing text now uses warm pastel colors while preserving"
+echo "functional status indicators (cyan info, green success, yellow warnings)"

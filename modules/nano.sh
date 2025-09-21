@@ -14,7 +14,7 @@ readonly _CAD_NANO_LOADED=1
 
 # Configure nano editor with enhanced settings
 configure_nano_editor(){
-  info "Setting up a nice text editor for you..."
+  pecho "$PASTEL_PURPLE" "Setting up a nice text editor for you..."
   
   # Make Nano much more pleasant to use
   cat > "$HOME/.nanorc" << 'NANO_CONFIG_EOF'
@@ -131,7 +131,7 @@ NANO_CONFIG_EOF
   # Test nano configuration
   if nano --version >/dev/null 2>&1; then
     ok "Nano editor configured successfully"
-    info "Nano features enabled:"
+    pecho "$PASTEL_PURPLE" "Nano features enabled:"
     info "  • Syntax highlighting for many languages"
     info "  • Line numbers and status bar"
     info "  • Mouse support for selections"

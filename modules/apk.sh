@@ -241,7 +241,7 @@ select_apk_directory(){
   local default_location="/storage/emulated/0/Download/CAD-Droid-APKs"
   USER_SELECTED_APK_DIR="$default_location"
   
-  info "APK File Location Setup"
+  pecho "$PASTEL_PURPLE" "APK File Location Setup"
   echo ""
   format_body_text "Your APK files will be downloaded to a folder for easy installation. You can choose a custom location or use the default Downloads folder."
   echo ""
@@ -267,9 +267,9 @@ select_apk_directory(){
   fi
   
   # Offer choice between default and custom location
-  echo "Options:"
-  echo "  1. Use default location (recommended)"
-  echo "  2. Choose custom location with file picker"
+  pecho "$PASTEL_PURPLE" "Options:"
+  info "  1. Use default location (recommended)"
+  info "  2. Choose custom location with file picker"
   echo ""
   
   local choice
@@ -309,10 +309,10 @@ setup_apk_directory(){
   fi
   
   info "APK directory: $target"
-  echo "INSTRUCTIONS:"
-  echo "  1. Press Enter to open folder (view only)."
+  pecho "$PASTEL_PURPLE" "INSTRUCTIONS:"
+  info "  1. Press Enter to open folder (view only)."
   pecho "$PASTEL_GREEN" "  2. Install *.apk add-ons."
-  echo "  3. Return & continue."
+  info "  3. Return & continue."
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     pecho "$PASTEL_CYAN" "Press Enter to open folder..."
@@ -401,7 +401,7 @@ batch_download_apks(){
     return 0
   fi
   
-  info "Starting batch download of $total APKs to: $outdir"
+  pecho "$PASTEL_PURPLE" "Starting batch download of $total APKs to: $outdir"
   
   local i=0
   while [ "$i" -lt "$total" ]; do

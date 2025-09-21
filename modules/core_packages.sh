@@ -135,7 +135,7 @@ verify_mirror(){
 
 # Install core productivity packages
 install_core_packages(){
-  info "Installing core productivity packages..."
+  pecho "$PASTEL_PURPLE" "Installing core productivity packages..."
   
   local essential_packages=(
     "jq"              # JSON processing
@@ -172,7 +172,7 @@ install_core_packages(){
 
 # Install network tools
 install_network_tools(){
-  info "Installing network utilities..."
+  pecho "$PASTEL_PURPLE" "Installing network utilities..."
   
   local network_packages=(
     "nmap"            # Network scanning
@@ -197,7 +197,7 @@ install_network_tools(){
 
 # Install proot-distro and container support
 install_container_support(){
-  info "Installing container support..."
+  pecho "$PASTEL_PURPLE" "Installing container support..."
   
   if ! dpkg_is_installed "proot-distro"; then
     if run_with_progress "Install proot-distro" 20 apt_install_if_needed "proot-distro"; then
@@ -215,7 +215,7 @@ install_container_support(){
 
 # Install X11 packages for GUI support
 install_x11_packages(){
-  info "Installing X11 GUI support..."
+  pecho "$PASTEL_PURPLE" "Installing X11 GUI support..."
   
   local x11_packages=(
     "x11-repo"        # X11 repository
