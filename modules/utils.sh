@@ -367,10 +367,7 @@ read_option(){
   fi
   
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    case "$var_name" in
-      sel) sel="$default_val" ;;
-      *) warn "Unknown variable for read_option: $var_name" ;;
-    esac
+    eval "$var_name='$default_val'"
     return 0
   fi
   
@@ -388,10 +385,8 @@ read_option(){
     
     # Validate numeric input with safe arithmetic
     if is_nonneg_int "$input" && [ "$input" -ge "$min_val" ] 2>/dev/null && [ "$input" -le "$max_val" ] 2>/dev/null; then
-      case "$var_name" in
-        sel) sel="$input" ;;
-        *) warn "Unknown variable for read_option: $var_name" ;;
-      esac
+      # Set variable in calling scope using eval for dynamic assignment
+      eval "$var_name='$input'"
       return 0
     fi
     
@@ -400,10 +395,7 @@ read_option(){
   done
   
   # Fallback after max attempts
-  case "$var_name" in
-    sel) sel="$default_val" ;;
-    *) warn "Using default for $var_name: $default_val" ;;
-  esac
+  eval "$var_name='$default_val'"
   return 1
 }
 
