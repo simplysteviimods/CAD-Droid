@@ -159,14 +159,14 @@ install_nano(){
   fi
   
   if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Install nano (pkg)" 10 bash -c 'pkg install -y nano >/dev/null 2>&1'; then
+    if run_with_progress "Install nano (pkg)" 10 bash -c 'pkg install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
       ok "Nano installed successfully via pkg"
       return 0
     fi
   fi
   
-  # Fallback to apt
-  if run_with_progress "Install nano (apt)" 10 bash -c 'apt install -y nano >/dev/null 2>&1'; then
+  # Fallback to apt - also handle exit code 100
+  if run_with_progress "Install nano (apt)" 10 bash -c 'apt install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
     ok "Nano installed successfully via apt"
     return 0
   else

@@ -203,12 +203,67 @@ step_storage(){
 }
 
 step_apk(){
-  if [ "$ENABLE_APK_AUTO" = "1" ]; then
-    select_apk_directory
-    setup_apk_directory || true
-  else
-    info "APK installation disabled"
+  info "Installing required Termux add-on APKs..."
+  
+  # Ensure download tools are available
+  ensure_download_tool
+  
+  # Check if APK installation is enabled
+  if [ "${ENABLE_APK_AUTO:-1}" != "1" ]; then
+    info "APK installation disabled - skipping"
+    mark_step_status "skipped"
+    return 0
   fi
+  
+  # Start F-Droid APK downloads BEFORE file picker
+  info "Starting F-Droid APK downloads..."
+  local temp_apk_dir="/storage/emulated/0/Download/CAD-Droid-APKs-temp"
+  mkdir -p "$temp_apk_dir" 2>/dev/null || true
+  
+  # Download essential Termux APKs from F-Droid
+  local apk_success=0
+  local apk_total=4
+  
+  if run_with_progress "Download Termux:API" 30 bash -c '
+    fetch_termux_addon "Termux-API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
+  '; then
+    apk_success=$((apk_success + 1))
+  fi
+  
+  if run_with_progress "Download Termux:GUI" 30 bash -c '
+    fetch_termux_addon "Termux-GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
+  '; then
+    apk_success=$((apk_success + 1))
+  fi
+  
+  if run_with_progress "Download Termux:X11" 30 bash -c '
+    fetch_termux_addon "Termux-X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
+  '; then
+    apk_success=$((apk_success + 1))
+  fi
+  
+  if run_with_progress "Download Termux:Widget" 30 bash -c '
+    fetch_termux_addon "Termux-Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
+  '; then
+    apk_success=$((apk_success + 1))
+  fi
+  
+  info "Downloaded $apk_success/$apk_total APK files"
+  
+  # NOW show file picker for final destination
+  select_apk_directory
+  
+  # Move downloaded APKs to user-selected directory
+  if [ -d "$temp_apk_dir" ] && [ "$apk_success" -gt 0 ]; then
+    run_with_progress "Moving APKs to selected directory" 10 bash -c '
+      mv "'$temp_apk_dir'"/*.apk "'${USER_SELECTED_APK_DIR:-/storage/emulated/0/Download/CAD-Droid-APKs}'"/ 2>/dev/null || true
+      rmdir "'$temp_apk_dir'" 2>/dev/null || true
+    '
+  fi
+  
+  # Setup the final APK directory
+  setup_apk_directory || true
+  
   mark_step_status "success"
 }
 
@@ -237,7 +292,10 @@ step_prefetch(){
 }
 
 step_xfce(){
-  info "Installing XFCE desktop environment..."
+  info "Installing XFCE desktop environment for Termux and containers..."
+  # Install XFCE for Termux first
+  step_xfce_termux || true
+  # Then install X11 packages for container compatibility  
   install_x11_packages || true
   mark_step_status "success"
 }

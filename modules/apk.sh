@@ -432,6 +432,65 @@ download_apk(){
   return $((1 - success))
 }
 
+# Fetch specific Termux addon APK with intelligent fallback
+# Parameters: display_name, package_name, github_repo, github_pattern, output_directory  
+fetch_termux_addon(){
+  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5"
+  local prefer="${PREFER_FDROID:-1}" success=0
+  
+  if [ -z "$name" ] || [ -z "$pkg" ] || [ -z "$outdir" ]; then
+    return 1
+  fi
+  
+  # Ensure output directory exists
+  if ! mkdir -p "$outdir" 2>/dev/null; then
+    return 1
+  fi
+  
+  # Enhanced conflict resolution - check for existing conflicting packages
+  if command -v pm >/dev/null 2>&1; then
+    local existing_pkg
+    existing_pkg=$(pm list packages 2>/dev/null | grep -E "$pkg" | cut -d: -f2 | head -1)
+    if [ -n "$existing_pkg" ]; then
+      info "Found existing package: $existing_pkg - will attempt conflict resolution during installation"
+    fi
+  fi
+  
+  # Prioritize F-Droid by default (prefer=1)
+  if [ "$prefer" = "1" ]; then
+    # Try F-Droid first (preferred)
+    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      success=1
+    fi
+  else
+    # Try GitHub first (preserves original names)
+    if [ -n "$repo" ] && [ -n "$patt" ]; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+        success=1
+      fi
+    fi
+  fi
+  
+  # Fall back to the other source if the first failed
+  if [ $success -eq 0 ]; then
+    if [ "$prefer" = "1" ]; then
+      # F-Droid was preferred but failed, try GitHub
+      if [ -n "$repo" ] && [ -n "$patt" ]; then
+        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+          success=1
+        fi
+      fi
+    else
+      # GitHub was preferred but failed, try F-Droid
+      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+        success=1
+      fi
+    fi
+  fi
+  
+  return $((1 - success))
+}
+
 # Batch download multiple APKs
 # Parameters: output_directory, apk_list_array_name
 batch_download_apks(){

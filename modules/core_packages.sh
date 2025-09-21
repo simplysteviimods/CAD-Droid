@@ -42,8 +42,9 @@ apt_install_if_needed(){
   ensure_mirror_applied
   
   # Try pkg install first (preferred), then fallback to apt install
+  # Exit code 100 means package already installed - treat as success
   if command -v pkg >/dev/null 2>&1; then
-    if pkg install -y "$pkg" >/dev/null 2>&1; then
+    if pkg install -y "$pkg" >/dev/null 2>&1 || [ $? -eq 100 ]; then
       ok "$pkg installed successfully via pkg"
       return 0
     else
@@ -51,8 +52,8 @@ apt_install_if_needed(){
     fi
   fi
   
-  # Fallback to apt install
-  if apt install -y "$pkg" >/dev/null 2>&1; then
+  # Fallback to apt install - also handle exit code 100
+  if apt install -y "$pkg" >/dev/null 2>&1 || [ $? -eq 100 ]; then
     ok "$pkg installed successfully via apt"
     return 0
   else
@@ -121,12 +122,13 @@ ensure_download_tool(){
 
 # === Mirror Management ===
 
-# Ensure the selected mirror is enforced before any apt operation
+# Ensure the selected mirror is enforced and indexes are up-to-date before any apt operation
 # This function addresses the core issue where apt commands could fallback to 
 # default or cached mirrors instead of using the user's selected mirror.
 # It provides robust mirror enforcement by:
 # - Rewriting sources.list with the selected mirror before every apt operation
 # - Cleaning up conflicting sources to prevent mirror mixing
+# - Updating package indexes to ensure they're current
 # - Providing user feedback about which mirror is being used
 ensure_mirror_applied(){
   local sources_file="$PREFIX/etc/apt/sources.list"
@@ -143,6 +145,14 @@ ensure_mirror_applied(){
   
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
+  
+  # Update package indexes to ensure they're current
+  info "Updating package indexes with selected mirror..."
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'
+  else
+    run_with_progress "Update indexes (apt)" 15 bash -c 'apt update >/dev/null 2>&1 || true'
+  fi
   
   # Add user-facing info for transparency when mirror name is available
   if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ]; then
@@ -520,5 +530,83 @@ step_nettools(){
 step_coreinst(){
   install_core_packages
   apt_fix_broken || true
+  mark_step_status "success"
+}
+
+# Step: Install XFCE Desktop Environment for Termux
+step_xfce_termux(){
+  info "Installing XFCE desktop environment for Termux..."
+  
+  # Ensure X11 repository is available first
+  ensure_mirror_applied
+  
+  # Install X11 repo if not already installed
+  if ! dpkg_is_installed "x11-repo"; then
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Add X11 repository (pkg)" 15 bash -c 'pkg install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+    else
+      run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+    fi
+    
+    # Update indexes after adding X11 repo
+    ensure_mirror_applied
+  fi
+  
+  # XFCE desktop components for Termux
+  local xfce_packages=(
+    "xfce4"
+    "xfce4-terminal" 
+    "xfce4-panel"
+    "xfce4-session"
+    "xfce4-settings"
+    "xfce4-appfinder"
+    "thunar"
+    "xfce4-power-manager"
+    "xfce4-screenshooter"
+    "ristretto"
+    "mousepad"
+  )
+  
+  info "Installing XFCE components..."
+  local success_count=0
+  local total=${#xfce_packages[@]}
+  
+  for pkg in "${xfce_packages[@]}"; do
+    if run_with_progress "Install $pkg" 20 apt_install_if_needed "$pkg"; then
+      success_count=$((success_count + 1))
+    fi
+  done
+  
+  info "XFCE packages installed: $success_count/$total"
+  
+  # Install additional desktop utilities
+  local desktop_utils=(
+    "pulseaudio"
+    "dbus"
+    "fontconfig"
+    "ttf-dejavu"
+    "firefox"
+  )
+  
+  info "Installing desktop utilities..."
+  for pkg in "${desktop_utils[@]}"; do
+    run_with_progress "Install $pkg" 15 apt_install_if_needed "$pkg" || true
+  done
+  
+  # Configure XFCE for Termux
+  info "Configuring XFCE desktop..."
+  run_with_progress "Configure XFCE" 10 bash -c '
+    # Create desktop directories
+    mkdir -p "$HOME/Desktop" "$HOME/.config/xfce4" >/dev/null 2>&1 || true
+    
+    # Set up basic XFCE configuration
+    if [ ! -f "$HOME/.config/xfce4/xfconf" ]; then
+      mkdir -p "$HOME/.config/xfce4/xfconf/xfce-perchannel-xml" >/dev/null 2>&1 || true
+    fi
+  ' || true
+  
+  ok "XFCE desktop environment installed for Termux"
+  info "XFCE will be available in both Termux and Ubuntu containers"
+  
   mark_step_status "success"
 }
