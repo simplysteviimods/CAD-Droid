@@ -103,6 +103,12 @@ ensure_download_tool(){
 # === Mirror Management ===
 
 # Ensure the selected mirror is enforced before any apt operation
+# This function addresses the core issue where apt commands could fallback to 
+# default or cached mirrors instead of using the user's selected mirror.
+# It provides robust mirror enforcement by:
+# - Rewriting sources.list with the selected mirror before every apt operation
+# - Cleaning up conflicting sources to prevent mirror mixing
+# - Providing user feedback about which mirror is being used
 ensure_mirror_applied(){
   local sources_file="$PREFIX/etc/apt/sources.list"
   
@@ -119,9 +125,9 @@ ensure_mirror_applied(){
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
-  # Add user-facing info for transparency
-  if [ "${SELECTED_MIRROR_NAME:-}" ]; then
-    debug "Using mirror: ${SELECTED_MIRROR_NAME} (${SELECTED_MIRROR_URL})"
+  # Add user-facing info for transparency when mirror name is available
+  if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ]; then
+    info "Using mirror: ${SELECTED_MIRROR_NAME} for package operations"
   fi
   
   return 0
