@@ -40,7 +40,7 @@ step_container(){
         seq=$(color_for_index "$__i")
         local display_num
         display_num=$(add_int "$__i" 1)
-        printf "%b[%d] %s%b\\n" "$seq" "$display_num" "${names[$__i]}" '\\033[0m'
+        printf "%b[%d] %s%b\n" "$seq" "$display_num" "${names[$__i]}" '\033[0m'
         __i=$(add_int "$__i" 1) || break
     done
     
@@ -87,8 +87,12 @@ configure_container(){
     
     info "Configuring $container_name container..."
     
-    # Create container setup script
-    local setup_script="/tmp/container_setup.sh"
+    # Create container setup script (robust temp path)
+    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+    mkdir -p "$tmp_base" 2>/dev/null || true
+    local setup_script
+    setup_script="$(mktemp "$tmp_base/container_setup.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/container_setup.sh")"
+
     cat > "$setup_script" << CONTAINER_SETUP_EOF
 #!/bin/bash
 set -e
@@ -96,10 +100,15 @@ set -e
 echo "Configuring $container_name container..."
 
 # Update package lists
-apt update
+if command -v apt >/dev/null 2>&1; then
+  apt update
+elif command -v apt-get >/dev/null 2>&1; then
+  apt-get update
+fi
 
-# Install essential packages
-apt install -y \\
+# Install essential packages (Debian/Ubuntu)
+if command -v apt >/dev/null 2>&1 || command -v apt-get >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \\
     sudo \\
     curl \\
     wget \\
@@ -112,13 +121,14 @@ apt install -y \\
     python3 \\
     python3-pip \\
     nodejs \\
-    npm
+    npm || true
+fi
 
 # Create user account
 NEW_USER="\${USER:-developer}"
 if ! id "\$NEW_USER" >/dev/null 2>&1; then
-    useradd -m -s /bin/bash "\$NEW_USER"
-    echo "\$NEW_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    useradd -m -s /bin/bash "\$NEW_USER" || true
+    echo "\$NEW_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers || true
     echo "Created user: \$NEW_USER"
 fi
 
@@ -131,8 +141,8 @@ mkdir -p ~/Projects ~/Scripts ~/Downloads
 
 # Set up git (if configured in host)
 if [ -n "\${GIT_USERNAME:-}" ] && [ -n "\${GIT_EMAIL:-}" ]; then
-    git config --global user.name "\$GIT_USERNAME"
-    git config --global user.email "\$GIT_EMAIL"
+    git config --global user.name "\$GIT_USERNAME" || true
+    git config --global user.email "\$GIT_EMAIL" || true
 fi
 
 # Create sample project
@@ -153,7 +163,7 @@ USER_SETUP_EOF
 echo "Container configuration complete!"
 CONTAINER_SETUP_EOF
     
-    chmod +x "$setup_script"
+    chmod +x "$setup_script" 2>/dev/null || true
     
     # Run setup in container
     run_with_progress "Configure container environment" 60 \
@@ -239,8 +249,12 @@ step_xfce(){
         return 1
     fi
     
-    # Install XFCE in container
-    local xfce_script="/tmp/xfce_install.sh"
+    # Install XFCE in container (robust temp path)
+    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+    mkdir -p "$tmp_base" 2>/dev/null || true
+    local xfce_script
+    xfce_script="$(mktemp "$tmp_base/xfce_install.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/xfce_install.sh")"
+
     cat > "$xfce_script" << XFCE_INSTALL_EOF
 #!/bin/bash
 set -e
@@ -248,14 +262,15 @@ set -e
 echo "Installing XFCE desktop environment..."
 
 # Update package lists
-apt update
+if command -v apt >/dev/null 2>&1 || command -v apt-get >/dev/null 2>&1; then
+  apt-get update
+fi
 
-# Install XFCE and essential desktop components
-DEBIAN_FRONTEND=noninteractive apt install -y \\
+# Install XFCE and essential desktop components (Debian/Ubuntu families)
+DEBIAN_FRONTEND=noninteractive apt-get install -y \\
     xfce4 \\
     xfce4-goodies \\
     firefox-esr \\
-    file-manager \\
     mousepad \\
     ristretto \\
     xfce4-terminal \\
@@ -263,16 +278,15 @@ DEBIAN_FRONTEND=noninteractive apt install -y \\
     xfce4-screenshooter \\
     thunar \\
     pulseaudio \\
-    pavucontrol
+    pavucontrol || true
 
-# Install additional useful applications
-DEBIAN_FRONTEND=noninteractive apt install -y \\
+# Optional extras
+DEBIAN_FRONTEND=noninteractive apt-get install -y \\
     libreoffice \\
     gimp \\
     vlc \\
     chromium \\
-    code \\
-    gedit
+    gedit || true
 
 # Configure XFCE for user
 NEW_USER="\${USER:-developer}"
@@ -332,7 +346,7 @@ XFCE_CONFIG_EOF
 echo "XFCE installation complete!"
 XFCE_INSTALL_EOF
     
-    chmod +x "$xfce_script"
+    chmod +x "$xfce_script" 2>/dev/null || true
     
     # Run XFCE installation
     run_with_progress "Install XFCE desktop environment" 300 \
@@ -353,6 +367,8 @@ create_desktop_launcher(){
     local container_name="${1:-ubuntu}"
     
     info "Creating desktop launcher..."
+    # Ensure directory exists (fixes: No such file or directory)
+    mkdir -p "$HOME/.local/bin" 2>/dev/null || true
     
     cat > "$HOME/.local/bin/desktop" << DESKTOP_LAUNCHER_EOF
 #!/bin/bash
@@ -415,21 +431,30 @@ step_prefetch(){
         return 0
     fi
     
-    # Create prefetch script
-    local prefetch_script="/tmp/prefetch_packages.sh"
+    # Create prefetch script (robust temp path)
+    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+    mkdir -p "$tmp_base" 2>/dev/null || true
+    local prefetch_script
+    prefetch_script="$(mktemp "$tmp_base/prefetch_packages.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/prefetch_packages.sh")"
+
     cat > "$prefetch_script" << PREFETCH_EOF
 #!/bin/bash
 
 echo "Prefetching packages..."
 
-# Update package lists
-apt update
-
-# Download packages without installing
-echo "Downloading package archives..."
-apt install --download-only -y ${prefetch_packages[*]} 2>/dev/null || {
-    echo "Some packages may not be available in this distribution"
-}
+# Force refresh of package archives each run
+if command -v apt-get >/dev/null 2>&1; then
+  apt-get clean || true
+  rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
+  apt-get update
+  # Download packages without installing; force no-cache behavior
+  echo "Downloading package archives (fresh)..."
+  apt-get -o Acquire::http::No-Cache=true \\
+          -o Acquire::https::No-Cache=true \\
+          --download-only -y install ${prefetch_packages[*]} 2>/dev/null || {
+      echo "Some packages may not be available in this distribution"
+  }
+fi
 
 # Show cache status
 echo ""
@@ -443,7 +468,7 @@ echo "Cached packages: \$CACHED_COUNT"
 echo "Package prefetch complete"
 PREFETCH_EOF
     
-    chmod +x "$prefetch_script"
+    chmod +x "$prefetch_script" 2>/dev/null || true
     
     # Run prefetch in container
     run_with_progress "Download common packages" 180 \
@@ -710,7 +735,7 @@ METRICS_JSON_EOF
     json="${json}]}"
     
     # Write metrics file
-    if printf "%s\\n" "$json" > "$json_file" 2>/dev/null; then
+    if printf "%s\n" "$json" > "$json_file" 2>/dev/null; then
         ok "Metrics written: $json_file"
         return 0
     else
