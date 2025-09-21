@@ -158,8 +158,16 @@ install_nano(){
     ensure_mirror_applied
   fi
   
-  if run_with_progress "Install nano" 10 bash -c 'apt-get -y install nano >/dev/null 2>&1'; then
-    ok "Nano installed successfully"
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Install nano (pkg)" 10 bash -c 'pkg install -y nano >/dev/null 2>&1'; then
+      ok "Nano installed successfully via pkg"
+      return 0
+    fi
+  fi
+  
+  # Fallback to apt
+  if run_with_progress "Install nano (apt)" 10 bash -c 'apt install -y nano >/dev/null 2>&1'; then
+    ok "Nano installed successfully via apt"
     return 0
   else
     warn "Failed to install nano"
@@ -270,7 +278,11 @@ setup_vim_alternative(){
       ensure_mirror_applied
     fi
     
-    run_with_progress "Install vim" 15 bash -c 'apt-get -y install vim >/dev/null 2>&1' || true
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Install vim (pkg)" 15 bash -c 'pkg install -y vim >/dev/null 2>&1' || true
+    else
+      run_with_progress "Install vim (apt)" 15 bash -c 'apt install -y vim >/dev/null 2>&1' || true
+    fi
   fi
   
   # Create basic vim config

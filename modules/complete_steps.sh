@@ -551,7 +551,12 @@ case "\$1" in
         if command -v ensure_mirror_applied >/dev/null 2>&1; then
             ensure_mirror_applied
         fi
-        apt update && apt upgrade
+        # Use appropriate Termux package manager
+        if command -v pkg >/dev/null 2>&1; then
+            pkg update -y && pkg upgrade -y
+        else
+            apt update && apt upgrade -y
+        fi
         ;;
     "info"|"i")
         echo "CAD-Droid Mobile Development Environment"

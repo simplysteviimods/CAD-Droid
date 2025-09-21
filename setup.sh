@@ -226,8 +226,13 @@ step_prefetch(){
   # Ensure selected mirror is applied before prefetching packages  
   ensure_mirror_applied
   
-  run_with_progress "Download package lists" 30 bash -c 'apt-get update >/dev/null 2>&1' || true
-  run_with_progress "Download core packages" 30 bash -c 'apt-get -d install "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Download package lists (pkg)" 30 bash -c 'pkg update -y >/dev/null 2>&1' || true
+    run_with_progress "Download core packages (pkg)" 30 bash -c 'pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+  else
+    run_with_progress "Download package lists (apt)" 30 bash -c 'apt update >/dev/null 2>&1' || true
+    run_with_progress "Download core packages (apt)" 30 bash -c 'apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+  fi
   mark_step_status "success"  
 }
 

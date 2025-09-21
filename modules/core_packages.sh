@@ -41,8 +41,19 @@ apt_install_if_needed(){
   # Ensure selected mirror is applied before installing
   ensure_mirror_applied
   
-  if apt-get -y install "$pkg" >/dev/null 2>&1; then
-    ok "$pkg installed successfully"
+  # Try pkg install first (preferred), then fallback to apt install
+  if command -v pkg >/dev/null 2>&1; then
+    if pkg install -y "$pkg" >/dev/null 2>&1; then
+      ok "$pkg installed successfully via pkg"
+      return 0
+    else
+      warn "pkg install failed for $pkg, trying apt install..."
+    fi
+  fi
+  
+  # Fallback to apt install
+  if apt install -y "$pkg" >/dev/null 2>&1; then
+    ok "$pkg installed successfully via apt"
     return 0
   else
     warn "Failed to install $pkg"
@@ -50,7 +61,7 @@ apt_install_if_needed(){
   fi
 }
 
-# Fix broken APT packages
+# Fix broken APT packages using appropriate Termux commands
 apt_fix_broken() {
   info "Fixing broken packages..."
   
@@ -58,9 +69,17 @@ apt_fix_broken() {
   ensure_mirror_applied
   
   run_with_progress "Fix broken packages" 30 bash -c '
-    apt-get -y -f install >/dev/null 2>&1 &&
-    dpkg --configure -a >/dev/null 2>&1 &&
-    apt-get -y autoremove >/dev/null 2>&1
+    # Try dpkg first
+    dpkg --configure -a >/dev/null 2>&1
+    
+    # Try pkg commands if available
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -f -y >/dev/null 2>&1 || true
+    fi
+    
+    # Fallback to apt commands
+    apt install -f -y >/dev/null 2>&1 &&
+    apt autoremove -y >/dev/null 2>&1
   '
 }
 
@@ -268,17 +287,30 @@ install_x11_packages(){
 
 # === System Updates ===
 
-# Update package lists
+# Update package lists using appropriate Termux commands
 update_package_lists(){
   info "Updating package lists..."
   
   # Ensure selected mirror is applied before updating
   ensure_mirror_applied
   
-  if run_with_progress "Update package lists" 30 bash -c '
-    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
+  # Try pkg update first (preferred Termux command), then fallback to apt update
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Update package lists (pkg)" 30 bash -c '
+      pkg update -y >/dev/null 2>&1
+    '; then
+      ok "Package lists updated via pkg"
+      return 0
+    else
+      warn "pkg update failed, trying apt update..."
+    fi
+  fi
+  
+  # Fallback to apt update
+  if run_with_progress "Update package lists (apt)" 30 bash -c '
+    apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
   '; then
-    ok "Package lists updated"
+    ok "Package lists updated via apt"
     return 0
   else
     warn "Package list update failed"
@@ -286,17 +318,30 @@ update_package_lists(){
   fi
 }
 
-# Upgrade all packages
+# Upgrade all packages using appropriate Termux commands
 upgrade_packages(){
   info "Upgrading packages..."
   
   # Ensure selected mirror is applied before upgrading
   ensure_mirror_applied
   
-  if run_with_progress "Upgrade packages" 60 bash -c '
-    apt-get -y upgrade >/dev/null 2>&1
+  # Try pkg upgrade first (preferred Termux command), then fallback to apt upgrade
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Upgrade packages (pkg)" 60 bash -c '
+      pkg upgrade -y >/dev/null 2>&1
+    '; then
+      ok "Packages upgraded successfully via pkg"
+      return 0
+    else
+      warn "pkg upgrade failed, trying apt upgrade..."
+    fi
+  fi
+  
+  # Fallback to apt upgrade
+  if run_with_progress "Upgrade packages (apt)" 60 bash -c '
+    apt upgrade -y >/dev/null 2>&1
   '; then
-    ok "Packages upgraded successfully"
+    ok "Packages upgraded successfully via apt"
     return 0
   else
     warn "Package upgrade had issues"
@@ -435,7 +480,16 @@ step_x11repo(){
   # Ensure selected mirror is applied before installing X11 repo
   ensure_mirror_applied
   
-  run_with_progress "Add X11 repository" 15 bash -c 'apt-get -y install x11-repo >/dev/null 2>&1 || true'
+  # Try pkg first, then apt as fallback
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Add X11 repository (pkg)" 15 bash -c 'pkg install -y x11-repo >/dev/null 2>&1'; then
+      mark_step_status "success"
+      return 0
+    fi
+  fi
+  
+  # Fallback to apt
+  run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || true'
   mark_step_status "success"
 }
 
