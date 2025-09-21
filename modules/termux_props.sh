@@ -394,7 +394,7 @@ read_credential() {
   fi
 }
 
-# Secure password input with confirmation (harden positional params)
+# Secure password input with confirmation (SAFE: defaults prevent unbound errors)
 secure_password_input() {
   local prompt="${1:-Enter password}"
   local var_name="${2:-CAD_PASSWORD}"
@@ -418,7 +418,7 @@ secure_password_input() {
     printf "\n"
     
     # Validate minimum length
-    if [ ${#password} -lt $MIN_PASSWORD_LENGTH ]; then
+    if [ ${#password} -lt "$MIN_PASSWORD_LENGTH" ] 2>/dev/null; then
       warn "Password must be at least $MIN_PASSWORD_LENGTH characters long"
       continue
     fi
