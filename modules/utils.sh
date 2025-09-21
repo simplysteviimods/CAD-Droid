@@ -274,9 +274,10 @@ validate_apk_size() {
 validate_input() {
   local input="$1"
   local type="$2"
+  local max_len="${MAX_INPUT_LENGTH:-256}"
   
   # Check maximum length first
-  if [ ${#input} -gt $MAX_INPUT_LENGTH ]; then
+  if [ ${#input} -gt "$max_len" ]; then
     return 1
   fi
   
@@ -305,8 +306,8 @@ validate_input() {
 # Read non-empty input with validation
 # Parameters: prompt, variable_name, validation_type, default_value
 read_nonempty() {
-  local prompt="$1"
-  local var_name="$2" 
+  local prompt="${1:-}"
+  local var_name="${2:-}" 
   local validation_type="${3:-nonempty}"
   local default_val="${4:-}"
   
@@ -352,7 +353,12 @@ sanitize_string() {
 # Read user option with validation using safe arithmetic and bounds checking
 # Parameters: prompt, variable_name, min_value, max_value, default_value
 read_option(){
-  local prompt="$1" var_name="$2" min_val="$3" max_val="$4" default_val="$5"
+  local prompt="${1:-}" var_name="${2:-}" min_val="${3:-1}" max_val="${4:-10}" default_val="${5:-}"
+  
+  # Fallback default_val to min_val if empty
+  if [ -z "$default_val" ]; then
+    default_val="$min_val"
+  fi
   
   # Validate all numeric parameters
   case "$min_val" in *[!0-9-]*) min_val=1 ;; esac
@@ -407,10 +413,10 @@ is_distro_installed(){
   [ -n "$distro" ] && [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro" ]
 }
 
-# Read non-empty input with validation
+# Read non-empty input with validation (nounset-safe 3-arg variant)
 # Parameters: prompt, variable_name, default_value
 read_nonempty() {
-  local prompt="$1" var_name="$2" default_val="$3"
+  local prompt="${1:-}" var_name="${2:-}" default_val="${3:-}"
   
   if [ "$NON_INTERACTIVE" = "1" ]; then
     case "$var_name" in
@@ -425,7 +431,7 @@ read_nonempty() {
   
   local attempts=0 max_attempts=3
   while [ "$attempts" -lt "$max_attempts" ]; do
-    pecho "$PASTEL_CYAN" "$prompt [$default_val]:"
+    pecho "$PASTEL_CYAN" "$prompt [${default_val:-}]:"
     
     local input
     read -r input
@@ -464,7 +470,7 @@ read_nonempty() {
 
 # Ask yes/no question with timeout support
 ask_yes_no() {
-  local prompt="$1" default="${2:-n}"
+  local prompt="${1:-}" default="${2:-n}"
   
   if [ "$NON_INTERACTIVE" = "1" ]; then
     case "$default" in
@@ -490,7 +496,7 @@ ask_yes_no() {
 
 # Read password with confirmation
 read_password_confirm() {
-  local prompt1="$1" prompt2="$2" var_name="$3"
+  local prompt1="${1:-Enter password}" prompt2="${2:-Confirm password}" var_name="${3:-}"
   
   if [ "$NON_INTERACTIVE" = "1" ]; then
     # Generate a simple password in non-interactive mode
@@ -510,7 +516,7 @@ read_password_confirm() {
     if ! read -rs password; then
       return 1
     fi
-    printf "\\n"
+    printf "\n"
     
     # Check minimum length
     if [ "${#password}" -lt 6 ]; then
@@ -523,7 +529,7 @@ read_password_confirm() {
     if ! read -rs confirm_password; then
       return 1
     fi
-    printf "\\n"
+    printf "\n"
     
     if [ "$password" = "$confirm_password" ]; then
       store_credential "$var_name" "$password"
@@ -577,7 +583,7 @@ random_port() {
 
 # Ask yes/no question with validation
 ask_yes_no() {
-  local question="$1"
+  local question="${1:-}"
   local default="${2:-}"
   
   if [ "$NON_INTERACTIVE" = "1" ]; then
