@@ -61,6 +61,7 @@ wget_get(){
 }
 
 # HTTP fetch function optimized for APK downloads
+# Guarantees overwrite by removing existing file first
 # Parameters: url, output_file
 # Returns: 0 if successful, 1 if failed
 http_fetch(){
@@ -69,6 +70,10 @@ http_fetch(){
   if [ -z "$url" ] || [ -z "$output" ]; then
     return 1
   fi
+
+  # Force overwrite behavior: ensure directory exists and remove any existing file
+  mkdir -p "$(dirname "$output")" 2>/dev/null || true
+  [ -e "$output" ] && rm -f -- "$output" 2>/dev/null || true
   
   # Try wget only for APK downloads (no curl fallback due to 404 errors)
   if wget_get -O "$output" "$url"; then
@@ -244,8 +249,9 @@ fetch_github_release(){
     
     # Verify file size
     if ensure_min_size "$temp_file"; then
-      # Move to final location with friendly name
-      if mv "$temp_file" "$final_file" 2>/dev/null; then
+      # Move to final location with friendly name; force overwrite
+      rm -f "$final_file" 2>/dev/null || true
+      if mv -f "$temp_file" "$final_file" 2>/dev/null; then
         ok "Downloaded: $friendly_name"
       else
         warn "Failed to rename to friendly name"
@@ -383,7 +389,9 @@ download_apk(){
     # F-Droid preferred (default) - download to temp then rename
     local temp_fdroid="$outdir/.tmp_fdroid_${name}_$$.apk"
     if fetch_fdroid_api "$pkg" "$temp_fdroid" || fetch_fdroid_page "$pkg" "$temp_fdroid"; then
-      if mv "$temp_fdroid" "$target_file" 2>/dev/null; then
+      # Force overwrite destination
+      rm -f "$target_file" 2>/dev/null || true
+      if mv -f "$temp_fdroid" "$target_file" 2>/dev/null; then
         success=1
       else
         rm -f "$temp_fdroid" 2>/dev/null
@@ -411,7 +419,8 @@ download_apk(){
       # GitHub was preferred but failed, try F-Droid
       local temp_fdroid="$outdir/.tmp_fdroid_${name}_$$.apk"
       if fetch_fdroid_api "$pkg" "$temp_fdroid" || fetch_fdroid_page "$pkg" "$temp_fdroid"; then
-        if mv "$temp_fdroid" "$target_file" 2>/dev/null; then
+        rm -f "$target_file" 2>/dev/null || true
+        if mv -f "$temp_fdroid" "$target_file" 2>/dev/null; then
           success=1
         else
           rm -f "$temp_fdroid" 2>/dev/null
