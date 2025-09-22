@@ -355,17 +355,17 @@ execute_step() {
 # Execute all registered steps in order
 execute_all_steps() {
   local step_count="${#STEP_NAME[@]}"
-  local i=0
+  local main_step_index=0
   
   info "Starting installation with $step_count steps..."
   echo "DEBUG: Step execution starting with step_count=$step_count" >&2
   
-  while [ "$i" -lt "$step_count" ]; do
-    echo "DEBUG: About to execute step $i (${STEP_NAME[$i]:-UNKNOWN}) - current step_count=$step_count" >&2
+  while [ "$main_step_index" -lt "$step_count" ]; do
+    echo "DEBUG: About to execute step $main_step_index (${STEP_NAME[$main_step_index]:-UNKNOWN}) - current step_count=$step_count" >&2
     
-    if ! execute_step "$i"; then
+    if ! execute_step "$main_step_index"; then
       # Step failed - decide whether to continue or abort
-      local step_name="${STEP_NAME[$i]}"
+      local step_name="${STEP_NAME[$main_step_index]}"
       if ask_yes_no "Step '$step_name' failed. Continue with remaining steps?" "y"; then
         warn "Continuing despite failure in step: $step_name"
       else
@@ -374,20 +374,20 @@ execute_all_steps() {
       fi
     fi
     
-    echo "DEBUG: Completed step $i, about to increment" >&2
+    echo "DEBUG: Completed step $main_step_index, about to increment" >&2
     
     # Safe increment
-    i=$(add_int "$i" 1) || break
+    main_step_index=$(add_int "$main_step_index" 1) || break
     
-    echo "DEBUG: Incremented to i=$i, step_count is now ${#STEP_NAME[@]}" >&2
+    echo "DEBUG: Incremented to main_step_index=$main_step_index, step_count is now ${#STEP_NAME[@]}" >&2
     
     # Update progress
     local progress
-    progress=$(calculate_progress "$i" 0)
-    debug "Progress: $progress% ($i/$step_count steps)"
+    progress=$(calculate_progress "$main_step_index" 0)
+    debug "Progress: $progress% ($main_step_index/$step_count steps)"
   done
   
-  echo "DEBUG: Step execution loop finished with i=$i, step_count=${#STEP_NAME[@]}" >&2
+  echo "DEBUG: Step execution loop finished with main_step_index=$main_step_index, step_count=${#STEP_NAME[@]}" >&2
   
   # Show basic statistics - detailed completion handled by completion module
   show_step_statistics
