@@ -31,7 +31,23 @@ show_completion_summary(){
   printf "${PASTEL_LAVENDER}Configuration:${RESET} ~/.cad/config/\n"
   printf "${PASTEL_LAVENDER}Scripts:${RESET} ~/.cad/scripts/\n\n"
   
-  printf "${PASTEL_YELLOW}Note:${RESET} A Termux restart is recommended to apply all changes\n\n"
+  printf "${PASTEL_YELLOW}IMPORTANT: Termux restart required to apply all changes${RESET}\n\n"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    pecho "$PASTEL_CYAN" "Press Enter to restart Termux and complete setup..."
+    read -r || true
+    
+    # Force Termux restart by killing the app
+    info "Restarting Termux to apply all changes..."
+    sleep 2
+    if command -v am >/dev/null 2>&1; then
+      # Kill Termux app to force restart
+      am force-stop com.termux >/dev/null 2>&1 || true
+    fi
+    exit 0
+  else
+    printf "${PASTEL_PINK}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
+  fi
 }
 
 # Configure bash with pastel colors for the final restart

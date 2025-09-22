@@ -414,8 +414,20 @@ step_mirror(){
   if command -v get_regional_mirrors >/dev/null 2>&1 && command -v get_regional_mirror_names >/dev/null 2>&1; then
     mapfile -t urls < <(get_regional_mirrors "$user_region" "main")
     mapfile -t names < <(get_regional_mirror_names "$user_region" "main")
-  else
-    # Fallback to static list if regional functions not available
+    
+    # Debug output
+    debug "Regional functions returned ${#urls[@]} URLs and ${#names[@]} names"
+    
+    # If regional functions didn't return enough data, fall back to static list
+    if [ ${#urls[@]} -lt 2 ] || [ ${#names[@]} -lt 2 ]; then
+      warn "Regional mirror functions returned insufficient data, using static fallback"
+      urls=()
+      names=()
+    fi
+  fi
+  
+  # Use static fallback if regional functions not available or failed
+  if [ ${#urls[@]} -eq 0 ]; then
     urls=(
       "https://packages.termux.dev/apt/termux-main"
       "https://packages-cf.termux.dev/apt/termux-main"
@@ -426,13 +438,13 @@ step_mirror(){
       "https://termux.mentality.rip/termux/apt/termux-main"
     )
     names=(
-      "Default"
-      "Cloudflare (US Anycast)"
-      "FAU (DE)"
-      "BFSU (CN)"
-      "Tsinghua (CN)"
-      "Grimler (SE)"
-      "Mentality (UK)"
+      "Official Termux (Global CDN)"
+      "Official Termux (Cloudflare CDN)"
+      "FAU (Germany)"
+      "BFSU (China)"
+      "Tsinghua (China)"
+      "Grimler (Sweden)"
+      "Mentality (North America)"
     )
   fi
   

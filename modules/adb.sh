@@ -281,6 +281,19 @@ adb_wireless_helper(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
+    pecho "$PASTEL_PURPLE" "=== IMPORTANT: ADB & Android Phantom Process Killer ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "ADB wireless debugging is CRITICAL for Linux development on Android!"
+    echo ""
+    pecho "$PASTEL_CYAN" "Why ADB is essential:"
+    info "• Disables Android's Phantom Process Killer that terminates Linux processes"
+    info "• Prevents random termination of development tools, servers, and long-running tasks"
+    info "• Ensures stable operation of container environments and desktop sessions"
+    info "• Required for professional development work on Android devices"
+    echo ""
+    pecho "$PASTEL_PINK" "Without ADB, Android will randomly kill your Linux processes!"
+    echo ""
+    
     pecho "$PASTEL_PURPLE" "ADB Wireless Setup Instructions:"
     echo ""
     pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
