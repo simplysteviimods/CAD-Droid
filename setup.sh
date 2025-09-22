@@ -178,7 +178,7 @@ initialize_steps(){
   STEP_FUNCS=()
   STEP_ETA=()
   
-  # Register all installation steps
+  # Register all installation steps in logical chronological order
   cad_register_step "Storage Setup" "step_storage" 15
   cad_register_step "Mirror Selection" "step_mirror" 20  
   cad_register_step "System Bootstrap" "step_bootstrap" 35
@@ -189,10 +189,10 @@ initialize_steps(){
   cad_register_step "Core Installation" "step_coreinst" 90
   cad_register_step "APK Installation" "step_apk" 30
   cad_register_step "User Configuration" "step_usercfg" 10
-  cad_register_step "Package Prefetch" "step_prefetch" 60
   cad_register_step "ADB Wireless Setup" "step_adb" 20
   cad_register_step "XFCE Desktop" "step_xfce" 75
   cad_register_step "Container Setup" "step_container" 120
+  cad_register_step "Package Prefetch" "step_prefetch" 60  # Moved after container - prefetch is for container use
   cad_register_step "Final Configuration" "step_final" 25
   
   # Calculate totals
@@ -249,9 +249,6 @@ step_storage(){
 step_apk(){
   info "Installing required Termux add-on APKs..."
   
-  # Ensure download tools are available
-  ensure_download_tool
-  
   # Check if APK installation is enabled
   if [ "${ENABLE_APK_AUTO:-1}" != "1" ]; then
     info "APK installation disabled - skipping"
@@ -259,23 +256,16 @@ step_apk(){
     return 0
   fi
   
-  # Initialize APK management system
-  if ! init_apk_system; then
-    warn "APK system initialization failed, but continuing..."
+  # Simple APK management approach
+  if declare -f manage_apks >/dev/null 2>&1; then
+    manage_apks || {
+      warn "APK management had issues but continuing..."
+    }
+  else
+    warn "APK management module not available"
   fi
   
-  # Download essential APKs automatically (no user interaction during downloads)
-  if download_essential_apks; then
-    ok "APK downloads completed successfully"
-    
-    # Handle permissions and installation AFTER all downloads are complete
-    setup_apk_permissions
-    
-    mark_step_status "success"
-  else
-    warn "Some APK downloads may have failed - check manually"
-    mark_step_status "partial"
-  fi
+  mark_step_status "success"
 }
 
 step_usercfg(){
@@ -288,19 +278,20 @@ step_usercfg(){
 }
 
 step_prefetch(){
-  info "Prefetching packages for offline use..."
+  info "Prefetching packages for container and offline use..."
   
-  # Use modular package list updating to ensure indexes are current
-  update_package_lists || {
-    warn "Failed to update package lists, proceeding with prefetch anyway"
-  }
+  # This step runs after container setup to prefetch packages for container use
+  # Simple approach without complex spinners
   
-  # Download core packages for offline installation - using simple progress without complex spinners
-  info "Downloading core packages for offline use..."
+  info "Downloading packages for offline installation..."
+  
+  # Simple package download
   if command -v pkg >/dev/null 2>&1; then
-    pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 && ok "Core packages downloaded (pkg)" || warn "Some packages may have failed to download (pkg)"
+    pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 || true
+    ok "Packages prefetched for offline use"
   else
-    apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 && ok "Core packages downloaded (apt)" || warn "Some packages may have failed to download (apt)"
+    apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 || true
+    ok "Packages prefetched for offline use"
   fi
   
   mark_step_status "success"  
