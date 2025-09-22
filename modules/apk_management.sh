@@ -743,6 +743,8 @@ download_essential_apks(){
   save_apk_state
   
   return 0
+}
+
 # Open Android security settings to enable "Install unknown apps" for Termux
 open_security_settings() {
   info "Opening Android security settings..."
