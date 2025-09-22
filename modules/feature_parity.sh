@@ -40,12 +40,31 @@ setup_proot_containers(){
 
 # Install Ubuntu container
 install_ubuntu_container(){
-  info "Installing Ubuntu container..."
-  
   if proot_distro_installed "ubuntu"; then
     ok "Ubuntu container already installed"
     return 0
   fi
+  
+  info "Ubuntu container will be installed for advanced development features"
+  printf "${PASTEL_CYAN}This includes:${RESET}\n"
+  printf "${PASTEL_LAVENDER}• Full Ubuntu Linux environment${RESET}\n"
+  printf "${PASTEL_LAVENDER}• Additional development tools${RESET}\n"
+  printf "${PASTEL_LAVENDER}• Desktop environment support${RESET}\n"
+  printf "${PASTEL_LAVENDER}• Container-based isolation${RESET}\n\n"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    printf "${PASTEL_PINK}Install Ubuntu container? (Y/n):${RESET} "
+    local response
+    read -r response || response="y"
+    case "${response,,}" in
+      n|no)
+        warn "Ubuntu container installation skipped"
+        return 0
+        ;;
+    esac
+  fi
+  
+  info "Installing Ubuntu container..."
   
   # Install Ubuntu with progress feedback
   run_with_progress "Install Ubuntu container" 180 bash -c 'proot-distro install ubuntu >/dev/null 2>&1'

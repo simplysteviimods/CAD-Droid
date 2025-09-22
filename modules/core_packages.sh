@@ -150,11 +150,13 @@ ensure_mirror_applied(){
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
-  # Update package indexes to ensure they're current
-  if command -v pkg >/dev/null 2>&1; then
-    run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'
-  else
-    run_with_progress "Update indexes (apt)" 15 bash -c 'apt update >/dev/null 2>&1 || true'
+  # Update package indexes to ensure they're current (silent if already done)
+  if [ "${PACKAGES_UPDATED:-0}" != "1" ]; then
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Update indexes (apt)" 15 bash -c 'apt update >/dev/null 2>&1 || true'
+    fi
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -305,6 +307,10 @@ install_x11_packages(){
 
 # Update package lists using appropriate Termux commands
 update_package_lists(){
+  if [ "${PACKAGES_UPDATED:-0}" = "1" ]; then
+    return 0  # Already updated this session
+  fi
+  
   info "Updating package lists..."
   
   # Ensure selected mirror is applied before updating
@@ -316,6 +322,7 @@ update_package_lists(){
       pkg update -y >/dev/null 2>&1
     '; then
       ok "Package lists updated via pkg"
+      export PACKAGES_UPDATED=1
       return 0
     else
       warn "pkg update failed, trying apt update..."
@@ -327,6 +334,7 @@ update_package_lists(){
     apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
   '; then
     ok "Package lists updated via apt"
+    export PACKAGES_UPDATED=1
     return 0
   else
     warn "Package list update failed"

@@ -109,46 +109,69 @@ get_fdroid_apk_url(){
   return 0
 }
 
-# Download APK from F-Droid
+# Download APK from F-Droid with GitHub backup
 download_fdroid_apk(){
   local package_id="$1"
   local app_name="${2:-$package_id}"
   
-  info "Downloading $app_name from F-Droid..."
+  info "Downloading $app_name..."
   
-  # Get download URL
-  local download_url
-  if ! download_url=$(get_fdroid_apk_url "$package_id"); then
-    err "Failed to get download URL for $package_id"
-    return 1
-  fi
-  
-  # Extract APK filename from URL and create friendly name
-  local apk_filename
-  apk_filename=$(basename "$download_url")
+  # Create friendly filename (no temp files, direct download)
   local output_file="$APK_DOWNLOAD_DIR/${app_name// /_}.apk"
   
   # Always overwrite existing APKs to ensure latest version
-  if [ -f "$output_file" ]; then
-    rm -f "$output_file" 2>/dev/null || true
+  [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
+  
+  # Try F-Droid first
+  local download_url
+  if download_url=$(get_fdroid_apk_url "$package_id"); then
+    if download_with_spinner "$download_url" "$output_file" "Download $app_name (F-Droid)"; then
+      # Verify download
+      if [ -f "$output_file" ] && [ -s "$output_file" ]; then
+        ok "$app_name downloaded successfully from F-Droid"
+        echo "$output_file"
+        return 0
+      fi
+    fi
   fi
   
-  # Download the APK
-  if download_with_spinner "$download_url" "$output_file" "Download $app_name"; then
-    # Verify download
-    if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-      ok "$app_name downloaded successfully"
-      echo "$output_file"
-      return 0
-    else
-      err "Downloaded APK file is empty or corrupted"
-      rm -f "$output_file" 2>/dev/null || true
+  # Fallback to GitHub releases for Termux apps
+  warn "F-Droid download failed, trying GitHub backup..."
+  local github_url=""
+  case "$package_id" in
+    "com.termux")
+      github_url="https://github.com/termux/termux-app/releases/latest/download/termux-app_universal.apk"
+      ;;
+    "com.termux.api")
+      github_url="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
+      ;;
+    "com.termux.boot")
+      github_url="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
+      ;;
+    "com.termux.widget")
+      github_url="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
+      ;;
+    "com.termux.x11")
+      github_url="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
+      ;;
+    *)
+      err "No GitHub backup available for $app_name"
       return 1
+      ;;
+  esac
+  
+  if [ -n "$github_url" ]; then
+    if download_with_spinner "$github_url" "$output_file" "Download $app_name (GitHub)"; then
+      if [ -f "$output_file" ] && [ -s "$output_file" ]; then
+        ok "$app_name downloaded successfully from GitHub"
+        echo "$output_file"
+        return 0
+      fi
     fi
-  else
-    err "Failed to download $app_name APK"
-    return 1
   fi
+  
+  err "Failed to download $app_name from both F-Droid and GitHub"
+  return 1
 }
 
 # Download all essential APKs before user interaction

@@ -805,8 +805,21 @@ bind 'set completion-ignore-case on'
 bind 'set show-all-if-ambiguous on'
 bind 'set colored-stats on'
 
-# Set terminal colors for better visibility
+# Set terminal colors for better visibility and pastel user input
 export LS_COLORS='di=38;5;159:fi=38;5;255:ln=38;5;213:pi=38;5;229:so=38;5;183:bd=38;5;189:cd=38;5;189:or=38;5;196:ex=38;5;158'
+
+# Configure readline for pastel user input
+bind 'set colored-completion-prefix on'
+bind 'set completion-ignore-case on'
+bind 'set show-all-if-ambiguous on'
+bind 'set colored-stats on'
+bind 'set bell-style none'
+
+# Make sure user input appears in pastel purple
+export PS1="${PASTEL_PINK}${DISPLAY_USER}${RESET} ${PASTEL_CYAN}\w${RESET} ${PASTEL_PURPLE}$ ${RESET}"
+
+# Configure input line editing colors for pastel cursor
+printf '\e]12;#DCC9FF\a'
 
 # Aliases with color support
 alias ls='ls --color=auto'
@@ -847,8 +860,13 @@ configure_termux_properties_pastel() {
 # === CAD-Droid Pastel Termux Configuration ===
 
 # === APPEARANCE ===
-# Use a pleasant pastel color scheme
-use-black-ui=false
+# Use a pleasant pastel color scheme with better contrast
+use-black-ui=true
+default-working-directory=/data/data/com.termux/files/home
+
+# === COLORS ===
+# Custom color scheme for pastel theming
+color-scheme=one-dark
 
 # === KEYBOARD ===
 # Enhanced extra keys row with useful shortcuts including on-screen keyboard toggle
@@ -954,7 +972,16 @@ configure_git_settings(){
   
   # Check if git is installed
   if ! command -v git >/dev/null 2>&1; then
-    warn "Git not installed, skipping configuration"
+    warn "Git not installed, installing first..."
+    if ! apt_install_if_needed git; then
+      err "Failed to install git"
+      return 1
+    fi
+  fi
+  
+  # Verify git is now available
+  if ! command -v git >/dev/null 2>&1; then
+    err "Git still not available after installation"
     return 1
   fi
   
@@ -990,30 +1017,47 @@ setup_ssh_keys(){
   mkdir -p "$ssh_dir" 2>/dev/null || true
   chmod 700 "$ssh_dir" 2>/dev/null || true
   
-  # Generate SSH key if it doesn't exist
-  if [ ! -f "$ssh_key" ]; then
-    local ssh_email="${GIT_EMAIL:-cad-droid@termux.local}"
-    run_with_progress "Generate SSH key" 10 bash -c "
-      ssh-keygen -t ed25519 -C '$ssh_email' -f '$ssh_key' -N '' >/dev/null 2>&1
-    "
-    
-    if [ -f "$ssh_key" ]; then
-      chmod 600 "$ssh_key" 2>/dev/null || true
-      chmod 644 "${ssh_key}.pub" 2>/dev/null || true
-      ok "SSH key pair generated successfully"
-      
-      # Show public key for user
-      printf "\n${PASTEL_YELLOW}Your SSH public key:${RESET}\n"
-      printf "${PASTEL_CYAN}"
-      cat "${ssh_key}.pub" 2>/dev/null || echo "Error reading public key"
-      printf "${RESET}\n\n"
-      printf "${PASTEL_LAVENDER}Add this key to GitHub/GitLab under Settings → SSH Keys${RESET}\n\n"
+  # Check if SSH key already exists
+  if [ -f "$ssh_key" ]; then
+    warn "SSH key already exists at $ssh_key"
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      printf "${PASTEL_PINK}Overwrite existing SSH key? (y/N):${RESET} "
+      local response
+      read -r response || response="n"
+      case "${response,,}" in
+        y|yes)
+          info "Overwriting existing SSH key..."
+          rm -f "$ssh_key" "$ssh_key.pub" 2>/dev/null || true
+          ;;
+        *)
+          ok "Using existing SSH key"
+          return 0
+          ;;
+      esac
     else
-      warn "Failed to generate SSH key"
-      return 1
+      ok "Using existing SSH key (non-interactive mode)"
+      return 0
     fi
+  fi
+  
+  # Generate SSH key
+  local ssh_email="${GIT_EMAIL:-cad-droid@termux.local}"
+  if run_with_progress "Generate SSH key" 10 bash -c "
+    ssh-keygen -t ed25519 -C '$ssh_email' -f '$ssh_key' -N '' >/dev/null 2>&1
+  "; then
+    chmod 600 "$ssh_key" 2>/dev/null || true
+    chmod 644 "${ssh_key}.pub" 2>/dev/null || true
+    ok "SSH key pair generated successfully"
+    
+    # Show public key for user
+    printf "\n${PASTEL_YELLOW}Your SSH public key:${RESET}\n"
+    printf "${PASTEL_CYAN}"
+    cat "${ssh_key}.pub" 2>/dev/null || echo "Error reading public key"
+    printf "${RESET}\n\n"
+    printf "${PASTEL_LAVENDER}Add this key to GitHub/GitLab under Settings → SSH Keys${RESET}\n\n"
   else
-    ok "SSH key already exists"
+    warn "Failed to generate SSH key"
+    return 1
   fi
   
   return 0

@@ -13,16 +13,18 @@ readonly _CAD_MIRROR_CONFIG_LOADED=1
 # Mirror Configuration Arrays
 declare -a TERMUX_MIRRORS=(
   "https://packages.termux.dev/apt/termux-main"
-  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"  
   "https://grimler.se/termux/apt/termux-main"
-  "https://termux.mentality.rip/termux/apt/termux-main"
+  "https://mirror.sahilister.in/termux/apt/termux-main"
+  "https://termux.librehat.com/apt/termux-main"
 )
 
 declare -a X11_MIRRORS=(
   "https://packages.termux.dev/apt/termux-x11"
   "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-x11"
   "https://grimler.se/termux/apt/termux-x11"
-  "https://termux.mentality.rip/termux/apt/termux-x11"
+  "https://mirror.sahilister.in/termux/apt/termux-x11"
+  "https://termux.librehat.com/apt/termux-x11"
 )
 
 # Mirror test function with spinner integration
