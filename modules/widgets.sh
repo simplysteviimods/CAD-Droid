@@ -64,10 +64,10 @@ create_termux_widget_shortcuts(){
     cat > "$widget_shortcuts/phantom-killer" << 'PHANTOM_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Phantom Process Killer - Critical for system stability
-echo "🛡️ Disabling phantom process killer..."
+echo "Disabling phantom process killer..."
 adb shell "settings put global settings_enable_monitor_phantom_procs false"
-echo "✅ Phantom process killer disabled!"
-echo "📱 Your apps should now run more reliably"
+echo "Phantom process killer disabled!"
+echo "Your apps should now run more reliably"
 PHANTOM_EOF
     chmod +x "$widget_shortcuts/phantom-killer"
     
@@ -75,10 +75,10 @@ PHANTOM_EOF
     cat > "$widget_shortcuts/adb-connect" << 'ADB_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # ADB Wireless Connection
-echo "📱 Connecting ADB wirelessly..."
+echo "Connecting ADB wirelessly..."
 adb connect 127.0.0.1:5555
 adb devices
-echo "✅ ADB connection status shown above"
+echo "ADB connection status shown above"
 ADB_EOF
     chmod +x "$widget_shortcuts/adb-connect"
     
@@ -86,11 +86,11 @@ ADB_EOF
     cat > "$widget_shortcuts/system-info" << 'SYSINFO_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # System Information Display
-echo -e "\033[1;36m📊 CAD-Droid System Info\033[0m"
-echo "🔋 Battery: $(termux-battery-status | jq -r '.percentage')%"
-echo "📶 Network: $(termux-wifi-connectioninfo | jq -r '.ssid')"
-echo "💾 Storage: $(df -h $HOME | tail -1 | awk '{print $4}') free"
-echo "🏠 Location: $(termux-location -p gps -r once | jq -r '.latitude, .longitude' | tr '\n' ',' | sed 's/,$//')"
+echo -e "\033[1;36mCAD-Droid System Info\033[0m"
+echo "Battery: $(termux-battery-status | jq -r '.percentage')%"
+echo "Network: $(termux-wifi-connectioninfo | jq -r '.ssid')"
+echo "Storage: $(df -h $HOME | tail -1 | awk '{print $4}') free"
+echo "Location: $(termux-location -p gps -r once | jq -r '.latitude, .longitude' | tr '\n' ',' | sed 's/,$//')"
 SYSINFO_EOF
     chmod +x "$widget_shortcuts/system-info"
     
@@ -98,7 +98,7 @@ SYSINFO_EOF
     cat > "$widget_shortcuts/file-manager" << 'FM_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Quick File Manager
-echo "📁 Opening file manager..."
+echo "Opening file manager..."
 if command -v termux-open >/dev/null 2>&1; then
     termux-open $HOME
 else
@@ -111,9 +111,9 @@ FM_EOF
     cat > "$widget_shortcuts/pkg-update" << 'PKG_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Quick Package Update
-echo "📦 Updating packages..."
+echo "Updating packages..."
 pkg update -y && pkg upgrade -y
-echo "✅ Packages updated successfully!"
+echo "Packages updated successfully!"
 PKG_EOF
     chmod +x "$widget_shortcuts/pkg-update"
     
@@ -126,7 +126,44 @@ PKG_EOF
     printf "${PASTEL_CYAN}3.${RESET} Widgets available: phantom-killer, adb-connect, system-info, file-manager, pkg-update\n"
     printf "${PASTEL_CYAN}4.${RESET} Long press home screen → Widgets → Termux:Widget\n\n"
 }
+
+# Create desktop entry helper function
+create_desktop_entry(){
+    local entry_name="$1"
+    local display_name="$2" 
+    local exec_command="$3"
+    local icon="$4"
+    local comment="$5"
     
+    local desktop_file="$WIDGET_DIR/${entry_name}.desktop"
+    
+    cat > "$desktop_file" << DESKTOP_EOF
+[Desktop Entry]
+Version=1.0
+Name=${display_name}
+Comment=${comment}
+Exec=${exec_command}
+Icon=${icon}
+Terminal=false
+Type=Application
+Categories=Development;
+DESKTOP_EOF
+
+    chmod +x "$desktop_file" 2>/dev/null || true
+}
+
+# Create development shortcuts
+create_dev_widgets(){
+    if [ "$ENABLE_WIDGETS" != "1" ]; then
+        return 0
+    fi
+    
+    pecho "$PASTEL_PURPLE" "Creating development shortcuts..."
+    
+    # Code Editor shortcut
+    create_desktop_entry "code-editor" "Code Editor" "nano %f" "text-editor" \
+        "Quick access to nano text editor"
+        
     # Git Status shortcut
     create_desktop_entry "git-status" "Git Status" "bash -c 'cd ~/; git status; read -p \"Press Enter to continue...\"'" "git" \
         "Check git repository status"
@@ -138,6 +175,9 @@ PKG_EOF
     # File Manager shortcut
     create_desktop_entry "files" "Files" "bash -c 'ls -la ~/; read -p \"Press Enter to continue...\"'" "folder" \
         "Browse home directory"
+    
+    # Termux Widget shortcuts (essential for phantom process killer)
+    create_termux_widget_shortcuts
     
     ok "Development shortcuts created"
     return 0

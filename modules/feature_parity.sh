@@ -87,11 +87,11 @@ create_comprehensive_widgets(){
   cat > "$widget_shortcuts/ubuntu-shell" << 'UBUNTU_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Ubuntu Container Shell
-echo "🐧 Starting Ubuntu container..."
+echo "Starting Ubuntu container..."
 if [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu" ]; then
     proot-distro login ubuntu
 else
-    echo "❌ Ubuntu container not installed"
+    echo "ERROR: Ubuntu container not installed"
     echo "Run: proot-distro install ubuntu"
 fi
 UBUNTU_EOF
@@ -101,15 +101,15 @@ UBUNTU_EOF
   cat > "$widget_shortcuts/ssh-server" << 'SSH_EOF'
 #!/data/data/com.termux/files/usr/bin/bash  
 # SSH Server Control
-echo "🔐 SSH Server Control"
+echo "SSH Server Control"
 if pgrep sshd >/dev/null; then
-    echo "✅ SSH server is running"
-    echo "📱 IP: $(ip route get 8.8.8.8 | sed -n '/src/{s/.*src *\([^ ]*\).*/\1/p;q}')"
-    echo "🔌 Port: $(cat $PREFIX/etc/ssh/sshd_config | grep Port | awk '{print $2}')"
+    echo "SSH server is running"
+    echo "IP: $(ip route get 8.8.8.8 | sed -n '/src/{s/.*src *\([^ ]*\).*/\1/p;q}')"
+    echo "Port: $(cat $PREFIX/etc/ssh/sshd_config | grep Port | awk '{print $2}')"
 else
-    echo "🔄 Starting SSH server..."
+    echo "Starting SSH server..."
     sshd
-    echo "✅ SSH server started"
+    echo "SSH server started"
 fi
 SSH_EOF
   chmod +x "$widget_shortcuts/ssh-server"
@@ -118,12 +118,12 @@ SSH_EOF
   cat > "$widget_shortcuts/dev-env" << 'DEV_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Development Environment Status
-echo -e "\033[1;36m💻 CAD-Droid Development Environment\033[0m"
-echo "📁 Storage: $(df -h $HOME | tail -1 | awk '{print $4}') free"
-echo "🐧 Ubuntu: $([ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu" ] && echo "✅ Installed" || echo "❌ Not installed")"
-echo "🔐 SSH: $(pgrep sshd >/dev/null && echo "✅ Running" || echo "❌ Stopped")"
-echo "📱 ADB: $(adb devices 2>/dev/null | grep -c device || echo "0") devices"
-echo "🛡️ Phantom Killer: $(adb shell settings get global settings_enable_monitor_phantom_procs 2>/dev/null | grep -q false && echo "✅ Disabled" || echo "⚠️ Active")"
+echo -e "\033[1;36mCAD-Droid Development Environment\033[0m"
+echo "Storage: $(df -h $HOME | tail -1 | awk '{print $4}') free"
+echo "Ubuntu: $([ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu" ] && echo "Installed" || echo "Not installed")"
+echo "SSH: $(pgrep sshd >/dev/null && echo "Running" || echo "Stopped")"
+echo "ADB: $(adb devices 2>/dev/null | grep -c device || echo "0") devices"
+echo "Phantom Killer: $(adb shell settings get global settings_enable_monitor_phantom_procs 2>/dev/null | grep -q false && echo "Disabled" || echo "Active")"
 DEV_EOF
   chmod +x "$widget_shortcuts/dev-env"
   
@@ -138,7 +138,7 @@ display_feature_parity_options(){
   
   printf "${PASTEL_YELLOW}Features found in setup_original.sh:${RESET}\n\n"
   
-  printf "${PASTEL_CYAN}✅ IMPLEMENTED:${RESET}\n"
+  printf "${PASTEL_CYAN}IMPLEMENTED:${RESET}\n"
   printf "${PASTEL_GREEN}├─${RESET} Container Support (proot-distro, Ubuntu)\n"
   printf "${PASTEL_GREEN}├─${RESET} SSH Server Setup\n"
   printf "${PASTEL_GREEN}├─${RESET} ADB Wireless Configuration\n"  

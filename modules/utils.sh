@@ -908,10 +908,10 @@ TERMUX_PROPS_EOF
 
 # Final completion with reboot prompt
 cad_droid_completion(){
-  printf "\n${PASTEL_PINK}🎉 CAD-Droid Setup Complete! 🎉${RESET}\n"
+  printf "\n${PASTEL_PINK}CAD-Droid Setup Complete!${RESET}\n"
   printf "${PASTEL_YELLOW}═══════════════════════════════════════${RESET}\n\n"
   
-  printf "${PASTEL_GREEN}✅ Installation Summary:${RESET}\n"
+  printf "${PASTEL_GREEN}Installation Summary:${RESET}\n"
   printf "${PASTEL_CYAN}├─${RESET} Critical bug fixes applied\n"
   printf "${PASTEL_CYAN}├─${RESET} Pastel theme configured\n"  
   printf "${PASTEL_CYAN}├─${RESET} APK management system ready\n"
@@ -927,7 +927,7 @@ cad_droid_completion(){
   printf "${PASTEL_CYAN}3.${RESET} Access Ubuntu container: proot-distro login ubuntu\n"
   printf "${PASTEL_CYAN}4.${RESET} Check system status: cad-status\n\n"
   
-  printf "${PASTEL_RED}📱 Reboot Recommended${RESET}\n"
+  printf "${PASTEL_RED}Reboot Recommended${RESET}\n"
   printf "A reboot will ensure all configuration changes take effect,\n"
   printf "especially the new keyboard layout and theme settings.\n\n"
   
