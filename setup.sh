@@ -211,6 +211,9 @@ step_storage(){
 step_apk(){
   info "Installing required Termux add-on APKs..."
   
+  # Ensure download tools are available
+  ensure_download_tool
+  
   # Check if APK installation is enabled
   if [ "${ENABLE_APK_AUTO:-1}" != "1" ]; then
     info "APK installation disabled - skipping"
@@ -218,16 +221,66 @@ step_apk(){
     return 0
   fi
   
-  # Use modular APK management system
-  if init_apk_system && download_essential_apks; then
-    open_apk_directory || true
-    check_apk_permissions || true
+  # Follow original setup approach - setup directory first, then download
+  select_apk_directory || {
+    warn "APK directory setup failed, using fallback"
+    USER_SELECTED_APK_DIR="/storage/emulated/0/Download/CAD-Droid-APKs"
+    mkdir -p "$USER_SELECTED_APK_DIR" 2>/dev/null || true
+  }
+  
+  # Start F-Droid APK downloads like original
+  info "Starting F-Droid APK downloads..."
+  local failed=0
+  APK_MISSING=()
+  
+  # Download essential Termux APKs using original approach
+  if ! fetch_termux_addon "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:API")
+    failed=$((failed + 1))
+  fi
+  
+  if ! fetch_termux_addon "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:X11")
+    failed=$((failed + 1))
+  fi
+  
+  if ! fetch_termux_addon "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:GUI")
+    failed=$((failed + 1))
+  fi
+  
+  if ! fetch_termux_addon "Termux:Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:Widget")
+    failed=$((failed + 1))
+  fi
+  
+  # Show download results
+  if [ "$failed" -eq 0 ]; then
+    ok "All APKs downloaded successfully to: $USER_SELECTED_APK_DIR"
   else
-    warn "APK management system setup failed, using fallback approach"
-    
-    # Fallback: ensure download tools and basic APK setup
-    ensure_download_tool
-    setup_apk_directory || true
+    warn "$failed APK(s) failed to download"
+  fi
+  
+  # Open APK directory and provide permission guidance AFTER downloads
+  info "Opening APK directory for installation..."
+  open_file_manager "$USER_SELECTED_APK_DIR" || warn "Could not open APK directory"
+  
+  # Provide permission instructions after downloads
+  echo ""
+  pecho "$PASTEL_YELLOW" "PERMISSION SETUP REQUIRED:"
+  info "After installing each APK, configure permissions:"
+  info "• Termux:API - Phone, SMS, Location, Camera, Microphone"
+  info "• Termux:X11 - Display over other apps, Battery optimization disabled"
+  info "• Other APKs - Standard app permissions as requested"
+  echo ""
+  
+  # Pause for manual installation like original
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    info "Install APK files by tapping them, configure permissions, then press Enter..."
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
+    sleep "${APK_PAUSE_TIMEOUT:-45}"
   fi
   
   mark_step_status "success"
