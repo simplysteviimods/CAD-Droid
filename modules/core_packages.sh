@@ -436,6 +436,12 @@ step_mirror(){
     )
   fi
   
+  # Ensure we have at least one mirror
+  if [ ${#urls[@]} -eq 0 ] || [ ${#names[@]} -eq 0 ]; then
+    err "No mirrors available"
+    return 1
+  fi
+  
   # Show regional recommendation
   if [ "$user_region" != "global" ]; then
     pecho "$PASTEL_GREEN" "Recommended for your region ($user_region):"
@@ -459,18 +465,19 @@ step_mirror(){
   
   # Auto-select option
   echo ""
-  pecho "$PASTEL_CYAN" "Options:"
-  info "  • Press Enter for auto-selection (tests speed)"
-  info "  • Type number (0-$((${#names[@]}-1))) for manual selection"
+  pecho "$PASTEL_CYAN" "Selection Options:"
+  info "  • Press Enter for auto-selection (tests speed and selects fastest)"
+  local max_idx=$((${#names[@]} - 1))
+  if [ "$max_idx" -gt 0 ]; then
+    info "  • Type a number (0 to $max_idx) for manual selection"
+  fi
   
   local idx=""
   if [ "$NON_INTERACTIVE" = "1" ]; then
     # Auto-select in non-interactive mode
     idx="auto"
   else
-    local max_index
-    max_index=$(sub_int "${#names[@]}" 1)
-    printf "%bMirror (0-%s, Enter=auto): %b" "$PASTEL_PINK" "$max_index" '\033[0m'
+    printf "%bMirror selection (0-$max_idx or Enter for auto): %b" "$PASTEL_PINK" '\033[0m'
     read -r idx
   fi
   
@@ -508,8 +515,15 @@ step_mirror(){
       *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
     esac
     
-    SELECTED_MIRROR_NAME="${names[$idx]}"
-    SELECTED_MIRROR_URL="${urls[$idx]}"
+    # Ensure we have valid arrays and index
+    if [ ${#names[@]} -gt 0 ] && [ ${#urls[@]} -gt 0 ] && [ "$idx" -lt "${#names[@]}" ]; then
+      SELECTED_MIRROR_NAME="${names[$idx]}"
+      SELECTED_MIRROR_URL="${urls[$idx]}"
+    else
+      warn "Invalid selection, using first available mirror"
+      SELECTED_MIRROR_NAME="${names[0]}"
+      SELECTED_MIRROR_URL="${urls[0]}"
+    fi
   fi
   
   # Write mirror configuration

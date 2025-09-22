@@ -97,21 +97,23 @@ get_regional_mirrors(){
     suggested_names+=("${OFFICIAL_MIRROR_NAMES[@]}")
   fi
   
-  # Add regional mirrors if available
-  local urls_key="${region}-urls"
-  local names_key="${region}-names"
-  
-  if [ "$repo_type" = "x11" ]; then
-    if [ -n "${REGIONAL_X11_MIRRORS[$urls_key]:-}" ]; then
-      IFS='|' read -ra regional_urls <<< "${REGIONAL_X11_MIRRORS[$urls_key]}"
-      suggested_urls+=("${regional_urls[@]}")
-    fi
-  else
-    if [ -n "${REGIONAL_MIRRORS[$urls_key]:-}" ] && [ -n "${REGIONAL_MIRRORS[$names_key]:-}" ]; then
-      IFS='|' read -ra regional_urls <<< "${REGIONAL_MIRRORS[$urls_key]}"
-      IFS='|' read -ra regional_names <<< "${REGIONAL_MIRRORS[$names_key]}"
-      suggested_urls+=("${regional_urls[@]}")
-      suggested_names+=("${regional_names[@]}")
+  # Add regional mirrors if available - only for valid regions
+  if [ "$region" != "global" ]; then
+    local urls_key="${region}-urls"
+    local names_key="${region}-names"
+    
+    if [ "$repo_type" = "x11" ]; then
+      if [ -n "${REGIONAL_X11_MIRRORS[$urls_key]:-}" ]; then
+        IFS='|' read -ra regional_urls <<< "${REGIONAL_X11_MIRRORS[$urls_key]}"
+        suggested_urls+=("${regional_urls[@]}")
+      fi
+    else
+      if [ -n "${REGIONAL_MIRRORS[$urls_key]:-}" ] && [ -n "${REGIONAL_MIRRORS[$names_key]:-}" ]; then
+        IFS='|' read -ra regional_urls <<< "${REGIONAL_MIRRORS[$urls_key]}"
+        IFS='|' read -ra regional_names <<< "${REGIONAL_MIRRORS[$names_key]}"
+        suggested_urls+=("${regional_urls[@]}")
+        suggested_names+=("${regional_names[@]}")
+      fi
     fi
   fi
   
@@ -128,8 +130,8 @@ get_regional_mirror_names(){
   # Always include official mirror names first
   suggested_names+=("${OFFICIAL_MIRROR_NAMES[@]}")
   
-  # Add regional mirror names if available (only for main repo)
-  if [ "$repo_type" != "x11" ]; then
+  # Add regional mirror names if available (only for main repo and valid regions)
+  if [ "$repo_type" != "x11" ] && [ "$region" != "global" ]; then
     local names_key="${region}-names"
     if [ -n "${REGIONAL_MIRRORS[$names_key]:-}" ]; then
       IFS='|' read -ra regional_names <<< "${REGIONAL_MIRRORS[$names_key]}"
@@ -137,6 +139,7 @@ get_regional_mirror_names(){
     fi
   fi
   
+  printf "%s\n" "${suggested_names[@]}"
 }
 
 # Mirror test function with spinner integration  
