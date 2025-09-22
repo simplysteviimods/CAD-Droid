@@ -706,10 +706,9 @@ download_essential_apks(){
         ;;
     esac
     
-    info "($total/8) Downloading $app_name..."
-    
-    # Use fetch_termux_addon function from the reference
-    if fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
+    # Use spinner for each APK download with progress indication
+    if run_with_progress "($total/8) Downloading $app_name" 15 \
+       fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
       success=$((success + 1))
       ok "Downloaded: $app_name"
       DOWNLOADED_APKS+=("$app_name")
@@ -843,10 +842,10 @@ open_apk_directory(){
   # Always open APK download directory using Android intent first, fallback to termux-open
   local opened=0
   
-  # Method 1: Use Android intent to open file manager with the specific directory
+  # Method 1: Use Termux wiki recommended Android intent (primary method)
   if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
     info "Opening APK directory in file manager..."
-    if am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
+    if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary" >/dev/null 2>&1; then
       opened=1
       ok "APK directory opened in file manager"
     fi
@@ -946,10 +945,19 @@ assist_apk_permissions(){
   
   printf "\n${PASTEL_PINK}═══ Permission Setup Assistant ═══${RESET}\n\n"
   
-  # Check if Termux:API is installed
+  # Check if Termux:API is installed, but don't fail if it's not
   if ! command -v termux-api-start >/dev/null 2>&1; then
-    warn "Termux:API not detected. Please install it first."
-    return 1
+    printf "${PASTEL_YELLOW}[INFO]${RESET} Termux:API not detected yet. This is normal if you just installed it.\n"
+    printf "${PASTEL_CYAN}       After restarting Termux, you can test API permissions manually.${RESET}\n\n"
+    
+    # Still provide helpful information without testing
+    printf "${PASTEL_YELLOW}Manual Permission Settings:${RESET}\n"
+    printf "${PASTEL_CYAN}├─${RESET} Open Settings → Apps → Termux:API → Permissions\n"
+    printf "${PASTEL_CYAN}├─${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
+    printf "${PASTEL_CYAN}└─${RESET} For widgets: Enable 'Display over other apps'\n\n"
+    
+    info "Permission setup information provided - continuing with setup"
+    return 0
   fi
   
   printf "${PASTEL_GREEN}[OK]${RESET} Termux:API detected\n\n"
@@ -1033,7 +1041,8 @@ manage_apks(){
     check_apk_permissions
     echo ""
     
-    printf "${PASTEL_PINK}Press Enter to begin APK installation process...${RESET} "
+    # All instructions shown, now prompt to begin
+    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
     read -r || true
   else
     info "Non-interactive mode: beginning APK installation process automatically"
@@ -1044,7 +1053,10 @@ manage_apks(){
   
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
     echo ""
-    pecho "$PASTEL_YELLOW" "Please enable 'Install unknown apps' for Termux in the settings that just opened."
+    pecho "$PASTEL_YELLOW" "In the settings that just opened:"
+    pecho "$PASTEL_CYAN" "• Find 'Install unknown apps' or 'Unknown sources'"
+    pecho "$PASTEL_CYAN" "• Enable it for Termux"
+    pecho "$PASTEL_CYAN" "• This allows APK installation from files"
     echo ""
     printf "${PASTEL_PINK}Press Enter after enabling 'Install unknown apps' for Termux...${RESET} "
     read -r || true
@@ -1056,11 +1068,14 @@ manage_apks(){
   # Open APK directory for user installation
   open_apk_directory
   
-  # Single consolidated wait for installation
+  # Single consolidated wait for installation with clear instructions
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "Install each APK file by tapping on it in the file manager."
-    pecho "$PASTEL_YELLOW" "Remember to install Termux:API first - other plugins depend on it!"
+    pecho "$PASTEL_YELLOW" "In the file manager that just opened:"
+    pecho "$PASTEL_CYAN" "• Navigate to the CAD-Droid-APKs folder if not already there"
+    pecho "$PASTEL_CYAN" "• Install Termux-API.apk FIRST (other plugins depend on it)"
+    pecho "$PASTEL_CYAN" "• Then install the remaining APK files by tapping each one"
+    pecho "$PASTEL_CYAN" "• Grant all requested permissions for full functionality"
     echo ""
     printf "${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
     read -r || true
