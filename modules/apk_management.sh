@@ -123,16 +123,14 @@ download_fdroid_apk(){
     return 1
   fi
   
-  # Extract APK filename
+  # Extract APK filename from URL and create friendly name
   local apk_filename
   apk_filename=$(basename "$download_url")
-  local output_file="$APK_DOWNLOAD_DIR/$apk_filename"
+  local output_file="$APK_DOWNLOAD_DIR/${app_name// /_}.apk"
   
-  # Check if already downloaded
+  # Always overwrite existing APKs to ensure latest version
   if [ -f "$output_file" ]; then
-    ok "$app_name APK already downloaded"
-    echo "$output_file"
-    return 0
+    rm -f "$output_file" 2>/dev/null || true
   fi
   
   # Download the APK

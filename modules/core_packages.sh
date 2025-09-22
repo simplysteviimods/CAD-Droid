@@ -44,7 +44,9 @@ apt_install_if_needed(){
   # Try pkg install first (preferred), then fallback to apt install
   # Exit code 100 means package already installed - treat as success
   if command -v pkg >/dev/null 2>&1; then
-    if pkg install -y "$pkg" >/dev/null 2>&1 || [ $? -eq 100 ]; then
+    pkg install -y "$pkg" >/dev/null 2>&1
+    local pkg_result=$?
+    if [ $pkg_result -eq 0 ] || [ $pkg_result -eq 100 ]; then
       ok "$pkg installed successfully via pkg"
       return 0
     else
@@ -53,7 +55,9 @@ apt_install_if_needed(){
   fi
   
   # Fallback to apt install - also handle exit code 100
-  if apt install -y "$pkg" >/dev/null 2>&1 || [ $? -eq 100 ]; then
+  apt install -y "$pkg" >/dev/null 2>&1
+  local apt_result=$?
+  if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
     ok "$pkg installed successfully via apt"
     return 0
   else
@@ -147,16 +151,16 @@ ensure_mirror_applied(){
   sanitize_sources_main_only
   
   # Update package indexes to ensure they're current
-  info "Updating package indexes with selected mirror..."
   if command -v pkg >/dev/null 2>&1; then
     run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'
   else
     run_with_progress "Update indexes (apt)" 15 bash -c 'apt update >/dev/null 2>&1 || true'
   fi
   
-  # Add user-facing info for transparency when mirror name is available
-  if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ]; then
+  # Add user-facing info for transparency when mirror name is available (only once)
+  if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ] && [ "${MIRROR_INFO_SHOWN:-0}" != "1" ]; then
     info "Using mirror: ${SELECTED_MIRROR_NAME} for package operations"
+    export MIRROR_INFO_SHOWN=1
   fi
   
   return 0
@@ -215,6 +219,8 @@ install_core_packages(){
     "tmux"            # Terminal multiplexer
     "python"          # Python language
     "openssh"         # SSH client/server
+    "git"             # Version control system
+    "gh"              # GitHub CLI
     "pulseaudio"      # Audio system
     "dbus"            # System bus
     "fontconfig"      # Font management

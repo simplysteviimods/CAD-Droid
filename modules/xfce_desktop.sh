@@ -60,7 +60,7 @@ install_termux_xfce(){
   local failed_packages=()
   
   for package in "${TERMUX_XFCE_PACKAGES[@]}"; do
-    if apt_install_with_spinner "$package"; then
+    if run_with_progress "Install $package" 30 apt_install_if_needed "$package"; then
       installed_count=$((installed_count + 1))
     else
       failed_packages+=("$package")

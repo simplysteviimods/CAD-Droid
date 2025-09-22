@@ -945,3 +945,168 @@ cad_droid_completion(){
     printf "Please restart Termux manually to apply all changes.\n"
   fi
 }
+
+# === Git and SSH Configuration ===
+
+# Configure git with user settings
+configure_git_settings(){
+  info "Configuring Git settings..."
+  
+  # Check if git is installed
+  if ! command -v git >/dev/null 2>&1; then
+    warn "Git not installed, skipping configuration"
+    return 1
+  fi
+  
+  # Set up basic git configuration if not already set
+  if [ -z "$(git config --global user.name 2>/dev/null)" ]; then
+    local git_username="${GIT_USERNAME:-CAD-Droid User}"
+    run_with_progress "Set Git username" 5 git config --global user.name "$git_username"
+  fi
+  
+  if [ -z "$(git config --global user.email 2>/dev/null)" ]; then
+    local git_email="${GIT_EMAIL:-cad-droid@termux.local}"
+    run_with_progress "Set Git email" 5 git config --global user.email "$git_email"
+  fi
+  
+  # Set up git to use main branch by default
+  run_with_progress "Configure Git defaults" 5 bash -c '
+    git config --global init.defaultBranch main
+    git config --global pull.rebase false
+    git config --global core.autocrlf input
+  '
+  
+  ok "Git configuration completed"
+}
+
+# Set up SSH keys for secure connections
+setup_ssh_keys(){
+  info "Setting up SSH keys..."
+  
+  local ssh_dir="$HOME/.ssh"
+  local ssh_key="$ssh_dir/id_ed25519"
+  
+  # Create SSH directory if it doesn't exist
+  mkdir -p "$ssh_dir" 2>/dev/null || true
+  chmod 700 "$ssh_dir" 2>/dev/null || true
+  
+  # Generate SSH key if it doesn't exist
+  if [ ! -f "$ssh_key" ]; then
+    local ssh_email="${GIT_EMAIL:-cad-droid@termux.local}"
+    run_with_progress "Generate SSH key" 10 bash -c "
+      ssh-keygen -t ed25519 -C '$ssh_email' -f '$ssh_key' -N '' >/dev/null 2>&1
+    "
+    
+    if [ -f "$ssh_key" ]; then
+      chmod 600 "$ssh_key" 2>/dev/null || true
+      chmod 644 "${ssh_key}.pub" 2>/dev/null || true
+      ok "SSH key pair generated successfully"
+      
+      # Show public key for user
+      printf "\n${PASTEL_YELLOW}Your SSH public key:${RESET}\n"
+      printf "${PASTEL_CYAN}"
+      cat "${ssh_key}.pub" 2>/dev/null || echo "Error reading public key"
+      printf "${RESET}\n\n"
+      printf "${PASTEL_LAVENDER}Add this key to GitHub/GitLab under Settings → SSH Keys${RESET}\n\n"
+    else
+      warn "Failed to generate SSH key"
+      return 1
+    fi
+  else
+    ok "SSH key already exists"
+  fi
+  
+  return 0
+}
+
+# === Installation Management ===
+
+# Check for previous CAD-Droid installation
+check_previous_install(){
+  info "Checking for previous CAD-Droid installation..."
+  
+  local install_markers=(
+    "$HOME/.cad"
+    "$HOME/.shortcuts/phantom-killer"
+    "$HOME/.termux/boot/disable-phantom-killer.sh"
+    "$PREFIX/etc/motd"
+  )
+  
+  local found_markers=()
+  local found=false
+  
+  for marker in "${install_markers[@]}"; do
+    if [ -e "$marker" ]; then
+      found_markers+=("$marker")
+      found=true
+    fi
+  done
+  
+  if [ "$found" = true ]; then
+    printf "\n${PASTEL_YELLOW}Previous CAD-Droid installation detected!${RESET}\n\n"
+    printf "${PASTEL_CYAN}Found installation files:${RESET}\n"
+    for marker in "${found_markers[@]}"; do
+      printf "${PASTEL_LAVENDER}  - %s${RESET}\n" "$marker"
+    done
+    printf "\n"
+    
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      printf "${PASTEL_PINK}Would you like to clean up the previous installation? (y/N):${RESET} "
+      local response
+      read -r response || response="n"
+      case "${response,,}" in
+        y|yes)
+          cleanup_previous_install
+          ;;
+        *)
+          info "Continuing with existing files - some features may conflict"
+          ;;
+      esac
+    else
+      warn "Previous installation found - continuing anyway (non-interactive mode)"
+    fi
+  else
+    ok "No previous installation detected"
+  fi
+}
+
+# Clean up previous CAD-Droid installation files
+cleanup_previous_install(){
+  info "Cleaning up previous installation..."
+  
+  local cleanup_items=(
+    "$HOME/.cad"
+    "$HOME/.shortcuts"
+    "$HOME/.termux/boot/disable-phantom-killer.sh"
+    "$HOME/.termux/boot/phantom-killer.log"
+    "$PREFIX/etc/motd"
+  )
+  
+  local cleaned_count=0
+  
+  for item in "${cleanup_items[@]}"; do
+    if [ -e "$item" ]; then
+      if rm -rf "$item" 2>/dev/null; then
+        cleaned_count=$((cleaned_count + 1))
+        debug "Removed: $item"
+      else
+        warn "Failed to remove: $item"
+      fi
+    fi
+  done
+  
+  # Clean up specific bash additions (preserve user's other content)
+  if [ -f "$HOME/.bashrc" ] && grep -q "CAD-Droid" "$HOME/.bashrc" 2>/dev/null; then
+    local temp_bashrc
+    temp_bashrc=$(mktemp)
+    if grep -v "CAD-Droid\|cad-status\|cad-help\|cad-update" "$HOME/.bashrc" > "$temp_bashrc" 2>/dev/null; then
+      mv "$temp_bashrc" "$HOME/.bashrc"
+      cleaned_count=$((cleaned_count + 1))
+      debug "Cleaned CAD-Droid entries from .bashrc"
+    else
+      rm -f "$temp_bashrc" 2>/dev/null
+    fi
+  fi
+  
+  ok "Cleanup completed - removed $cleaned_count items"
+}

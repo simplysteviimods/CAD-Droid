@@ -10,11 +10,13 @@ if [ -n "${_CAD_HELP_LOADED:-}" ]; then
 fi
 readonly _CAD_HELP_LOADED=1
 
-# Show CAD-Droid introduction
+# Show CAD-Droid introduction with gradient styling like the main installer
 show_cad_droid_intro(){
-  printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
+  printf "\n"
+  gradient_section_header
   printf "${PASTEL_CYAN}                          CAD-Droid Setup                        ${RESET}\n"
-  printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
+  gradient_section_footer
+  printf "\n"
   
   printf "${PASTEL_LAVENDER}Welcome to CAD-Droid - Computer-Aided Development for Android!${RESET}\n\n"
   
@@ -42,10 +44,13 @@ show_cad_droid_intro(){
   fi
 }
 
-# Show help information  
+# Show help information with gradient styling
 show_cad_droid_help(){
-  printf "\n${PASTEL_CYAN}CAD-Droid Help & Commands${RESET}\n"
-  printf "${PASTEL_PINK}═════════════════════════${RESET}\n\n"
+  printf "\n"
+  gradient_line "#FF69B4" "#00CED1" "="
+  printf "${PASTEL_CYAN}%s${RESET}\n" "$(center_text 'CAD-Droid Help & Commands')"
+  gradient_line "#FF69B4" "#00CED1" "="
+  printf "\n"
   
   printf "${PASTEL_YELLOW}Quick Start:${RESET}\n"
   printf "${PASTEL_CYAN}  cad-status${RESET}           - Show system status\n"
@@ -78,10 +83,10 @@ show_cad_droid_help(){
   printf "${PASTEL_CYAN}  ~/.nanorc${RESET}                               - Text editor settings\n\n"
   
   printf "${PASTEL_RED}Troubleshooting:${RESET}\n"
-  printf "- If apps keep closing: Run phantom-killer widget\n"
-  printf "- If ADB disconnects: Use adb-connect widget\n"
-  printf "- If desktop won't start: Check Termux:X11 app permissions\n"
-  printf "- For system issues: Run cad-status for diagnostics\n\n"
+  printf "${PASTEL_LAVENDER}- If apps keep closing: Run phantom-killer widget${RESET}\n"
+  printf "${PASTEL_LAVENDER}- If ADB disconnects: Use adb-connect widget${RESET}\n"
+  printf "${PASTEL_LAVENDER}- If desktop won't start: Check Termux:X11 app permissions${RESET}\n"
+  printf "${PASTEL_LAVENDER}- For system issues: Run cad-status for diagnostics${RESET}\n\n"
 }
 
 # Configure boot screen message

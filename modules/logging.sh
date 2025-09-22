@@ -179,7 +179,7 @@ run_with_progress(){
   
   # Progress animation variables with safe initialization
   local elapsed=0 frame=0 pct=0
-  local delay="${SPINNER_DELAY:-0.02}"
+  local delay="${SPINNER_DELAY:-0.08}"
   
   # Show progress while command runs
   while kill -0 "$pid" 2>/dev/null; do
