@@ -556,22 +556,21 @@ open_file_manager(){
   
   local opened=0
   
-  # Method 1: Termux wiki approach - exact command without modifications
+  # Method 1: Direct Android intent with file path (primary method)
   if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
-    # Use exact Termux wiki command without any path modifications
+    if am start -a android.intent.action.VIEW -d "file://$target" >/dev/null 2>&1; then
+      opened=1
+    fi
+  fi
+  
+  # Method 2: Generic external storage content URI (fallback)
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
     if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary" >/dev/null 2>&1; then
       opened=1
     fi
   fi
   
-  # Method 2: Direct file browser intent
-  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
-    if am start -a android.intent.action.VIEW -t "resource/folder" >/dev/null 2>&1; then
-      opened=1
-    fi
-  fi
-  
-  # Method 3: Termux-open fallback
+  # Method 3: Termux-open fallback (final fallback)
   if [ $opened -eq 0 ] && command -v termux-open >/dev/null 2>&1; then
     if termux-open "$target" >/dev/null 2>&1; then
       opened=1

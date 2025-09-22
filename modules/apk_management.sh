@@ -393,33 +393,23 @@ fetch_termux_addon(){
     fi
   fi
   
-  # Always prioritize GitHub unless F-Droid is explicitly preferred
-  if [ "$prefer" = "1" ]; then
-    # Try F-Droid first if preferred
+  # Always prioritize F-Droid first for consistency across all APKs
+  if [ "$prefer" = "0" ]; then
+    # Try F-Droid first by default for all APKs (including Termux:GUI)
     if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
       success=1
     fi
   else
-    # Try GitHub first by default (preserves original names)
-    if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
-        success=1
-      fi
+    # Legacy: if F-Droid is explicitly preferred (keep for compatibility)
+    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      success=1
     fi
   fi
   
-  # Fall back to the other source if the first failed
+  # Fall back to GitHub only if F-Droid failed
   if [ $success -eq 0 ]; then
-    if [ "$prefer" = "1" ]; then
-      # F-Droid was preferred but failed, try GitHub
-      if [ -n "$repo" ] && [ -n "$patt" ]; then
-        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
-          success=1
-        fi
-      fi
-    else
-      # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if [ -n "$repo" ] && [ -n "$patt" ]; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
         success=1
       fi
     fi
@@ -731,12 +721,16 @@ download_essential_apks(){
     ok "Successfully downloaded $success APK(s) to $APK_DOWNLOAD_DIR"
   fi
   
-  if [ "$success" -lt "$total" ]; then
+  # Only show failure message if ALL downloads failed
+  if [ "$success" -eq 0 ] && [ "$total" -gt 0 ]; then
     local failed=$((total - success))
-    warn "$failed APK(s) failed to download"
+    warn "All $failed APK(s) failed to download"
     if [ ${#FAILED_APKS[@]} -gt 0 ]; then
       warn "Failed APKs: ${FAILED_APKS[*]}"
     fi
+  elif [ "$success" -lt "$total" ] && [ ${#FAILED_APKS[@]} -gt 0 ]; then
+    # If some succeeded, just list the failed ones individually
+    warn "Failed APKs: ${FAILED_APKS[*]}"
   fi
   
   # Always save state
@@ -838,26 +832,33 @@ open_apk_directory(){
     ok "Found $apk_count APK files ready for installation"
   fi
   
-  # Use termux-open to open the directory (simple method without complex spinner)
-  if command -v termux-open >/dev/null 2>&1; then
+  # Always open APK download directory using Android intent first, fallback to termux-open
+  local opened=0
+  
+  # Method 1: Use Android intent to open file manager with the specific directory
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
     info "Opening APK directory in file manager..."
-    termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || {
-      warn "Failed to open with termux-open, trying alternative methods"
-      # Try alternative methods to open file manager
-      if command -v am >/dev/null 2>&1; then
-        am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
-      fi
-    }
-    ok "APK directory opened in file manager"
-  else
-    warn "termux-open not available, please manually navigate to:"
-    printf "${PASTEL_CYAN}%s${RESET}\n" "$APK_DOWNLOAD_DIR"
-    
-    # Try opening with alternative methods
-    if command -v am >/dev/null 2>&1; then
-      info "Attempting to open directory with system file manager..."
-      am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+    if am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened in file manager"
     fi
+  fi
+  
+  # Method 2: Fallback to termux-open only if Android intent failed
+  if [ $opened -eq 0 ] && command -v termux-open >/dev/null 2>&1; then
+    info "Trying alternative file manager method..."
+    if termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened in file manager"
+    else
+      warn "Failed to open with termux-open"
+    fi
+  fi
+  
+  # If all methods failed, provide manual instructions
+  if [ $opened -eq 0 ]; then
+    warn "Could not open file manager automatically"
+    printf "${PASTEL_CYAN}Please manually navigate to: %s${RESET}\n" "$APK_DOWNLOAD_DIR"
   fi
   
   return 0
@@ -1007,26 +1008,30 @@ manage_apks(){
   # Download all essential APKs automatically 
   download_essential_apks
   
-  # Show installation instructions and requirements
-  check_apk_permissions
-  
+  # Show comprehensive installation instructions (consolidated)
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
     pecho "$PASTEL_PINK" "=== APK Installation Ready ==="
     echo ""
-    pecho "$PASTEL_YELLOW" "Next steps:"
+    pecho "$PASTEL_YELLOW" "Installation process:"
     pecho "$PASTEL_CYAN" "1. Android security settings will open"
     pecho "$PASTEL_CYAN" "2. Enable 'Install unknown apps' for Termux"  
     pecho "$PASTEL_CYAN" "3. File manager will open to APK directory"
     pecho "$PASTEL_CYAN" "4. Install each APK by tapping on it"
+    pecho "$PASTEL_CYAN" "5. Grant all requested permissions for full functionality"
     echo ""
-    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    
+    # Show detailed permissions guide
+    check_apk_permissions
+    echo ""
+    
+    printf "${PASTEL_PINK}Press Enter to begin APK installation process...${RESET} "
     read -r || true
   else
-    info "Non-interactive mode: opening security settings automatically"
+    info "Non-interactive mode: beginning APK installation process automatically"
   fi
   
-  # Open security settings first (before user needs to act)
+  # Open security settings first
   open_security_settings
   
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
@@ -1043,16 +1048,16 @@ manage_apks(){
   # Open APK directory for user installation
   open_apk_directory
   
-  # Wait for user to install APKs
+  # Single consolidated wait for installation
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
     pecho "$PASTEL_YELLOW" "Install each APK file by tapping on it in the file manager."
-    pecho "$PASTEL_YELLOW" "Grant all requested permissions for full functionality."
+    pecho "$PASTEL_YELLOW" "Remember to install Termux:API first - other plugins depend on it!"
     echo ""
     printf "${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
     read -r || true
   else
-    info "Non-interactive mode: auto-continuing after delay"
+    info "Non-interactive mode: auto-continuing after installation delay"
     sleep "${APK_INSTALL_DELAY:-30}"
   fi
   
