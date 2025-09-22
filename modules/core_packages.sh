@@ -132,13 +132,39 @@ verify_mirror(){
   fi
 }
 
-# === Package Installation with Spinners ===
-
-# Install essential system packages
-install_essential_packages(){
-  info "Installing essential system packages..."
+# Update package indexes with retry logic
+update_indexes_with_retry(){
+  local max_attempts=3
+  local attempt=1
   
-  local essential_packages=(
+  while [ "$attempt" -le "$max_attempts" ]; do
+    info "Updating package indexes (attempt $attempt/$max_attempts)..."
+    
+    if run_with_progress "Update package lists" 25 bash -c 'apt-get update >/dev/null 2>&1 || [ $? -eq 100 ]'; then
+      ok "Package indexes updated successfully"
+      return 0
+    else
+      warn "Update attempt $attempt failed"
+      
+      if [ "$attempt" -lt "$max_attempts" ]; then
+        # Clean cache and try again
+        run_with_progress "Clean package cache" 8 bash -c 'apt-get clean >/dev/null 2>&1 || true'
+        sleep 2
+      fi
+      
+      attempt=$((attempt + 1))
+    fi
+  done
+  
+  err "Failed to update package indexes after $max_attempts attempts"
+  return 1
+}
+
+# Install core system packages
+install_core_packages(){
+  info "Installing core system packages..."
+  
+  local core_packages=(
     "coreutils"
     "findutils" 
     "sed"
@@ -147,18 +173,19 @@ install_essential_packages(){
     "termux-tools"
     "proot"
     "util-linux"
+    "jq"
+    "git"
     "curl"
     "wget"
-    "git"
     "nano"
     "vim"
-    "jq"
+    "openssh"
   )
   
   local installed_count=0
   local failed_packages=()
   
-  for package in "${essential_packages[@]}"; do
+  for package in "${core_packages[@]}"; do
     if apt_install_if_needed "$package"; then
       installed_count=$((installed_count + 1))
     else
@@ -167,11 +194,11 @@ install_essential_packages(){
   done
   
   # Report results
-  local total_packages=${#essential_packages[@]}
+  local total_packages=${#core_packages[@]}
   if [ "$installed_count" -eq "$total_packages" ]; then
-    ok "All essential packages installed ($installed_count/$total_packages)"
+    ok "All core packages installed successfully ($installed_count/$total_packages)"
   else
-    warn "Essential packages: $installed_count/$total_packages successful"
+    warn "Core package installation: $installed_count/$total_packages successful"
     if [ ${#failed_packages[@]} -gt 0 ]; then
       warn "Failed packages: ${failed_packages[*]}"
     fi
@@ -180,99 +207,11 @@ install_essential_packages(){
   return 0
 }
 
-# Install development tools
-install_development_packages(){
-  info "Installing development tools..."
-  
-  local dev_packages=(
-    "clang"
-    "make" 
-    "cmake"
-    "python"
-    "nodejs"
-    "rust"
-    "golang"
-    "build-essential"
-    "pkg-config"
-    "autoconf"
-    "automake"
-    "libtool"
-  )
-  
-  local installed_count=0
-  
-  for package in "${dev_packages[@]}"; do
-    if apt_install_if_needed "$package"; then
-      installed_count=$((installed_count + 1))
-    fi
-  done
-  
-  ok "Development packages: $installed_count installed"
-  return 0
-}
-
-# Install networking tools
-install_networking_packages(){
-  info "Installing networking tools..."
-  
-  local network_packages=(
-    "openssh"
-    "rsync"
-    "nmap"
-    "netcat-openbsd"
-    "socat"
-    "htop"
-    "tmux"
-    "screen"
-  )
-  
-  local installed_count=0
-  
-  for package in "${network_packages[@]}"; do
-    if apt_install_if_needed "$package"; then
-      installed_count=$((installed_count + 1))
-    fi
-  done
-  
-  ok "Networking packages: $installed_count installed"
-  return 0
-}
-
-# Main package installation function
-install_core_packages(){
-  info "Starting core package installation..."
-  
-  # Ensure download tools are available first
-  if ! ensure_download_tool; then
-    err "Cannot proceed without download tools"
-    return 1
-  fi
-  
-  # Install in order of importance
-  install_essential_packages || warn "Some essential packages failed"
-  install_development_packages || warn "Some development packages failed"  
-  install_networking_packages || warn "Some networking packages failed"
-  
-  # Configure git if available
-  if command -v git >/dev/null 2>&1; then
-    run_with_progress "Configure git defaults" 5 bash -c '
-      git config --global init.defaultBranch main 2>/dev/null || true
-      git config --global pull.rebase false 2>/dev/null || true
-      git config --global core.autocrlf input 2>/dev/null || true
-    '
-  fi
-  
-  ok "Core package installation completed"
-  return 0
-}
-
 # Export functions for use by other modules
 export -f dpkg_is_installed
-export -f pkg_available  
+export -f pkg_available
 export -f apt_install_if_needed
 export -f apt_fix_broken
 export -f ensure_download_tool
-export -f install_essential_packages
-export -f install_development_packages
-export -f install_networking_packages
+export -f update_indexes_with_retry
 export -f install_core_packages
