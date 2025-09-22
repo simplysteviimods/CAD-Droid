@@ -358,8 +358,10 @@ fetch_github_release(){
     return 1
   fi
   
-  # Use original filename if available, otherwise use app name
-  local final_filename="${original_filename:-${app_name}.apk}"
+  # Use original filename if available, otherwise use sanitized app name
+  local sanitized_app_name="${app_name//:/-}"  # Replace colons with hyphens
+  sanitized_app_name="${sanitized_app_name// /_}"   # Replace spaces with underscores
+  local final_filename="${original_filename:-${sanitized_app_name}.apk}"
   local out="$outdir/$final_filename"
   
   # Download the APK file with original name
@@ -393,33 +395,27 @@ fetch_termux_addon(){
     fi
   fi
   
-  # Always prioritize GitHub unless F-Droid is explicitly preferred
-  if [ "$prefer" = "1" ]; then
-    # Try F-Droid first if preferred
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+  # Sanitize filename by replacing colons and spaces with safe characters
+  local safe_name="${name//:/-}"  # Replace colons with hyphens
+  safe_name="${safe_name// /_}"   # Replace spaces with underscores
+  
+  # Always prioritize F-Droid first for consistency across all APKs
+  if [ "$prefer" = "0" ]; then
+    # Try F-Droid first by default for all APKs (including Termux:GUI)
+    if fetch_fdroid_api "$pkg" "$outdir/${safe_name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${safe_name}.apk"; then
       success=1
     fi
   else
-    # Try GitHub first by default (preserves original names)
-    if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
-        success=1
-      fi
+    # Legacy: if F-Droid is explicitly preferred (keep for compatibility)
+    if fetch_fdroid_api "$pkg" "$outdir/${safe_name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${safe_name}.apk"; then
+      success=1
     fi
   fi
   
-  # Fall back to the other source if the first failed
+  # Fall back to GitHub only if F-Droid failed
   if [ $success -eq 0 ]; then
-    if [ "$prefer" = "1" ]; then
-      # F-Droid was preferred but failed, try GitHub
-      if [ -n "$repo" ] && [ -n "$patt" ]; then
-        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
-          success=1
-        fi
-      fi
-    else
-      # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if [ -n "$repo" ] && [ -n "$patt" ]; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$safe_name"; then
         success=1
       fi
     fi
@@ -543,6 +539,22 @@ get_fdroid_apk_url(){
   return 0
 }
 
+# Map technical APK names to user-friendly filenames
+get_friendly_apk_name() {
+  local app_name="$1"
+  case "$app_name" in
+    "Termux:API") echo "Termux-API" ;;
+    "Termux:Boot") echo "Termux-Boot" ;;
+    "Termux:Float") echo "Termux-Float" ;;
+    "Termux:Styling") echo "Termux-Styling" ;;
+    "Termux:Tasker") echo "Termux-Tasker" ;;
+    "Termux:Widget") echo "Termux-Widget" ;;
+    "Termux:X11") echo "Termux-X11" ;;
+    "Termux:GUI") echo "Termux-GUI" ;;
+    *) echo "${app_name//:/-}" ;;  # Default: replace colons with hyphens
+  esac
+}
+
 # Download APK from F-Droid with GitHub backup and persistent tracking
 download_fdroid_apk(){
   local package_id="$1"
@@ -566,7 +578,9 @@ download_fdroid_apk(){
   fi
   
   # Create friendly filename (no temp files, direct download)
-  local output_file="$APK_DOWNLOAD_DIR/${app_name// /_}.apk"
+  local friendly_name
+  friendly_name=$(get_friendly_apk_name "$app_name")
+  local output_file="$APK_DOWNLOAD_DIR/${friendly_name}.apk"
   
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
@@ -708,10 +722,9 @@ download_essential_apks(){
         ;;
     esac
     
-    info "($total/8) Downloading $app_name..."
-    
-    # Use fetch_termux_addon function from the reference
-    if fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
+    # Use spinner for each APK download with progress indication
+    if run_with_progress "($total/8) Downloading $app_name" 15 \
+       fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
       success=$((success + 1))
       ok "Downloaded: $app_name"
       DOWNLOADED_APKS+=("$app_name")
@@ -731,12 +744,16 @@ download_essential_apks(){
     ok "Successfully downloaded $success APK(s) to $APK_DOWNLOAD_DIR"
   fi
   
-  if [ "$success" -lt "$total" ]; then
+  # Only show failure message if ALL downloads failed
+  if [ "$success" -eq 0 ] && [ "$total" -gt 0 ]; then
     local failed=$((total - success))
-    warn "$failed APK(s) failed to download"
+    warn "All $failed APK(s) failed to download"
     if [ ${#FAILED_APKS[@]} -gt 0 ]; then
       warn "Failed APKs: ${FAILED_APKS[*]}"
     fi
+  elif [ "$success" -lt "$total" ] && [ ${#FAILED_APKS[@]} -gt 0 ]; then
+    # If some succeeded, just list the failed ones individually
+    warn "Failed APKs: ${FAILED_APKS[*]}"
   fi
   
   # Always save state
@@ -838,26 +855,33 @@ open_apk_directory(){
     ok "Found $apk_count APK files ready for installation"
   fi
   
-  # Use termux-open to open the directory (simple method without complex spinner)
-  if command -v termux-open >/dev/null 2>&1; then
+  # Always open APK download directory using Android intent first, fallback to termux-open
+  local opened=0
+  
+  # Method 1: Use Termux wiki recommended Android intent (primary method)
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
     info "Opening APK directory in file manager..."
-    termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || {
-      warn "Failed to open with termux-open, trying alternative methods"
-      # Try alternative methods to open file manager
-      if command -v am >/dev/null 2>&1; then
-        am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
-      fi
-    }
-    ok "APK directory opened in file manager"
-  else
-    warn "termux-open not available, please manually navigate to:"
-    printf "${PASTEL_CYAN}%s${RESET}\n" "$APK_DOWNLOAD_DIR"
-    
-    # Try opening with alternative methods
-    if command -v am >/dev/null 2>&1; then
-      info "Attempting to open directory with system file manager..."
-      am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+    if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened in file manager"
     fi
+  fi
+  
+  # Method 2: Fallback to termux-open only if Android intent failed
+  if [ $opened -eq 0 ] && command -v termux-open >/dev/null 2>&1; then
+    info "Trying alternative file manager method..."
+    if termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened in file manager"
+    else
+      warn "Failed to open with termux-open"
+    fi
+  fi
+  
+  # If all methods failed, provide manual instructions
+  if [ $opened -eq 0 ]; then
+    warn "Could not open file manager automatically"
+    printf "${PASTEL_CYAN}Please manually navigate to: %s${RESET}\n" "$APK_DOWNLOAD_DIR"
   fi
   
   return 0
@@ -937,10 +961,19 @@ assist_apk_permissions(){
   
   printf "\n${PASTEL_PINK}═══ Permission Setup Assistant ═══${RESET}\n\n"
   
-  # Check if Termux:API is installed
+  # Check if Termux:API is installed, but don't fail if it's not
   if ! command -v termux-api-start >/dev/null 2>&1; then
-    warn "Termux:API not detected. Please install it first."
-    return 1
+    printf "${PASTEL_YELLOW}[INFO]${RESET} Termux:API not detected yet. This is normal if you just installed it.\n"
+    printf "${PASTEL_CYAN}       After restarting Termux, you can test API permissions manually.${RESET}\n\n"
+    
+    # Still provide helpful information without testing
+    printf "${PASTEL_YELLOW}Manual Permission Settings:${RESET}\n"
+    printf "${PASTEL_CYAN}├─${RESET} Open Settings → Apps → Termux:API → Permissions\n"
+    printf "${PASTEL_CYAN}├─${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
+    printf "${PASTEL_CYAN}└─${RESET} For widgets: Enable 'Display over other apps'\n\n"
+    
+    info "Permission setup information provided - continuing with setup"
+    return 0
   fi
   
   printf "${PASTEL_GREEN}[OK]${RESET} Termux:API detected\n\n"
@@ -1007,53 +1040,79 @@ manage_apks(){
   # Download all essential APKs automatically 
   download_essential_apks
   
-  # Show installation instructions and requirements
-  check_apk_permissions
-  
+  # Show comprehensive installation instructions (consolidated)
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
     pecho "$PASTEL_PINK" "=== APK Installation Ready ==="
     echo ""
-    pecho "$PASTEL_YELLOW" "Next steps:"
-    pecho "$PASTEL_CYAN" "1. Android security settings will open"
-    pecho "$PASTEL_CYAN" "2. Enable 'Install unknown apps' for Termux"  
-    pecho "$PASTEL_CYAN" "3. File manager will open to APK directory"
-    pecho "$PASTEL_CYAN" "4. Install each APK by tapping on it"
+    pecho "$PASTEL_YELLOW" "Installation process:"
+    pecho "$PASTEL_CYAN" "1. File manager will open to APK directory"
+    pecho "$PASTEL_CYAN" "2. Install each APK by tapping on it"
+    pecho "$PASTEL_CYAN" "3. Android security settings will open"  
+    pecho "$PASTEL_CYAN" "4. Enable 'Install unknown apps' for all Termux apps"
+    pecho "$PASTEL_CYAN" "5. Grant all requested permissions for full functionality"
     echo ""
-    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    
+    # Show detailed permissions guide
+    check_apk_permissions
+    echo ""
+    
+    # All instructions shown, now prompt to begin
+    printf "${PASTEL_PINK}Press Enter to open file manager and begin APK installation...${RESET} "
     read -r || true
   else
-    info "Non-interactive mode: opening security settings automatically"
+    info "Non-interactive mode: beginning APK installation process automatically"
   fi
   
-  # Open security settings first (before user needs to act)
-  open_security_settings
-  
-  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
+  # Single consolidated wait for installation with clear instructions BEFORE opening file manager
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "Please enable 'Install unknown apps' for Termux in the settings that just opened."
+    pecho "$PASTEL_YELLOW" "File manager will now open:"
+    pecho "$PASTEL_CYAN" "• Navigate to the CAD-Droid-APKs folder if not already there"
+    pecho "$PASTEL_CYAN" "• Install Termux-API.apk FIRST (other plugins depend on it)"
+    pecho "$PASTEL_CYAN" "• Then install the remaining APK files by tapping each one"
+    pecho "$PASTEL_CYAN" "• If prompted about 'Install unknown apps', tap Settings and enable it"
     echo ""
-    printf "${PASTEL_PINK}Press Enter after enabling 'Install unknown apps' for Termux...${RESET} "
+    printf "${PASTEL_PINK}Press Enter to open file manager...${RESET} "
     read -r || true
   else
-    info "Non-interactive mode: continuing after settings delay"
-    sleep 5
+    info "Non-interactive mode: opening file manager automatically"
   fi
   
   # Open APK directory for user installation
   open_apk_directory
   
-  # Wait for user to install APKs
+  # Wait for user to complete installation
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
-    echo ""
-    pecho "$PASTEL_YELLOW" "Install each APK file by tapping on it in the file manager."
-    pecho "$PASTEL_YELLOW" "Grant all requested permissions for full functionality."
     echo ""
     printf "${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
     read -r || true
   else
-    info "Non-interactive mode: auto-continuing after delay"
+    info "Non-interactive mode: auto-continuing after installation delay"
     sleep "${APK_INSTALL_DELAY:-30}"
+  fi
+
+  # AFTER APK installation, open security settings for permissions
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
+    echo ""
+    pecho "$PASTEL_YELLOW" "Final step - Security settings:"
+    pecho "$PASTEL_CYAN" "• Android security settings will now open"
+    pecho "$PASTEL_CYAN" "• Find 'Install unknown apps' or 'Unknown sources'"
+    pecho "$PASTEL_CYAN" "• Enable it for ALL Termux apps (main app and plugins)"
+    pecho "$PASTEL_CYAN" "• This ensures proper functionality for all features"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    read -r || true
+    
+    # Open security settings for final configuration
+    open_security_settings
+    
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after configuring security settings...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after settings delay"
+    sleep 5
   fi
   
   # Run post-installation permission assistant

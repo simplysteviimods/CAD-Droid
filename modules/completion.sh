@@ -78,7 +78,7 @@ PS1="\[$PASTEL_CYAN\]┌─[\[$PASTEL_PINK\]\u\[$PASTEL_LAVENDER\]@\[$PASTEL_PIN
 
 # Welcome message
 echo -e "${PASTEL_PINK}╔══════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${PASTEL_CYAN}║                    🚀 CAD-Droid Ready! 🚀                   ║${RESET}"
+echo -e "${PASTEL_CYAN}║                   CAD-Droid Ready!                    ║${RESET}"
 echo -e "${PASTEL_PINK}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo -e "${PASTEL_LAVENDER}Your mobile development environment is ready to use!${RESET}\n"
 

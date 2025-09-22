@@ -239,163 +239,79 @@ DEV_LAUNCHER_EOF
 # === XFCE Desktop Implementation ===
 
 step_xfce(){
-    pecho "$PASTEL_PURPLE" "Setting up XFCE desktop environment..."
+    pecho "$PASTEL_PURPLE" "Setting up XFCE desktop environment for Termux..."
     
-    local container_name="${DISTRO:-ubuntu}"
+    # Install XFCE directly in Termux environment, not in a container
+    info "Installing XFCE desktop packages for Termux..."
     
-    # Check if container exists
-    if ! is_distro_installed "$container_name"; then
-        warn "Container '$container_name' not found. Install container first."
-        return 1
-    fi
+    # Essential XFCE packages for Termux
+    local xfce_packages=(
+        "xfce4"
+        "xfce4-terminal" 
+        "xfce4-panel"
+        "xfce4-session"
+        "xfce4-settings"
+        "xfce4-whiskermenu-plugin"
+        "xfce4-taskmanager"
+        "tigervnc"
+        "firefox"
+        "pulseaudio"
+    )
     
-    # Install XFCE in container (robust temp path)
-    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
-    mkdir -p "$tmp_base" 2>/dev/null || true
-    local xfce_script
-    xfce_script="$(mktemp "$tmp_base/xfce_install.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/xfce_install.sh")"
-
-    cat > "$xfce_script" << XFCE_INSTALL_EOF
+    # Install packages with progress
+    for pkg in "${xfce_packages[@]}"; do
+        run_with_progress "Install $pkg" 30 bash -c "
+            pkg install -y $pkg >/dev/null 2>&1 || apt install -y $pkg >/dev/null 2>&1
+        "
+    done
+    
+    # Create XFCE startup script for Termux
+    local xfce_script="$HOME/.cad/scripts/start-xfce-termux.sh"
+    mkdir -p "$(dirname "$xfce_script")" 2>/dev/null || true
+    
+    cat > "$xfce_script" << 'XFCE_SCRIPT_EOF'
 #!/bin/bash
-set -e
+# XFCE Desktop Environment for Termux
 
-echo "Installing XFCE desktop environment..."
+# Set up display
+export DISPLAY=:1
+export PULSE_RUNTIME_PATH=$PREFIX/var/run/pulse
 
-# Update package lists
-if command -v apt >/dev/null 2>&1 || command -v apt-get >/dev/null 2>&1; then
-  apt-get update
+# Start VNC server if not running
+if ! pgrep -f "Xvnc.*:1" >/dev/null; then
+    echo "Starting VNC server..."
+    vncserver :1 -geometry 1920x1080 -depth 24 >/dev/null 2>&1
 fi
 
-# Install XFCE and essential desktop components (Debian/Ubuntu families)
-DEBIAN_FRONTEND=noninteractive apt-get install -y \\
-    xfce4 \\
-    xfce4-goodies \\
-    firefox-esr \\
-    mousepad \\
-    ristretto \\
-    xfce4-terminal \\
-    xfce4-taskmanager \\
-    xfce4-screenshooter \\
-    thunar \\
-    pulseaudio \\
-    pavucontrol || true
+# Start PulseAudio if not running
+if ! pgrep -f pulseaudio >/dev/null; then
+    echo "Starting PulseAudio..."
+    pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1
+fi
 
-# Optional extras
-DEBIAN_FRONTEND=noninteractive apt-get install -y \\
-    libreoffice \\
-    gimp \\
-    vlc \\
-    chromium \\
-    gedit || true
+# Start XFCE session
+echo "Starting XFCE desktop..."
+DISPLAY=:1 xfce4-session >/dev/null 2>&1 &
 
-# Configure XFCE for user
-NEW_USER="\${USER:-developer}"
-sudo -u "\$NEW_USER" bash << 'XFCE_CONFIG_EOF'
-cd ~
-
-# Create XFCE config directories
-mkdir -p ~/.config/xfce4
-
-# Create desktop shortcuts
-mkdir -p ~/Desktop
-
-# Firefox shortcut
-cat > ~/Desktop/firefox.desktop << 'FIREFOX_EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Firefox
-Comment=Web Browser
-Exec=firefox-esr
-Icon=firefox
-Terminal=false
-Categories=Network;WebBrowser;
-FIREFOX_EOF
-
-# Terminal shortcut
-cat > ~/Desktop/terminal.desktop << 'TERMINAL_EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Terminal
-Comment=Terminal Emulator
-Exec=xfce4-terminal
-Icon=terminal
-Terminal=false
-Categories=System;TerminalEmulator;
-TERMINAL_EOF
-
-# File Manager shortcut
-cat > ~/Desktop/files.desktop << 'FILES_EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Files
-Comment=File Manager
-Exec=thunar
-Icon=folder
-Terminal=false
-Categories=System;FileManager;
-FILES_EOF
-
-chmod +x ~/Desktop/*.desktop
-
-echo "XFCE desktop configured for user: \$NEW_USER"
-XFCE_CONFIG_EOF
-
-echo "XFCE installation complete!"
-XFCE_INSTALL_EOF
+echo "XFCE desktop started on display :1"
+echo "Connect with VNC viewer to localhost:5901"
+XFCE_SCRIPT_EOF
     
     chmod +x "$xfce_script" 2>/dev/null || true
     
-    # Run XFCE installation
-    run_with_progress "Install XFCE desktop environment" 300 \
-        proot-distro login "$container_name" -- bash < "$xfce_script"
-    
-    # Clean up
-    rm -f "$xfce_script" 2>/dev/null || true
-    
     # Create desktop launcher
-    create_desktop_launcher "$container_name"
+    local desktop_launcher="$HOME/.local/bin/desktop"
+    mkdir -p "$(dirname "$desktop_launcher")" 2>/dev/null || true
     
-    ok "XFCE desktop environment installed"
-    return 0
-}
-
-# Create desktop launcher
-create_desktop_launcher(){
-    local container_name="${1:-ubuntu}"
-    
-    info "Creating desktop launcher..."
-    # Ensure directory exists (fixes: No such file or directory)
-    mkdir -p "$HOME/.local/bin" 2>/dev/null || true
-    
-    cat > "$HOME/.local/bin/desktop" << DESKTOP_LAUNCHER_EOF
+    cat > "$desktop_launcher" << 'DESKTOP_LAUNCHER_EOF'
 #!/bin/bash
-# Desktop Environment Launcher
-
-echo "Starting CAD-Droid Desktop Environment..."
-echo "========================================"
-echo ""
-echo "Container: $container_name"
-echo "Desktop: XFCE4"
-echo ""
-
-# Check if X11 is available
-if [ -z "\${DISPLAY:-}" ]; then
-    echo "Warning: DISPLAY not set. You may need to:"
-    echo "  1. Install Termux:X11 app"
-    echo "  2. Start X11 server: termux-x11 :0"
-    echo "  3. Set DISPLAY: export DISPLAY=:0"
-    echo ""
-fi
-
-echo "Starting desktop environment..."
-proot-distro login $container_name -- startxfce4
+# Desktop launcher for XFCE
+exec ~/.cad/scripts/start-xfce-termux.sh "$@"
 DESKTOP_LAUNCHER_EOF
     
-    chmod +x "$HOME/.local/bin/desktop" 2>/dev/null || true
+    chmod +x "$desktop_launcher" 2>/dev/null || true
     
+    ok "XFCE desktop environment installed for Termux"
     pecho "$PASTEL_GREEN" "Desktop launcher created: desktop"
     info "Start with: desktop"
     return 0

@@ -963,7 +963,7 @@ cad_droid_completion(){
   printf "${PASTEL_CYAN}├─${RESET} Container support installed\n"
   printf "${PASTEL_CYAN}└─${RESET} XFCE desktop environment ready\n\n"
   
-  printf "${PASTEL_YELLOW}🚀 Quick Start Guide:${RESET}\n"
+  printf "${PASTEL_YELLOW}Quick Start Guide:${RESET}\n"
   printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to home screen (especially phantom-killer)\n"
   printf "${PASTEL_CYAN}2.${RESET} Start XFCE desktop: ~/.cad/scripts/start-xfce-termux.sh\n" 
   printf "${PASTEL_CYAN}3.${RESET} Access Ubuntu container: proot-distro login ubuntu\n"
@@ -1343,4 +1343,42 @@ cleanup_previous_install(){
   fi
   
   ok "Cleanup completed - removed $cleaned_count items ($size_display)"
+}
+
+# Text wrapping function that breaks on word boundaries
+wrap_text() {
+  local text="$1"
+  local width="${2:-80}"
+  
+  # Simple word wrapping - split on spaces and rebuild lines
+  local words line_length current_line=""
+  
+  # Convert text to array of words
+  words=$(echo "$text" | tr ' ' '\n')
+  
+  while IFS= read -r word; do
+    if [ -z "$word" ]; then
+      continue
+    fi
+    
+    # Calculate length if we add this word
+    local test_line
+    if [ -z "$current_line" ]; then
+      test_line="$word"
+    else
+      test_line="$current_line $word"
+    fi
+    
+    # Check if adding this word would exceed width
+    if [ "${#test_line}" -le "$width" ]; then
+      current_line="$test_line"
+    else
+      # Print current line and start new one
+      [ -n "$current_line" ] && echo "$current_line"
+      current_line="$word"
+    fi
+  done <<< "$words"
+  
+  # Print final line if not empty
+  [ -n "$current_line" ] && echo "$current_line"
 }
