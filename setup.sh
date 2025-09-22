@@ -288,6 +288,27 @@ step_final(){
   mark_step_status "success"
 }
 
+step_adb(){
+  # Use modular ADB setup from adb module
+  info "Setting up ADB wireless debugging..."
+  
+  # Check if ADB setup should be skipped
+  if [ "$ENABLE_ADB" != "1" ] || [ "$SKIP_ADB" = "1" ]; then
+    info "ADB setup skipped per configuration"
+    mark_step_status "skipped"
+    return 0
+  fi
+  
+  # Call the ADB wireless helper from the adb module
+  if declare -f adb_wireless_helper >/dev/null 2>&1; then
+    adb_wireless_helper || true
+  else
+    warn "ADB module functions not available, skipping ADB setup"
+  fi
+  
+  mark_step_status "success"
+}
+
 initialize_directories(){
   # Create work directories
   WORK_DIR="$HOME/.cad"
