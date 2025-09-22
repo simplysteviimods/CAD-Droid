@@ -459,6 +459,28 @@ download_essential_apks(){
   return 0
 }
 
+# Open Android security settings to enable "Install unknown apps" for Termux
+open_security_settings() {
+  info "Opening Android security settings..."
+  
+  # Try to open Termux-specific app settings
+  if command -v am >/dev/null 2>&1; then
+    # Open app-specific settings for Termux
+    am start -a android.settings.APPLICATION_DETAILS_SETTINGS \
+       -d package:com.termux >/dev/null 2>&1 || {
+      # Fallback to general security settings
+      am start -a android.settings.SECURITY_SETTINGS >/dev/null 2>&1 || {
+        # Final fallback to main settings
+        am start -a android.settings.SETTINGS >/dev/null 2>&1 || true
+      }
+    }
+    ok "Android settings opened - please enable 'Install unknown apps' for Termux"
+  else
+    warn "Cannot open Android settings automatically"
+    info "Please manually enable 'Install unknown apps' for Termux in Android settings"
+  fi
+}
+
 # Handle APK installation and permission setup after downloads are complete
 setup_apk_permissions(){
   info "Setting up APK installation and permissions..."
@@ -696,38 +718,56 @@ manage_apks(){
     return 1
   fi
   
-  # Download all essential APKs first (before user interaction)
+  # Download all essential APKs automatically 
   download_essential_apks
   
-  # Show installation instructions
+  # Show installation instructions and requirements
   check_apk_permissions
   
-  # Ask user if they want to proceed with installation
-  printf "${PASTEL_PINK}Ready to install APKs. Continue? (y/N):${RESET} "
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
-    local response
-    read -r response || response="n"
-    case "${response,,}" in
-      y|yes) ;;
-      *)
-        info "APK installation skipped by user"
-        return 0
-        ;;
-    esac
+    echo ""
+    pecho "$PASTEL_PINK" "=== APK Installation Ready ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "Next steps:"
+    pecho "$PASTEL_CYAN" "1. Android security settings will open"
+    pecho "$PASTEL_CYAN" "2. Enable 'Install unknown apps' for Termux"  
+    pecho "$PASTEL_CYAN" "3. File manager will open to APK directory"
+    pecho "$PASTEL_CYAN" "4. Install each APK by tapping on it"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    read -r || true
   else
-    printf "y (auto)\n"
+    info "Non-interactive mode: opening security settings automatically"
+  fi
+  
+  # Open security settings first (before user needs to act)
+  open_security_settings
+  
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
+    echo ""
+    pecho "$PASTEL_YELLOW" "Please enable 'Install unknown apps' for Termux in the settings that just opened."
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after enabling 'Install unknown apps' for Termux...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after settings delay"
+    sleep 5
   fi
   
   # Open APK directory for user installation
   open_apk_directory
   
   # Wait for user to install APKs
-  printf "\n${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "Install each APK file by tapping on it in the file manager."
+    pecho "$PASTEL_YELLOW" "Grant all requested permissions for full functionality."
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
     read -r || true
   else
-    printf "(auto-continue)\n"
-    sleep 2
+    info "Non-interactive mode: auto-continuing after delay"
+    sleep "${APK_INSTALL_DELAY:-30}"
   fi
   
   # Run post-installation permission assistant
