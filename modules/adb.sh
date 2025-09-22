@@ -22,7 +22,7 @@ install_adb_tools(){
   info "Installing Android Debug Bridge (ADB)..."
   
   # Try different package names depending on distribution
-  local packages=("android-tools-adb" "android-tools" "adb")
+  local packages=("android-tools" "adb")
   local installed=false
   
   for pkg in "${packages[@]}"; do
@@ -234,20 +234,6 @@ connect_adb_device(){
 open_developer_settings(){
   local settings_opened=false
   
-  # Show clear instructions before launching settings
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    echo ""
-    pecho "$PASTEL_PURPLE" "=== Opening Android Developer Settings ==="
-    echo ""
-    pecho "$PASTEL_CYAN" "What will happen next:"
-    info "• Android Settings app will open"
-    info "• Navigate to: System > Developer Options"
-    info "• Find and enable 'Wireless debugging'"
-    echo ""
-    pecho "$PASTEL_YELLOW" "Press Enter to open Developer Settings..."
-    read -r
-  fi
-  
   info "Opening Android Developer Settings..."
   
   # Method 1: Direct intent to developer settings
@@ -295,7 +281,7 @@ adb_wireless_helper(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_PURPLE" "Please follow these steps:"
+    pecho "$PASTEL_PURPLE" "ADB Wireless Setup Instructions:"
     echo ""
     pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
     pecho "$PASTEL_PINK" "2. In Settings > System > Developer Options"
@@ -303,7 +289,13 @@ adb_wireless_helper(){
     pecho "$PASTEL_PINK" "4. Tap 'Pair device with pairing code'"
     pecho "$PASTEL_PINK" "5. Note the IP address, port, and 6-digit code shown"
     echo ""
+    pecho "$PASTEL_YELLOW" "Press Enter to open Developer Settings..."
+    read -r || true
     
+    # Open developer settings
+    open_developer_settings
+    
+    echo ""
     pecho "$PASTEL_CYAN" "Press Enter when you see the pairing dialog..."
     read -r || true
   fi
@@ -313,9 +305,9 @@ adb_wireless_helper(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip
-    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "port"  
-    read_nonempty "Enter the 6-digit pairing code" pairing_code
+    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip "192.168.1.100"
+    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831"  
+    read_nonempty "Enter the 6-digit pairing code" pairing_code "123456"
     
     # Basic validation
     if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -341,7 +333,7 @@ adb_wireless_helper(){
       # Prompt for debugging port
       echo ""
       local debug_port
-      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "port"
+      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "37832"
       
       if connect_adb_device "$ip" "$debug_port"; then
         ok "ADB wireless debugging setup complete!"

@@ -450,7 +450,7 @@ step_mirror(){
     echo ""
   fi
   
-  # Display mirror options with colors
+  # Display mirror options with colors  
   local i
   for i in "${!names[@]}"; do 
     local seq

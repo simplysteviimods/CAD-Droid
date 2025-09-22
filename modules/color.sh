@@ -39,6 +39,7 @@ init_pastel_colors() {
     export PASTEL_GREEN='\033[38;2;144;238;144m'      # Light Green #90EE90
     export PASTEL_YELLOW='\033[38;2;255;255;224m'     # Light Yellow #FFFFE0
     export PASTEL_PURPLE='\033[38;2;221;160;221m'     # Plum #DDA0DD
+    export PASTEL_LAVENDER='\033[38;2;230;230;250m'   # Lavender #E6E6FA
     export PASTEL_ORANGE='\033[38;2;255;218;185m'     # Peach Puff #FFDAB9
     export PASTEL_BLUE='\033[38;2;173;216;230m'       # Light Blue #ADD8E6
     export PASTEL_RED='\033[38;2;255;192;203m'        # Light Pink (red variant) #FFC0CB
@@ -50,6 +51,7 @@ init_pastel_colors() {
     export PASTEL_GREEN='\033[92m'  # Bright green
     export PASTEL_YELLOW='\033[93m' # Bright yellow
     export PASTEL_PURPLE='\033[35m' # Magenta
+    export PASTEL_LAVENDER='\033[35m' # Magenta (fallback)
     export PASTEL_ORANGE='\033[91m' # Bright red
     export PASTEL_BLUE='\033[94m'   # Bright blue
     export PASTEL_RED='\033[91m'    # Bright red

@@ -471,7 +471,7 @@ PREFETCH_EOF
     chmod +x "$prefetch_script" 2>/dev/null || true
     
     # Run prefetch in container
-    run_with_progress "Download common packages" 180 \
+    run_with_progress "Download container packages for offline installation" 180 \
         proot-distro login "$container_name" -- bash < "$prefetch_script"
     
     # Clean up

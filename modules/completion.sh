@@ -14,11 +14,8 @@ readonly _CAD_COMPLETION_LOADED=1
 show_completion_summary(){
   info "CAD-Droid setup completed successfully!"
   
-  printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
-  printf "${PASTEL_CYAN}                     SETUP COMPLETE!                      ${RESET}\n"
-  printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
-  
-  printf "${PASTEL_LAVENDER}Your Android device is now a powerful development workstation!${RESET}\n\n"
+  # Use the styled card function instead of ASCII art
+  draw_card "CAD-Droid Setup Complete!" "Your Android device is now a powerful development workstation"
   
   printf "${PASTEL_CYAN}What's been installed:${RESET}\n"
   printf "${PASTEL_GREEN}✓${RESET} Core system packages and development tools\n"
