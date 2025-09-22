@@ -152,11 +152,17 @@ ensure_mirror_applied(){
   
   # Update package indexes to ensure they're current (silent if already done)
   if [ "${PACKAGES_UPDATED:-0}" != "1" ]; then
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'
-    else
-      run_with_progress "Update indexes (apt)" 15 bash -c 'apt update >/dev/null 2>&1 || true'
+    # Apply termux-reload-settings first to ensure configuration is loaded
+    if command -v termux-reload-settings >/dev/null 2>&1; then
+      run_with_progress "Reload Termux settings" 3 termux-reload-settings
     fi
+    
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Update indexes (apt)" 15 bash -c 'apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1 || true'
+    fi
+    export PACKAGES_UPDATED=1
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -316,10 +322,15 @@ update_package_lists(){
   # Ensure selected mirror is applied before updating
   ensure_mirror_applied
   
+  # Apply termux-reload-settings to ensure configuration is current
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    run_with_progress "Reload Termux settings" 3 termux-reload-settings
+  fi
+  
   # Try pkg update first (preferred Termux command), then fallback to apt update
   if command -v pkg >/dev/null 2>&1; then
     if run_with_progress "Update package lists (pkg)" 30 bash -c '
-      pkg update -y >/dev/null 2>&1
+      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
     '; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
@@ -329,7 +340,7 @@ update_package_lists(){
     fi
   fi
   
-  # Fallback to apt update
+  # Fallback to apt update with proper options
   if run_with_progress "Update package lists (apt)" 30 bash -c '
     apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
   '; then

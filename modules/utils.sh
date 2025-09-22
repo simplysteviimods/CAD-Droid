@@ -840,6 +840,11 @@ BASHRC_EOF
     source "$HOME/.bashrc" 2>/dev/null || true
   fi
   
+  # Reload Termux settings to apply new configuration
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    run_with_progress "Reload Termux settings" 3 termux-reload-settings
+  fi
+  
   ok "Pastel shell prompt configured"
 }
 
@@ -919,7 +924,14 @@ fullscreen=false
 TERMUX_PROPS_EOF
 
   ok "Termux properties configured with pastel theme"
-  info "Restart Termux to apply new keyboard and theme settings"
+  
+  # Reload Termux settings to apply changes
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    run_with_progress "Reload Termux settings" 3 termux-reload-settings
+    info "Restart Termux to apply new keyboard and theme settings"
+  else
+    info "Restart Termux to apply new keyboard and theme settings"
+  fi
 }
 
 # === Final Completion ===

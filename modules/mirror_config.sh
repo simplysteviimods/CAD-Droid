@@ -27,6 +27,23 @@ declare -a X11_MIRRORS=(
   "https://termux.librehat.com/apt/termux-x11"
 )
 
+# Mirror names corresponding to URLs for user-friendly display
+declare -a TERMUX_MIRROR_NAMES=(
+  "Official Termux (Global)"
+  "Tsinghua University (China)"  
+  "Grimler (Europe)"
+  "Sahilister (India)"
+  "LibreHat (Asia-Pacific)"
+)
+
+declare -a X11_MIRROR_NAMES=(
+  "Official Termux X11 (Global)"
+  "Tsinghua University X11 (China)"
+  "Grimler X11 (Europe)"  
+  "Sahilister X11 (India)"
+  "LibreHat X11 (Asia-Pacific)"
+)
+
 # Mirror test function with spinner integration
 test_mirror_speed(){
   local mirror_url="$1"

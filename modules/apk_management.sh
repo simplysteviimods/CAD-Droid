@@ -34,22 +34,47 @@ declare -A ESSENTIAL_APKS=(
 init_apk_system(){
   info "Initializing APK management system..."
   
-  # Create download directories
-  run_with_progress "Setup APK directories" 5 bash -c "
-    mkdir -p '$APK_DOWNLOAD_DIR' &&
-    mkdir -p '$APK_TEMP_DIR' &&
-    chmod 755 '$APK_DOWNLOAD_DIR' '$APK_TEMP_DIR'
-  "
-  
-  # Ensure storage access is available
-  if [ ! -d "$HOME/storage/downloads" ]; then
+  # Ensure storage permissions are available first
+  if [ ! -d "$HOME/storage" ]; then
     warn "Storage access not available, requesting permissions..."
     if command -v termux-setup-storage >/dev/null 2>&1; then
       run_with_progress "Request storage access" 8 termux-setup-storage
+      # Wait a moment for storage to be available
+      sleep 2
+    else
+      warn "termux-setup-storage not available, using fallback directory"
     fi
   fi
   
+  # Create download directories with fallback
+  local primary_dir="$APK_DOWNLOAD_DIR"
+  local fallback_dir="$HOME/cad-droid-apks"
+  
+  if ! run_with_progress "Setup APK directories" 5 bash -c "
+    mkdir -p '$primary_dir' &&
+    chmod 755 '$primary_dir'
+  " 2>/dev/null; then
+    warn "Failed to create primary APK directory, using fallback"
+    primary_dir="$fallback_dir"
+    if ! run_with_progress "Setup fallback APK directory" 5 bash -c "
+      mkdir -p '$primary_dir' &&
+      chmod 755 '$primary_dir'
+    "; then
+      err "Failed to create APK directories"
+      return 1
+    fi
+    # Update the global variable for this session
+    export APK_DOWNLOAD_DIR="$primary_dir"
+  fi
+  
+  # Create temp directory
+  run_with_progress "Setup temp directory" 3 bash -c "
+    mkdir -p '$APK_TEMP_DIR' &&
+    chmod 755 '$APK_TEMP_DIR'
+  "
+  
   ok "APK management system initialized"
+  info "APK download directory: $primary_dir"
 }
 
 # Query F-Droid API for package information
@@ -116,6 +141,15 @@ download_fdroid_apk(){
   
   info "Downloading $app_name..."
   
+  # Verify APK directory exists
+  if [ ! -d "$APK_DOWNLOAD_DIR" ]; then
+    warn "APK directory not found, creating..."
+    mkdir -p "$APK_DOWNLOAD_DIR" 2>/dev/null || {
+      err "Cannot create APK directory: $APK_DOWNLOAD_DIR"
+      return 1
+    }
+  fi
+  
   # Create friendly filename (no temp files, direct download)
   local output_file="$APK_DOWNLOAD_DIR/${app_name// /_}.apk"
   
@@ -124,7 +158,7 @@ download_fdroid_apk(){
   
   # Try F-Droid first
   local download_url
-  if download_url=$(get_fdroid_apk_url "$package_id"); then
+  if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
     if download_with_spinner "$download_url" "$output_file" "Download $app_name (F-Droid)"; then
       # Verify download
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
