@@ -12,15 +12,14 @@ readonly _CAD_APK_MANAGEMENT_LOADED=1
 
 # APK Configuration
 readonly APK_DOWNLOAD_DIR="$HOME/storage/downloads/cad-droid-apks"
-readonly APK_TEMP_DIR="$TMPDIR/apk_downloads"
+readonly APK_TEMP_DIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/apk_downloads"
 
 # F-Droid API configuration
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"
 readonly FDROID_REPO_BASE="https://f-droid.org/repo"
 
-# Essential APKs from F-Droid with their package IDs
+# Essential APKs from F-Droid with their package IDs - Only Termux plugins
 declare -A ESSENTIAL_APKS=(
-  ["Termux"]="com.termux"
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
   ["Termux:Float"]="com.termux.float"
@@ -29,15 +28,6 @@ declare -A ESSENTIAL_APKS=(
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
   ["Termux:GUI"]="com.termux.gui"
-  ["Material Files"]="me.zhanghai.android.files"
-  ["F-Droid"]="org.fdroid.fdroid"
-  ["Obtainium"]="dev.imranr.obtainium"
-  ["AnySoftKeyboard"]="com.menny.android.anysoftkeyboard"
-  ["VLC"]="org.videolan.vlc"
-  ["Firefox"]="org.mozilla.firefox"
-  ["Signal"]="org.thoughtcrime.securesms"
-  ["KeePassDX"]="com.kunzisoft.keepass.libre"
-  ["Syncthing"]="com.nutomic.syncthingandroid"
 )
 
 # Initialize APK management system
@@ -222,9 +212,38 @@ download_fdroid_apk(){
   return 1
 }
 
-# Download all essential APKs before user interaction
+# Download all essential APKs after user confirms permissions
 download_essential_apks(){
-  info "Pre-downloading essential APKs from F-Droid..."
+  info "Preparing to download essential Termux plugin APKs..."
+  
+  # Show permission prompt before downloading
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== Termux Plugin Permissions Required ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "The following Termux plugins will be downloaded and require specific permissions:"
+    echo ""
+    pecho "$PASTEL_CYAN" "• Termux:API - Phone, SMS, Location, Camera, Microphone permissions"
+    pecho "$PASTEL_CYAN" "• Termux:Boot - Boot permission to start services automatically"
+    pecho "$PASTEL_CYAN" "• Termux:Widget - Display over other apps permission"
+    pecho "$PASTEL_CYAN" "• Other plugins - Standard app permissions"
+    echo ""
+    pecho "$PASTEL_PINK" "After downloading, you'll need to:"
+    pecho "$PASTEL_GREEN" "1. Install each APK manually from the file manager"
+    pecho "$PASTEL_GREEN" "2. Grant the requested permissions for full functionality"
+    echo ""
+    printf "${PASTEL_YELLOW}Press Enter to open permission settings and continue with download...${RESET} "
+    read -r
+    
+    # Open Android app permission settings
+    if command -v am >/dev/null 2>&1; then
+      info "Opening Android permission settings..."
+      am start -a android.settings.APPLICATION_SETTINGS >/dev/null 2>&1 || true
+      sleep 2  # Give user time to see the settings opened
+    fi
+  fi
+  
+  info "Downloading essential Termux plugin APKs..."
   
   local download_count=0
   local success_count=0

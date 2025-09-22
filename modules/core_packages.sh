@@ -218,7 +218,6 @@ install_core_packages(){
     "tmux"            # Terminal multiplexer
     "python"          # Python language
     "openssh"         # SSH client/server
-    "git"             # Version control system
     "gh"              # GitHub CLI
     "pulseaudio"      # Audio system
     "dbus"            # System bus
