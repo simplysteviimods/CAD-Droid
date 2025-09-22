@@ -137,32 +137,23 @@ ensure_download_tool(){
 ensure_mirror_applied(){
   local sources_file="$PREFIX/etc/apt/sources.list"
   
-  # Skip if no mirror is selected
+  # Ensure we have a valid mirror URL - set default if none selected
   if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
-    debug "No selected mirror to enforce, using current configuration"
-    return 0
+    debug "No mirror selected, using default Termux mirror"
+    SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
+    SELECTED_MIRROR_NAME="Default"
   fi
   
   # Always rewrite sources to ensure selected mirror is used
-  debug "Enforcing selected mirror: ${SELECTED_MIRROR_URL}"
+  debug "Enforcing mirror: ${SELECTED_MIRROR_URL}"
   echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
   
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
-  # Update package indexes to ensure they're current (silent if already done)
-  if [ "${PACKAGES_UPDATED:-0}" != "1" ]; then
-    # Apply termux-reload-settings first to ensure configuration is loaded
-    if command -v termux-reload-settings >/dev/null 2>&1; then
-      run_with_progress "Reload Termux settings" 3 termux-reload-settings
-    fi
-    
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1 || true'
-    else
-      run_with_progress "Update indexes (apt)" 15 bash -c 'apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1 || true'
-    fi
-    export PACKAGES_UPDATED=1
+  # Apply termux-reload-settings first to ensure configuration is loaded
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    run_with_progress "Reload Termux settings" 3 termux-reload-settings
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -319,18 +310,14 @@ update_package_lists(){
   
   info "Updating package lists..."
   
-  # Ensure selected mirror is applied before updating
+  # Ensure selected mirror is applied and sources file is written before updating
   ensure_mirror_applied
-  
-  # Apply termux-reload-settings to ensure configuration is current
-  if command -v termux-reload-settings >/dev/null 2>&1; then
-    run_with_progress "Reload Termux settings" 3 termux-reload-settings
-  fi
   
   # Try pkg update first (preferred Termux command), then fallback to apt update
   if command -v pkg >/dev/null 2>&1; then
+    info "Using pkg for package list updates (Termux native)"
     if run_with_progress "Update package lists (pkg)" 30 bash -c '
-      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
+      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
     '; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
@@ -340,9 +327,10 @@ update_package_lists(){
     fi
   fi
   
-  # Fallback to apt update with proper options
+  # Fallback to apt-get update with proper options
+  info "Using apt for package list updates (fallback)"
   if run_with_progress "Update package lists (apt)" 30 bash -c '
-    apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
+    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
   '; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
@@ -357,18 +345,22 @@ update_package_lists(){
 upgrade_packages(){
   info "Upgrading packages..."
   
-  # Ensure selected mirror is applied before upgrading
+  # Ensure selected mirror is applied and sources file is written before upgrading
   ensure_mirror_applied
   
   # Always update package lists immediately before upgrading
   # This ensures package indexes are current before upgrades
   if command -v pkg >/dev/null 2>&1; then
+    # Use pkg (Termux's preferred package manager)
+    info "Using pkg for package operations (Termux native)"
+    
     # Update first, then upgrade with pkg
     if run_with_progress "Update package lists (pkg)" 30 bash -c '
-      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
+      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
     '; then
+      info "Package lists updated successfully"
       if run_with_progress "Upgrade packages (pkg)" 60 bash -c '
-        pkg upgrade -y >/dev/null 2>&1
+        pkg upgrade -y -o Acquire::Retries=3 >/dev/null 2>&1
       '; then
         ok "Packages upgraded successfully via pkg"
         export PACKAGES_UPDATED=1
@@ -382,11 +374,13 @@ upgrade_packages(){
   fi
   
   # Fallback: update first, then upgrade with apt
+  info "Using apt for package operations (fallback)"
   if run_with_progress "Update package lists (apt)" 30 bash -c '
-    apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
+    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
   '; then
+    info "Package lists updated successfully"
     if run_with_progress "Upgrade packages (apt)" 60 bash -c '
-      apt upgrade -y >/dev/null 2>&1
+      apt-get upgrade -y -o Acquire::Retries=3 >/dev/null 2>&1
     '; then
       ok "Packages upgraded successfully via apt"
       export PACKAGES_UPDATED=1
