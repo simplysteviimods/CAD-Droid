@@ -1123,7 +1123,7 @@ check_previous_install(){
     if [ "$NON_INTERACTIVE" != "1" ]; then
       printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
       printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
-      printf "${PASTEL_PINK}🗑️  Remove previous installation files and start fresh? (y/N):${RESET} "
+      printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
       local response
       read -r response || response="n"
       case "${response,,}" in
@@ -1204,7 +1204,7 @@ check_previous_install(){
     printf "\n"
     
     if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "${PASTEL_PINK}🗑️  Would you like to clean up ALL previous installation files?${RESET}\n"
+      printf "${PASTEL_PINK}Would you like to clean up ALL previous installation files?${RESET}\n"
       printf "${PASTEL_YELLOW}   This includes configuration, APKs, cache, and temporary files.${RESET}\n"
       printf "${PASTEL_PINK}   Continue cleanup? (y/N):${RESET} "
       local response
@@ -1230,7 +1230,7 @@ check_previous_install(){
 
 # Clean up previous CAD-Droid installation files
 cleanup_previous_install(){
-  info "🧹 Cleaning up previous installation..."
+  info "Cleaning up previous installation..."
   
   local cleanup_items=(
     "$HOME/.cad"
@@ -1250,6 +1250,30 @@ cleanup_previous_install(){
   if [ -f "$INSTALL_COMPLETE_FLAG" ]; then
     rm -f "$INSTALL_COMPLETE_FLAG" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
   fi
+  
+  # Completely wipe previous configurations to prevent conflicts
+  local config_files=(
+    "$HOME/.bashrc"
+    "$HOME/.termux/termux.properties" 
+    "$HOME/.termux/colors.properties"
+    "$HOME/.termux/font.ttf"
+    "$HOME/.nanorc"
+    "$PREFIX/etc/nanorc"
+  )
+  
+  for config_file in "${config_files[@]}"; do
+    if [ -f "$config_file" ]; then
+      local config_size
+      config_size=$(du -sb "$config_file" 2>/dev/null | cut -f1) || config_size=0
+      total_size=$((total_size + config_size))
+      if rm -f "$config_file" 2>/dev/null; then
+        cleaned_count=$((cleaned_count + 1))
+        debug "Removed config file: $config_file"
+      else
+        warn "Failed to remove config file: $config_file"
+      fi
+    fi
+  done
   
   # Clean up standard installation files
   for item in "${cleanup_items[@]}"; do
@@ -1292,19 +1316,6 @@ cleanup_previous_install(){
     done
   fi
   
-  # Clean up specific bash additions (preserve user's other content)
-  if [ -f "$HOME/.bashrc" ] && grep -q "CAD-Droid" "$HOME/.bashrc" 2>/dev/null; then
-    local temp_bashrc
-    temp_bashrc=$(mktemp)
-    if grep -v "CAD-Droid\|cad-status\|cad-help\|cad-update" "$HOME/.bashrc" > "$temp_bashrc" 2>/dev/null; then
-      mv "$temp_bashrc" "$HOME/.bashrc"
-      cleaned_count=$((cleaned_count + 1))
-      debug "Cleaned CAD-Droid entries from .bashrc"
-    else
-      rm -f "$temp_bashrc" 2>/dev/null
-    fi
-  fi
-  
   # Clean up any remaining cache files in temp directories
   local temp_patterns=("$TMPDIR/cad*" "$TMPDIR/*apk*" "$TMPDIR/fdroid*")
   for temp_pattern in "${temp_patterns[@]}"; do
@@ -1331,5 +1342,5 @@ cleanup_previous_install(){
     size_display="${total_size} bytes"
   fi
   
-  ok "✅ Cleanup completed - removed $cleaned_count items ($size_display)"
+  ok "Cleanup completed - removed $cleaned_count items ($size_display)"
 }

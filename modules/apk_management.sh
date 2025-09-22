@@ -314,11 +314,11 @@ download_fdroid_apk(){
   # Try F-Droid first with enhanced progress display
   local download_url
   if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
-    info "📦 Downloading $app_name from F-Droid..."
+    info "Downloading $app_name from F-Droid..."
     if download_with_spinner "$download_url" "$output_file" "Downloading $app_name"; then
       # Verify download
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "✅ $app_name downloaded successfully from F-Droid"
+        ok "$app_name downloaded successfully from F-Droid"
         # Update tracking arrays
         PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
         DOWNLOADED_APKS+=("$app_name:$output_file")
@@ -335,10 +335,10 @@ download_fdroid_apk(){
   local github_url="${TERMUX_GITHUB_URLS[$package_id]}"
   
   if [ -n "$github_url" ]; then
-    info "📦 Downloading $app_name from GitHub..."
+    info "Downloading $app_name from GitHub..."
     if download_with_spinner "$github_url" "$output_file" "Downloading $app_name from GitHub"; then
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "✅ $app_name downloaded successfully from GitHub"
+        ok "$app_name downloaded successfully from GitHub"
         # Update tracking arrays
         PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
         DOWNLOADED_APKS+=("$app_name:$output_file")
@@ -366,8 +366,9 @@ download_essential_apks(){
   # Brief informational message only - no user interaction during downloads
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_CYAN" "📦 Downloading Termux plugins automatically..."
-    pecho "$PASTEL_YELLOW" "• ${#ESSENTIAL_APKS[@]} APK files will be downloaded"
+    pecho "$PASTEL_CYAN" "Downloading Termux plugins automatically..."
+    local apk_count=${#ESSENTIAL_APKS[@]}
+    pecho "$PASTEL_YELLOW" "• $apk_count APK files will be downloaded"
     pecho "$PASTEL_YELLOW" "• Permission setup will follow after all downloads complete"
     echo ""
   fi
@@ -375,13 +376,14 @@ download_essential_apks(){
   local download_count=0
   local success_count=0
   local failed_apks=()
+  local apk_count=${#ESSENTIAL_APKS[@]}
   
   # Download all APKs automatically without user prompts
   for app_name in "${!ESSENTIAL_APKS[@]}"; do
     local package_id="${ESSENTIAL_APKS[$app_name]}"
     download_count=$((download_count + 1))
     
-    info "Downloading ($download_count/${#ESSENTIAL_APKS[@]}): $app_name"
+    info "Downloading ($download_count/$apk_count): $app_name"
     
     if download_fdroid_apk "$package_id" "$app_name"; then
       success_count=$((success_count + 1))
@@ -393,10 +395,10 @@ download_essential_apks(){
   
   # Report download results
   if [ "$success_count" -eq "$download_count" ]; then
-    ok "✅ All $download_count essential APKs downloaded successfully"
+    ok "All $download_count essential APKs downloaded successfully"
   else
     local failed_count=$((download_count - success_count))
-    warn "⚠️  $success_count/$download_count APKs downloaded successfully"
+    warn "$success_count/$download_count APKs downloaded successfully"
     if [ ${#failed_apks[@]} -gt 0 ]; then
       warn "Failed downloads: ${failed_apks[*]}"
     fi
@@ -440,8 +442,8 @@ setup_apk_permissions(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    info "📱 Install each APK file by tapping on it in the file manager"
-    info "⚙️  Configure permissions as requested by each app"
+    info "Install each APK file by tapping on it in the file manager"
+    info "Configure permissions as requested by each app"
     echo ""
     printf "${PASTEL_PINK}Press Enter after installing all APKs and configuring permissions...${RESET} "
     read -r
@@ -564,7 +566,7 @@ assist_apk_permissions(){
     return 1
   fi
   
-  printf "${PASTEL_GREEN}✓${RESET} Termux:API detected\n\n"
+  printf "${PASTEL_GREEN}[OK]${RESET} Termux:API detected\n\n"
   
   # Guide through permission settings
   printf "${PASTEL_YELLOW}Let's verify your permissions:${RESET}\n\n"
@@ -572,24 +574,24 @@ assist_apk_permissions(){
   # Test API permissions
   printf "${PASTEL_CYAN}Testing phone access...${RESET} "
   if timeout 5 termux-telephony-deviceinfo >/dev/null 2>&1; then
-    printf "${PASTEL_GREEN}✓${RESET}\n"
+    printf "${PASTEL_GREEN}[OK]${RESET}\n"
   else
-    printf "${PASTEL_RED}✗${RESET} Grant phone permissions to Termux:API\n"
+    printf "${PASTEL_RED}[FAIL]${RESET} Grant phone permissions to Termux:API\n"
   fi
   
   printf "${PASTEL_CYAN}Testing location access...${RESET} "
   if timeout 5 termux-location >/dev/null 2>&1; then
-    printf "${PASTEL_GREEN}✓${RESET}\n" 
+    printf "${PASTEL_GREEN}[OK]${RESET}\n" 
   else
-    printf "${PASTEL_RED}✗${RESET} Grant location permissions to Termux:API\n"
+    printf "${PASTEL_RED}[FAIL]${RESET} Grant location permissions to Termux:API\n"
   fi
   
   # Check for widget installation
   printf "${PASTEL_CYAN}Checking widgets...${RESET} "
   if [ -d "/data/data/com.termux.widget" ] 2>/dev/null; then
-    printf "${PASTEL_GREEN}✓${RESET}\n"
+    printf "${PASTEL_GREEN}[OK]${RESET}\n"
   else
-    printf "${PASTEL_RED}✗${RESET} Install Termux:Widget for shortcuts\n"
+    printf "${PASTEL_RED}[FAIL]${RESET} Install Termux:Widget for shortcuts\n"
   fi
   
   # Provide links to permission settings
@@ -682,7 +684,7 @@ cleanup_apk_temp(){
 
 # Comprehensive APK installer cleanup - removes all installer-created files
 cleanup_apk_installer_files(){
-  info "🧹 Cleaning up APK installer files and cache..."
+  info "Cleaning up APK installer files and cache..."
   
   local cleanup_items=(
     # APK directories (both primary and fallback)
@@ -741,7 +743,7 @@ cleanup_apk_installer_files(){
   fi
   
   if [ "$cleaned_count" -gt 0 ]; then
-    ok "✅ APK cleanup completed - removed $cleaned_count items ($size_display)"
+    ok "APK cleanup completed - removed $cleaned_count items ($size_display)"
   else
     info "No APK installer files found to clean"
   fi
