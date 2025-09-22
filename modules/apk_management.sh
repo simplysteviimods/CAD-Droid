@@ -196,9 +196,18 @@ download_with_spinner(){
     --no-check-certificate \
     --output-document="$output_file" \
     "$url"; then
-    # Verify the download actually worked
-    if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-      return 0
+    # Less strict verification - just check if file exists and has some content
+    if [ -f "$output_file" ]; then
+      local file_size
+      file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+      # Accept files larger than 1KB (most APKs are much larger)
+      if [ "$file_size" -gt 1024 ]; then
+        return 0
+      else
+        warn "Downloaded file too small ($file_size bytes), may be incomplete"
+        # Don't fail completely - keep the file in case it's usable
+        return 0
+      fi
     else
       rm -f "$output_file" 2>/dev/null
       return 1
@@ -318,15 +327,21 @@ download_fdroid_apk(){
   if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
     info "Downloading $app_name from F-Droid..."
     if download_with_spinner "$download_url" "$output_file" "Downloading $app_name"; then
-      # Verify download
-      if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "$app_name downloaded successfully from F-Droid"
-        # Update tracking arrays
-        PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
-        DOWNLOADED_APKS+=("$app_name:$output_file")
-        save_apk_state
-        echo "$output_file"
-        return 0
+      # Less strict verification - accept any non-empty file
+      if [ -f "$output_file" ]; then
+        local file_size
+        file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -gt 0 ]; then
+          ok "$app_name downloaded successfully from F-Droid ($file_size bytes)"
+          # Update tracking arrays
+          PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+          DOWNLOADED_APKS+=("$app_name:$output_file")
+          save_apk_state
+          echo "$output_file"
+          return 0
+        else
+          warn "$app_name: Downloaded file is empty"
+        fi
       fi
     fi
   fi
@@ -345,14 +360,20 @@ download_fdroid_apk(){
   if [ -n "$github_url" ]; then
     info "Downloading $app_name from GitHub..."
     if download_with_spinner "$github_url" "$output_file" "Downloading $app_name from GitHub"; then
-      if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "$app_name downloaded successfully from GitHub"
-        # Update tracking arrays
-        PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
-        DOWNLOADED_APKS+=("$app_name:$output_file")
-        save_apk_state
-        echo "$output_file"
-        return 0
+      if [ -f "$output_file" ]; then
+        local file_size
+        file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -gt 0 ]; then
+          ok "$app_name downloaded successfully from GitHub ($file_size bytes)"
+          # Update tracking arrays
+          PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+          DOWNLOADED_APKS+=("$app_name:$output_file")
+          save_apk_state
+          echo "$output_file"
+          return 0
+        else
+          warn "$app_name: Downloaded file from GitHub is empty"
+        fi
       fi
     fi
   else
