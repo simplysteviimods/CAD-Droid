@@ -44,7 +44,8 @@ ESSENTIAL_APKS=(
 )
 
 # GitHub backup URLs for Termux plugins when F-Droid fails
-declare -A TERMUX_GITHUB_URLS=(
+declare -gA TERMUX_GITHUB_URLS 2>/dev/null || true
+TERMUX_GITHUB_URLS=(
   ["com.termux.api"]="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
   ["com.termux.boot"]="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
   ["com.termux.float"]="https://github.com/termux/termux-float/releases/latest/download/termux-float.apk"
@@ -333,7 +334,13 @@ download_fdroid_apk(){
   # Fallback to GitHub releases for Termux apps
   warn "F-Droid download failed, trying GitHub backup..."
   
-  local github_url="${TERMUX_GITHUB_URLS[$package_id]}"
+  # Ensure TERMUX_GITHUB_URLS is properly declared
+  if ! declare -p TERMUX_GITHUB_URLS >/dev/null 2>&1; then
+    err "TERMUX_GITHUB_URLS array not properly declared"
+    return 1
+  fi
+  
+  local github_url="${TERMUX_GITHUB_URLS[$package_id]:-}"
   
   if [ -n "$github_url" ]; then
     info "Downloading $app_name from GitHub..."
