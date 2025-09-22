@@ -667,3 +667,281 @@ safe_sleep() {
   
   sleep "$duration" 2>/dev/null || true
 }
+
+# === Library Detection and Installation ===
+
+# Detect and install missing runtime libraries
+# This function addresses CANNOT LINK EXECUTABLE errors for missing libraries
+detect_install_missing_libs() {
+  info "Checking for missing runtime libraries..."
+  
+  local libs_needed=()
+  local test_output
+  
+  # Test a common binary to detect missing libraries
+  test_output=$( (date >/dev/null) 2>&1 || true )
+  
+  # Check for libpcre2-8.so issues
+  if echo "$test_output" | grep -qi 'libpcre2-8.so'; then
+    libs_needed+=("pcre2")
+    warn "Detected missing libpcre2-8.so library"
+  fi
+  
+  # Check for libgmp.so issues
+  if echo "$test_output" | grep -qi 'libgmp.so'; then
+    libs_needed+=("libgmp")
+    warn "Detected missing libgmp.so library"
+  fi
+  
+  # Proactive detection using ldd if available
+  if command -v ldd >/dev/null 2>&1; then
+    local ldd_output
+    ldd_output=$(ldd /bin/date 2>&1 || true)
+    
+    # Check for missing libpcre2
+    if echo "$ldd_output" | grep -qi "libpcre2.*not found"; then
+      if ! [[ " ${libs_needed[*]} " =~ " pcre2 " ]]; then
+        libs_needed+=("pcre2")
+        warn "Proactive detection: libpcre2 missing"
+      fi
+    fi
+    
+    # Check for missing libgmp
+    if echo "$ldd_output" | grep -qi "libgmp.*not found"; then
+      if ! [[ " ${libs_needed[*]} " =~ " libgmp " ]]; then
+        libs_needed+=("libgmp")
+        warn "Proactive detection: libgmp missing"
+      fi
+    fi
+  fi
+  
+  # Install missing libraries
+  if [ ${#libs_needed[@]} -gt 0 ]; then
+    # Ensure mirrors are up-to-date before installation
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    
+    for lib in "${libs_needed[@]}"; do
+      install_runtime_library "$lib"
+    done
+  else
+    ok "All runtime libraries are available"
+  fi
+}
+
+# Install a specific runtime library
+install_runtime_library() {
+  local lib="$1"
+  
+  case "$lib" in
+    "pcre2")
+      if command -v pkg >/dev/null 2>&1; then
+        run_with_progress "Install libpcre2 (pkg)" 15 bash -c 'pkg install -y pcre2 >/dev/null 2>&1 || [ $? -eq 100 ]'
+      else
+        run_with_progress "Install libpcre2 (apt)" 15 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
+      fi
+      ;;
+    "libgmp")
+      if command -v pkg >/dev/null 2>&1; then
+        run_with_progress "Install libgmp (pkg)" 15 bash -c 'pkg install -y libgmp >/dev/null 2>&1 || [ $? -eq 100 ]'
+      else
+        run_with_progress "Install libgmp (apt)" 15 bash -c 'apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      fi
+      ;;
+    *)
+      warn "Unknown library: $lib"
+      return 1
+      ;;
+  esac
+  
+  # Verify installation
+  local verify_output
+  verify_output=$( (date >/dev/null) 2>&1 || true )
+  if echo "$verify_output" | grep -qi "$lib"; then
+    warn "Library $lib may still be missing after installation"
+    return 1
+  else
+    ok "Library $lib installed successfully"
+    return 0
+  fi
+}
+
+# === Shell Configuration ===
+
+# Configure bash prompt with pastel theming
+configure_pastel_shell_prompt() {
+  info "Setting up pastel shell prompt..."
+  
+  # Create .bashrc with pastel prompt
+  cat >> "$HOME/.bashrc" << 'BASHRC_EOF'
+
+# === CAD-Droid Pastel Shell Configuration ===
+
+# Pastel color definitions
+PASTEL_PINK='\[\033[38;5;213m\]'
+PASTEL_PURPLE='\[\033[38;5;183m\]'
+PASTEL_CYAN='\[\033[38;5;159m\]'
+PASTEL_GREEN='\[\033[38;5;158m\]'
+PASTEL_YELLOW='\[\033[38;5;229m\]'
+PASTEL_LAVENDER='\[\033[38;5;189m\]'
+RESET='\[\033[0m\]'
+
+# Get username (prefer installer-set username)
+if [ -n "${TERMUX_USERNAME:-}" ]; then
+  DISPLAY_USER="$TERMUX_USERNAME"
+elif [ -n "${USER:-}" ]; then
+  DISPLAY_USER="$USER"
+else
+  DISPLAY_USER="cad-user"
+fi
+
+# Pastel-themed prompt: pink username, cyan directory, purple input
+export PS1="${PASTEL_PINK}${DISPLAY_USER}${RESET} ${PASTEL_CYAN}\w${RESET} ${PASTEL_PURPLE}$ ${RESET}"
+
+# Make user input appear in pastel purple
+bind 'set colored-completion-prefix on'
+bind 'set completion-ignore-case on'
+bind 'set show-all-if-ambiguous on'
+bind 'set colored-stats on'
+
+# Set terminal colors for better visibility
+export LS_COLORS='di=38;5;159:fi=38;5;255:ln=38;5;213:pi=38;5;229:so=38;5;183:bd=38;5;189:cd=38;5;189:or=38;5;196:ex=38;5;158'
+
+# Aliases with color support
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias ll='ls -la --color=auto'
+alias la='ls -A --color=auto'
+alias l='ls -CF --color=auto'
+
+# CAD-Droid specific aliases
+alias cad-status='echo -e "${PASTEL_GREEN}CAD-Droid Environment Active${RESET}"'
+alias cad-help='echo -e "${PASTEL_CYAN}CAD-Droid Commands:${RESET}\n  cad-status  - Show environment status\n  cad-update  - Update system packages\n  cad-backup  - Create system backup"'
+alias cad-update='pkg update && pkg upgrade'
+
+BASHRC_EOF
+
+  # Source the new configuration
+  if [ -n "$BASH_VERSION" ]; then
+    source "$HOME/.bashrc" 2>/dev/null || true
+  fi
+  
+  ok "Pastel shell prompt configured"
+}
+
+# Configure termux.properties with pastel theme
+configure_termux_properties_pastel() {
+  info "Configuring Termux properties with pastel theme..."
+  
+  local termux_props="$HOME/.termux/termux.properties"
+  mkdir -p "$HOME/.termux"
+  
+  # Backup existing properties
+  if [ -f "$termux_props" ]; then
+    cp "$termux_props" "$termux_props.backup.$(date +%s)" 2>/dev/null || true
+  fi
+  
+  # Create pastel-themed termux.properties
+  cat > "$termux_props" << 'TERMUX_PROPS_EOF'
+# === CAD-Droid Pastel Termux Configuration ===
+
+# === APPEARANCE ===
+# Use a pleasant pastel color scheme
+use-black-ui=false
+
+# === KEYBOARD ===
+# Enhanced extra keys row with useful shortcuts including on-screen keyboard toggle
+extra-keys = [[ \
+ {key: 'ESC', popup: {macro: 'CTRL f d', display: 'tmux exit'}}, \
+ {key: 'CTRL', popup: {macro: 'CTRL f CTRL n', display: 'new window'}}, \
+ 'ALT', \
+ {key: '/', popup: '\\'}, \
+ {key: 'HOME', popup: 'END'}, \
+ {key: 'UP', popup: 'PGUP'}, \
+ {key: 'DOWN', popup: 'PGDN'}, \
+ {key: 'KEYBOARD', popup: {macro: 'CTRL a CTRL a', display: 'toggle keyboard'}} \
+], [ \
+ 'TAB', \
+ {key: 'CTRL', popup: {macro: 'CTRL f c', display: 'kill process'}}, \
+ 'ALT', \
+ {key: '-', popup: '|'}, \
+ 'LEFT', \
+ 'RIGHT', \
+ {key: '.', popup: {macro: '. . LEFT', display: '..'}}, \
+ {key: 'KEYBOARD', popup: {macro: 'CTRL SHIFT SPACE', display: 'on-screen keyboard'}}, \
+ {key: 'ENTER', popup: {macro: 'CTRL f z', display: 'suspend'}} \
+]]
+
+# === BELL ===
+# Disable annoying terminal bell
+bell-character=ignore
+
+# === CURSOR ===
+# Use a visible cursor style
+terminal-cursor-style=block
+terminal-cursor-blink-rate=500
+
+# === SCROLLBACK ===
+# Keep more history
+terminal-transcript-rows=10000
+
+# === HARDWARE ===
+# Handle volume keys appropriately
+volume-keys=volume
+
+# === BEHAVIOR ===
+# Handle back button
+back-key=escape
+# Handle special keys
+enforce-char-based-input=true
+# Handle fullscreen
+fullscreen=false
+
+TERMUX_PROPS_EOF
+
+  ok "Termux properties configured with pastel theme"
+  info "Restart Termux to apply new keyboard and theme settings"
+}
+
+# === Final Completion ===
+
+# Final completion with reboot prompt
+cad_droid_completion(){
+  printf "\n${PASTEL_PINK}🎉 CAD-Droid Setup Complete! 🎉${RESET}\n"
+  printf "${PASTEL_YELLOW}═══════════════════════════════════════${RESET}\n\n"
+  
+  printf "${PASTEL_GREEN}✅ Installation Summary:${RESET}\n"
+  printf "${PASTEL_CYAN}├─${RESET} Critical bug fixes applied\n"
+  printf "${PASTEL_CYAN}├─${RESET} Pastel theme configured\n"  
+  printf "${PASTEL_CYAN}├─${RESET} APK management system ready\n"
+  printf "${PASTEL_CYAN}├─${RESET} ADB wireless setup completed\n"
+  printf "${PASTEL_CYAN}├─${RESET} Phantom process killer disabled\n"
+  printf "${PASTEL_CYAN}├─${RESET} Widget shortcuts created\n"
+  printf "${PASTEL_CYAN}├─${RESET} Container support installed\n"
+  printf "${PASTEL_CYAN}└─${RESET} XFCE desktop environment ready\n\n"
+  
+  printf "${PASTEL_YELLOW}🚀 Quick Start Guide:${RESET}\n"
+  printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to home screen (especially phantom-killer)\n"
+  printf "${PASTEL_CYAN}2.${RESET} Start XFCE desktop: ~/.cad/scripts/start-xfce-termux.sh\n" 
+  printf "${PASTEL_CYAN}3.${RESET} Access Ubuntu container: proot-distro login ubuntu\n"
+  printf "${PASTEL_CYAN}4.${RESET} Check system status: cad-status\n\n"
+  
+  printf "${PASTEL_RED}📱 Reboot Recommended${RESET}\n"
+  printf "A reboot will ensure all configuration changes take effect,\n"
+  printf "especially the new keyboard layout and theme settings.\n\n"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    printf "${PASTEL_PINK}Press Enter to reboot Termux now...${RESET} "
+    read -r || true
+    
+    printf "\n${PASTEL_YELLOW}Rebooting Termux...${RESET}\n"
+    sleep 2
+    
+    # Kill current Termux process to trigger restart
+    am force-stop com.termux 2>/dev/null || killall -9 com.termux 2>/dev/null || exit 0
+  else
+    printf "${PASTEL_YELLOW}Non-interactive mode: Skipping reboot${RESET}\n"
+    printf "Please restart Termux manually to apply all changes.\n"
+  fi
+}

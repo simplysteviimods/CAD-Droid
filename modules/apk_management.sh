@@ -218,7 +218,7 @@ open_apk_directory(){
   return 0
 }
 
-# Verify APK installation permissions
+# Verify APK installation permissions and provide detailed guidance
 check_apk_permissions(){
   info "Checking APK installation permissions..."
   
@@ -230,11 +230,18 @@ check_apk_permissions(){
     '
   fi
   
-  # Provide installation instructions
-  printf "\n${PASTEL_PINK}APK Installation Instructions:${RESET}\n"
-  printf "${PASTEL_CYAN}1.${RESET} Enable 'Install unknown apps' for your file manager\n"
-  printf "${PASTEL_CYAN}2.${RESET} Navigate to: %s\n" "$APK_DOWNLOAD_DIR"
-  printf "${PASTEL_CYAN}3.${RESET} Install APKs in this order:\n"
+  # Provide comprehensive installation instructions
+  printf "\n${PASTEL_PINK}═══ APK Installation Guide ═══${RESET}\n\n"
+  
+  printf "${PASTEL_YELLOW}Step 1: Enable Unknown App Sources${RESET}\n"
+  printf "${PASTEL_CYAN}├─${RESET} Open Android Settings → Security → Unknown Sources\n"
+  printf "${PASTEL_CYAN}├─${RESET} Or: Settings → Apps → File Manager → Install Unknown Apps\n"  
+  printf "${PASTEL_CYAN}└─${RESET} Enable installation from your file manager\n\n"
+  
+  printf "${PASTEL_YELLOW}Step 2: Navigate to APK Directory${RESET}\n"
+  printf "${PASTEL_CYAN}└─${RESET} %s\n\n" "$APK_DOWNLOAD_DIR"
+  
+  printf "${PASTEL_YELLOW}Step 3: Install APKs in Order${RESET}\n"
   
   local install_order=(
     "Termux:API"
@@ -246,8 +253,101 @@ check_apk_permissions(){
     "Termux:Tasker"
   )
   
-  for app in "${install_order[@]}"; do
-    printf "   ${PASTEL_LAVENDER}•${RESET} %s\n" "$app"
+  for i in "${!install_order[@]}"; do
+    local app="${install_order[$i]}"
+    local num=$((i + 1))
+    printf "${PASTEL_CYAN}%d.${RESET} ${PASTEL_LAVENDER}%s${RESET}\n" "$num" "$app"
+    
+    # Add specific permission requirements
+    case "$app" in
+      "Termux:API")
+        printf "   ${PASTEL_GREEN}Permissions needed:${RESET} Phone, SMS, Location, Camera, Microphone\n"
+        ;;
+      "Termux:Boot")
+        printf "   ${PASTEL_GREEN}Permissions needed:${RESET} Boot completed, System alert window\n"
+        ;;
+      "Termux:Widget")
+        printf "   ${PASTEL_GREEN}Permissions needed:${RESET} System alert window, Draw over apps\n"
+        ;;
+      "Termux:X11")
+        printf "   ${PASTEL_GREEN}Permissions needed:${RESET} System alert window, Draw over apps\n"
+        ;;
+      "Termux:Float")
+        printf "   ${PASTEL_GREEN}Permissions needed:${RESET} System alert window, Draw over apps\n"
+        ;;
+    esac
+  done
+  
+  printf "\n${PASTEL_YELLOW}Step 4: Grant All Permissions${RESET}\n"
+  printf "${PASTEL_CYAN}├─${RESET} Allow ALL permissions when prompted\n"
+  printf "${PASTEL_CYAN}├─${RESET} Enable 'Display over other apps' for widgets\n"
+  printf "${PASTEL_CYAN}└─${RESET} Enable notification access if requested\n\n"
+  
+  printf "${PASTEL_RED}Important:${RESET} ${PASTEL_YELLOW}Install Termux:API first - other apps depend on it!${RESET}\n\n"
+}
+
+# Post-installation permission setup assistant
+assist_apk_permissions(){
+  info "Setting up APK permissions..."
+  
+  printf "\n${PASTEL_PINK}═══ Permission Setup Assistant ═══${RESET}\n\n"
+  
+  # Check if Termux:API is installed
+  if ! command -v termux-api-start >/dev/null 2>&1; then
+    warn "Termux:API not detected. Please install it first."
+    return 1
+  fi
+  
+  printf "${PASTEL_GREEN}✓${RESET} Termux:API detected\n\n"
+  
+  # Guide through permission settings
+  printf "${PASTEL_YELLOW}Let's verify your permissions:${RESET}\n\n"
+  
+  # Test API permissions
+  printf "${PASTEL_CYAN}Testing phone access...${RESET} "
+  if timeout 5 termux-telephony-deviceinfo >/dev/null 2>&1; then
+    printf "${PASTEL_GREEN}✓${RESET}\n"
+  else
+    printf "${PASTEL_RED}✗${RESET} Grant phone permissions to Termux:API\n"
+  fi
+  
+  printf "${PASTEL_CYAN}Testing location access...${RESET} "
+  if timeout 5 termux-location >/dev/null 2>&1; then
+    printf "${PASTEL_GREEN}✓${RESET}\n" 
+  else
+    printf "${PASTEL_RED}✗${RESET} Grant location permissions to Termux:API\n"
+  fi
+  
+  # Check for widget installation
+  printf "${PASTEL_CYAN}Checking widgets...${RESET} "
+  if [ -d "/data/data/com.termux.widget" ] 2>/dev/null; then
+    printf "${PASTEL_GREEN}✓${RESET}\n"
+  else
+    printf "${PASTEL_RED}✗${RESET} Install Termux:Widget for shortcuts\n"
+  fi
+  
+  # Provide links to permission settings
+  printf "\n${PASTEL_YELLOW}Quick Permission Settings:${RESET}\n"
+  printf "${PASTEL_CYAN}├─${RESET} Open Settings → Apps → Termux:API → Permissions\n"
+  printf "${PASTEL_CYAN}├─${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
+  printf "${PASTEL_CYAN}└─${RESET} For widgets: Enable 'Display over other apps'\n\n"
+  
+  # Ask if user wants to continue to permission settings
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    printf "${PASTEL_PINK}Open permission settings now? (y/N):${RESET} "
+    local response
+    read -r response || response="n"
+    case "${response,,}" in
+      y|yes)
+        if command -v am >/dev/null 2>&1; then
+          am start -a android.settings.APPLICATION_DETAILS_SETTINGS \
+             -d package:com.termux.api >/dev/null 2>&1 || true
+          info "Permission settings opened"
+        fi
+        ;;
+    esac
+  fi
+}
   done
   
   printf "\n${PASTEL_YELLOW}Important:${RESET} Grant all requested permissions during installation\n\n"
@@ -288,7 +388,7 @@ manage_apks(){
   # Open APK directory for user installation
   open_apk_directory
   
-  # Wait for user confirmation
+  # Wait for user to install APKs
   printf "\n${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     read -r || true
@@ -296,6 +396,9 @@ manage_apks(){
     printf "(auto-continue)\n"
     sleep 2
   fi
+  
+  # Run post-installation permission assistant
+  assist_apk_permissions
   
   ok "APK management process completed"
   return 0

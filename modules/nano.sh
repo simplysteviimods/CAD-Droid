@@ -75,7 +75,38 @@ set indicator
 set finalnewline
 
 # ===== SYNTAX HIGHLIGHTING CUSTOMIZATION =====
-# Additional syntax patterns for common files
+# Pastel color scheme for syntax highlighting
+
+# Set title bar color to pastel pink
+set titlecolor pink,white
+# Set status bar to pastel cyan
+set statuscolor cyan,white
+# Set key combo color to pastel lavender
+set keycolor magenta,white
+# Set function color to pastel green
+set functioncolor green,white
+# Set number color to pastel yellow
+set numbercolor yellow,black
+# Set selected text color to pastel purple
+set selectedcolor white,magenta
+# Set stripe color for line numbers
+set stripecolor yellow,black
+
+# Enhanced syntax highlighting patterns
+syntax "config" "\.(conf|config|cfg|ini)$"
+color brightcyan "^[[:space:]]*[^=]*="
+color yellow "=.*$"
+color green "^[[:space:]]*#.*$"
+color brightred "^[[:space:]]*\[.*\]$"
+
+syntax "shell" "\.sh$"
+header "^#!.*/(ba|da|a|k|pdk|z)?sh[-0-9_]*"
+color green "^[[:space:]]*#.*$"
+color yellow "\$\{[^}]*\}"
+color yellow "\$[A-Za-z0-9_!@#$*?-]+"
+color brightblue "^[[:space:]]*[A-Za-z0-9_]+[[:space:]]*\("
+color brightcyan "^[[:space:]]*(case|do|done|elif|else|esac|fi|for|function|if|in|select|then|until|while)"
+color brightmagenta "^[[:space:]]*(break|continue|declare|echo|eval|exec|exit|export|getopts|hash|pwd|readonly|return|shift|test|times|trap|umask|unset)"
 
 # ===== KEY BINDINGS =====
 # More familiar shortcuts
