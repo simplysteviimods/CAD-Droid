@@ -239,35 +239,83 @@ DEV_LAUNCHER_EOF
 # === XFCE Desktop Implementation ===
 
 step_xfce(){
-    pecho "$PASTEL_PURPLE" "Setting up XFCE desktop environment..."
+    pecho "$PASTEL_PURPLE" "Setting up XFCE desktop environment for Termux..."
     
-    local container_name="${DISTRO:-ubuntu}"
+    # Install XFCE directly in Termux environment, not in a container
+    info "Installing XFCE desktop packages for Termux..."
     
-    # Check if container exists
-    if ! is_distro_installed "$container_name"; then
-        warn "Container '$container_name' not found. Install container first."
-        return 1
-    fi
+    # Essential XFCE packages for Termux
+    local xfce_packages=(
+        "xfce4"
+        "xfce4-terminal" 
+        "xfce4-panel"
+        "xfce4-session"
+        "xfce4-settings"
+        "xfce4-whiskermenu-plugin"
+        "xfce4-taskmanager"
+        "tigervnc"
+        "firefox"
+        "pulseaudio"
+    )
     
-    # Install XFCE in container (robust temp path)
-    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
-    mkdir -p "$tmp_base" 2>/dev/null || true
-    local xfce_script
-    xfce_script="$(mktemp "$tmp_base/xfce_install.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/xfce_install.sh")"
-
-    cat > "$xfce_script" << XFCE_INSTALL_EOF
+    # Install packages with progress
+    for pkg in "${xfce_packages[@]}"; do
+        run_with_progress "Install $pkg" 30 bash -c "
+            pkg install -y $pkg >/dev/null 2>&1 || apt install -y $pkg >/dev/null 2>&1
+        "
+    done
+    
+    # Create XFCE startup script for Termux
+    local xfce_script="$HOME/.cad/scripts/start-xfce-termux.sh"
+    mkdir -p "$(dirname "$xfce_script")" 2>/dev/null || true
+    
+    cat > "$xfce_script" << 'XFCE_SCRIPT_EOF'
 #!/bin/bash
-set -e
+# XFCE Desktop Environment for Termux
 
-echo "Installing XFCE desktop environment..."
+# Set up display
+export DISPLAY=:1
+export PULSE_RUNTIME_PATH=$PREFIX/var/run/pulse
 
-# Update package lists
-if command -v apt >/dev/null 2>&1 || command -v apt-get >/dev/null 2>&1; then
-  apt-get update
+# Start VNC server if not running
+if ! pgrep -f "Xvnc.*:1" >/dev/null; then
+    echo "Starting VNC server..."
+    vncserver :1 -geometry 1920x1080 -depth 24 >/dev/null 2>&1
 fi
 
-# Install XFCE and essential desktop components (Debian/Ubuntu families)
-DEBIAN_FRONTEND=noninteractive apt-get install -y \\
+# Start PulseAudio if not running
+if ! pgrep -f pulseaudio >/dev/null; then
+    echo "Starting PulseAudio..."
+    pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1
+fi
+
+# Start XFCE session
+echo "Starting XFCE desktop..."
+DISPLAY=:1 xfce4-session >/dev/null 2>&1 &
+
+echo "XFCE desktop started on display :1"
+echo "Connect with VNC viewer to localhost:5901"
+XFCE_SCRIPT_EOF
+    
+    chmod +x "$xfce_script" 2>/dev/null || true
+    
+    # Create desktop launcher
+    local desktop_launcher="$HOME/.local/bin/desktop"
+    mkdir -p "$(dirname "$desktop_launcher")" 2>/dev/null || true
+    
+    cat > "$desktop_launcher" << 'DESKTOP_LAUNCHER_EOF'
+#!/bin/bash
+# Desktop launcher for XFCE
+exec ~/.cad/scripts/start-xfce-termux.sh "$@"
+DESKTOP_LAUNCHER_EOF
+    
+    chmod +x "$desktop_launcher" 2>/dev/null || true
+    
+    ok "XFCE desktop environment installed for Termux"
+    pecho "$PASTEL_GREEN" "Desktop launcher created: desktop"
+    info "Start with: desktop"
+    return 0
+}
     xfce4 \\
     xfce4-goodies \\
     firefox-esr \\

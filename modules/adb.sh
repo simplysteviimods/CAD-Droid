@@ -271,23 +271,60 @@ open_developer_settings(){
 
 # === ADB Wireless Setup Workflow ===
 
-# Complete ADB wireless setup process with simplified manual approach
+# Complete ADB wireless setup process with enhanced instructions and Termux:Float support
 adb_wireless_helper(){
   if [ "$ENABLE_ADB" != "1" ]; then
     return 0
   fi
   
-  # No duplicate dialog - all instructions are now in step_adb
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_CYAN" "After enabling wireless debugging, press Enter to continue..."
+    pecho "$PASTEL_YELLOW" "ADB Wireless Debugging Setup:"
+    echo ""
+    pecho "$PASTEL_CYAN" "Step 1: Open Developer Settings"
+    pecho "$PASTEL_CYAN" "• Developer settings will open automatically"
+    pecho "$PASTEL_CYAN" "• Find 'Wireless debugging' and tap it"
+    pecho "$PASTEL_CYAN" "• Toggle it ON if not already enabled"
+    echo ""
+    pecho "$PASTEL_CYAN" "Step 2: Pair Your Device"
+    pecho "$PASTEL_CYAN" "• Tap 'Pair device with pairing code'"
+    pecho "$PASTEL_CYAN" "• Note the IP address, port, and 6-digit code"
+    pecho "$PASTEL_CYAN" "• You'll enter these details in the next step"
+    echo ""
+    
+    # Offer to launch Termux:Float for easy access during setup
+    if ask_yes_no "Launch Termux:Float window for easier setup? (Recommended)" "y"; then
+      info "Launching Termux:Float window..."
+      if command -v am >/dev/null 2>&1; then
+        am start -n com.termux.float/.TermuxFloatService 2>/dev/null || {
+          warn "Termux:Float not available - make sure it's installed"
+        }
+      fi
+      sleep 2
+    fi
+    
+    printf "${PASTEL_PINK}Press Enter to open Developer Settings...${RESET} "
     read -r || true
+    
+    # Open developer settings
+    open_developer_settings
+    
+    echo ""
+    pecho "$PASTEL_YELLOW" "Complete the pairing process in the Developer Settings that just opened."
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after completing the pairing setup...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: skipping manual ADB setup"
+    return 0
   fi
   
   # Get pairing details from user
   local ip pairing_port pairing_code
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "Enter the pairing information from the wireless debugging screen:"
     echo ""
     read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip "192.168.1.100"
     read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831"  

@@ -539,6 +539,22 @@ get_fdroid_apk_url(){
   return 0
 }
 
+# Map technical APK names to user-friendly filenames
+get_friendly_apk_name() {
+  local app_name="$1"
+  case "$app_name" in
+    "Termux:API") echo "Termux-API" ;;
+    "Termux:Boot") echo "Termux-Boot" ;;
+    "Termux:Float") echo "Termux-Float" ;;
+    "Termux:Styling") echo "Termux-Styling" ;;
+    "Termux:Tasker") echo "Termux-Tasker" ;;
+    "Termux:Widget") echo "Termux-Widget" ;;
+    "Termux:X11") echo "Termux-X11" ;;
+    "Termux:GUI") echo "Termux-GUI" ;;
+    *) echo "${app_name//:/-}" ;;  # Default: replace colons with hyphens
+  esac
+}
+
 # Download APK from F-Droid with GitHub backup and persistent tracking
 download_fdroid_apk(){
   local package_id="$1"
@@ -562,9 +578,9 @@ download_fdroid_apk(){
   fi
   
   # Create friendly filename (no temp files, direct download)
-  local sanitized_name="${app_name//:/-}"    # Replace colons with hyphens
-  sanitized_name="${sanitized_name// /_}"    # Replace spaces with underscores
-  local output_file="$APK_DOWNLOAD_DIR/${sanitized_name}.apk"
+  local friendly_name
+  friendly_name=$(get_friendly_apk_name "$app_name")
+  local output_file="$APK_DOWNLOAD_DIR/${friendly_name}.apk"
   
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
@@ -1030,10 +1046,10 @@ manage_apks(){
     pecho "$PASTEL_PINK" "=== APK Installation Ready ==="
     echo ""
     pecho "$PASTEL_YELLOW" "Installation process:"
-    pecho "$PASTEL_CYAN" "1. Android security settings will open"
-    pecho "$PASTEL_CYAN" "2. Enable 'Install unknown apps' for Termux"  
-    pecho "$PASTEL_CYAN" "3. File manager will open to APK directory"
-    pecho "$PASTEL_CYAN" "4. Install each APK by tapping on it"
+    pecho "$PASTEL_CYAN" "1. File manager will open to APK directory"
+    pecho "$PASTEL_CYAN" "2. Install each APK by tapping on it"
+    pecho "$PASTEL_CYAN" "3. Android security settings will open"  
+    pecho "$PASTEL_CYAN" "4. Enable 'Install unknown apps' for all Termux apps"
     pecho "$PASTEL_CYAN" "5. Grant all requested permissions for full functionality"
     echo ""
     
@@ -1042,37 +1058,20 @@ manage_apks(){
     echo ""
     
     # All instructions shown, now prompt to begin
-    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    printf "${PASTEL_PINK}Press Enter to open file manager and begin APK installation...${RESET} "
     read -r || true
   else
     info "Non-interactive mode: beginning APK installation process automatically"
   fi
   
-  # Open security settings first
-  open_security_settings
-  
-  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
-    echo ""
-    pecho "$PASTEL_YELLOW" "In the settings that just opened:"
-    pecho "$PASTEL_CYAN" "• Find 'Install unknown apps' or 'Unknown sources'"
-    pecho "$PASTEL_CYAN" "• Enable it for Termux"
-    pecho "$PASTEL_CYAN" "• This allows APK installation from files"
-    echo ""
-    printf "${PASTEL_PINK}Press Enter after enabling 'Install unknown apps' for Termux...${RESET} "
-    read -r || true
-  else
-    info "Non-interactive mode: continuing after settings delay"
-    sleep 5
-  fi
-  
   # Single consolidated wait for installation with clear instructions BEFORE opening file manager
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "Next step - File manager will open:"
+    pecho "$PASTEL_YELLOW" "File manager will now open:"
     pecho "$PASTEL_CYAN" "• Navigate to the CAD-Droid-APKs folder if not already there"
     pecho "$PASTEL_CYAN" "• Install Termux-API.apk FIRST (other plugins depend on it)"
     pecho "$PASTEL_CYAN" "• Then install the remaining APK files by tapping each one"
-    pecho "$PASTEL_CYAN" "• Grant all requested permissions for full functionality"
+    pecho "$PASTEL_CYAN" "• If prompted about 'Install unknown apps', tap Settings and enable it"
     echo ""
     printf "${PASTEL_PINK}Press Enter to open file manager...${RESET} "
     read -r || true
@@ -1091,6 +1090,29 @@ manage_apks(){
   else
     info "Non-interactive mode: auto-continuing after installation delay"
     sleep "${APK_INSTALL_DELAY:-30}"
+  fi
+
+  # AFTER APK installation, open security settings for permissions
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
+    echo ""
+    pecho "$PASTEL_YELLOW" "Final step - Security settings:"
+    pecho "$PASTEL_CYAN" "• Android security settings will now open"
+    pecho "$PASTEL_CYAN" "• Find 'Install unknown apps' or 'Unknown sources'"
+    pecho "$PASTEL_CYAN" "• Enable it for ALL Termux apps (main app and plugins)"
+    pecho "$PASTEL_CYAN" "• This ensures proper functionality for all features"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    read -r || true
+    
+    # Open security settings for final configuration
+    open_security_settings
+    
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after configuring security settings...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after settings delay"
+    sleep 5
   fi
   
   # Run post-installation permission assistant

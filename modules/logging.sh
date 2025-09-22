@@ -234,7 +234,7 @@ run_with_progress(){
     fi
     
     # Clear the entire line more aggressively to prevent ghosting
-    printf "\r\033[2K\033[0G"  # Clear line and move to beginning
+    printf "\r\033[2K"  # Clear entire line and return to beginning
     printf "\033[38;2;175;238;238m%s\033[0m \033[38;2;175;238;238m%-*.*s\033[0m \033[38;2;173;216;230m(%3d%%)\033[0m" \
       "$sym" "$display_width" "$display_width" "$desc" "$pct"
     
@@ -261,7 +261,7 @@ run_with_progress(){
   local dur=$((end_time - start_time))
   
   # Clear progress line and show final result
-  printf "\r\033[2K\033[0G"  # Clear line completely and move to beginning
+  printf "\r\033[2K"  # Clear line completely
   
   local message
   if [ $rc -eq 0 ]; then

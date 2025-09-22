@@ -327,15 +327,38 @@ step_final(){
 }
 
 step_adb(){
-  # Use modular ADB setup from adb module
-  info "Setting up ADB wireless debugging..."
+  # Make ADB setup completely optional with user prompt
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "=== ADB Wireless Debugging Setup ==="
+    echo ""
+    pecho "$PASTEL_CYAN" "ADB wireless debugging allows you to:"
+    pecho "$PASTEL_CYAN" "• Debug Android apps remotely"
+    pecho "$PASTEL_CYAN" "• Access device features from development tools"
+    pecho "$PASTEL_CYAN" "• Enable advanced development workflows"
+    echo ""
+    pecho "$PASTEL_YELLOW" "This will:"
+    pecho "$PASTEL_CYAN" "• Install ADB tools if needed"
+    pecho "$PASTEL_CYAN" "• Optionally launch Termux:Float window for easy access"
+    pecho "$PASTEL_CYAN" "• Guide you through wireless debugging setup"
+    pecho "$PASTEL_CYAN" "• Open developer settings for configuration"
+    echo ""
+    
+    if ! ask_yes_no "Do you want to set up ADB wireless debugging?" "n"; then
+      info "ADB setup skipped by user choice"
+      mark_step_status "skipped"
+      return 0
+    fi
+  fi
   
-  # Check if ADB setup should be skipped
+  # Check if ADB setup should be skipped by environment variables
   if [ "$ENABLE_ADB" != "1" ] || [ "$SKIP_ADB" = "1" ]; then
     info "ADB setup skipped per configuration"
     mark_step_status "skipped"
     return 0
   fi
+  
+  info "Setting up ADB wireless debugging..."
   
   # Call the ADB wireless helper from the adb module
   if declare -f adb_wireless_helper >/dev/null 2>&1; then

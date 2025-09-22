@@ -358,10 +358,10 @@ execute_all_steps() {
   local main_step_index=0
   
   info "Starting installation with $step_count steps..."
-  echo "DEBUG: Step execution starting with step_count=$step_count" >&2
+  [ "${DEBUG_STEPS:-0}" = "1" ] && echo "DEBUG: Step execution starting with step_count=$step_count" >&2
   
   while [ "$main_step_index" -lt "$step_count" ]; do
-    echo "DEBUG: About to execute step $main_step_index (${STEP_NAME[$main_step_index]:-UNKNOWN}) - current step_count=$step_count" >&2
+    [ "${DEBUG_STEPS:-0}" = "1" ] && echo "DEBUG: About to execute step $main_step_index (${STEP_NAME[$main_step_index]:-UNKNOWN}) - current step_count=$step_count" >&2
     
     if ! execute_step "$main_step_index"; then
       # Step failed - decide whether to continue or abort
@@ -374,12 +374,12 @@ execute_all_steps() {
       fi
     fi
     
-    echo "DEBUG: Completed step $main_step_index, about to increment" >&2
+    [ "${DEBUG_STEPS:-0}" = "1" ] && echo "DEBUG: Completed step $main_step_index, about to increment" >&2
     
     # Safe increment
     main_step_index=$(add_int "$main_step_index" 1) || break
     
-    echo "DEBUG: Incremented to main_step_index=$main_step_index, step_count is now ${#STEP_NAME[@]}" >&2
+    [ "${DEBUG_STEPS:-0}" = "1" ] && echo "DEBUG: Incremented to main_step_index=$main_step_index, step_count is now ${#STEP_NAME[@]}" >&2
     
     # Update progress
     local progress
@@ -387,7 +387,7 @@ execute_all_steps() {
     debug "Progress: $progress% ($main_step_index/$step_count steps)"
   done
   
-  echo "DEBUG: Step execution loop finished with main_step_index=$main_step_index, step_count=${#STEP_NAME[@]}" >&2
+  [ "${DEBUG_STEPS:-0}" = "1" ] && echo "DEBUG: Step execution loop finished with main_step_index=$main_step_index, step_count=${#STEP_NAME[@]}" >&2
   
   # Show basic statistics - detailed completion handled by completion module
   show_step_statistics
