@@ -13,16 +13,35 @@ readonly _CAD_MIRROR_CONFIG_LOADED=1
 # Mirror Configuration Arrays
 declare -a TERMUX_MIRRORS=(
   "https://packages.termux.dev/apt/termux-main"
-  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"  
   "https://grimler.se/termux/apt/termux-main"
-  "https://termux.mentality.rip/termux/apt/termux-main"
+  "https://mirror.sahilister.in/termux/apt/termux-main"
+  "https://termux.librehat.com/apt/termux-main"
 )
 
 declare -a X11_MIRRORS=(
   "https://packages.termux.dev/apt/termux-x11"
   "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-x11"
   "https://grimler.se/termux/apt/termux-x11"
-  "https://termux.mentality.rip/termux/apt/termux-x11"
+  "https://mirror.sahilister.in/termux/apt/termux-x11"
+  "https://termux.librehat.com/apt/termux-x11"
+)
+
+# Mirror names corresponding to URLs for user-friendly display
+declare -a TERMUX_MIRROR_NAMES=(
+  "Official Termux (Global)"
+  "Tsinghua University (China)"  
+  "Grimler (Europe)"
+  "Sahilister (India)"
+  "LibreHat (Asia-Pacific)"
+)
+
+declare -a X11_MIRROR_NAMES=(
+  "Official Termux X11 (Global)"
+  "Tsinghua University X11 (China)"
+  "Grimler X11 (Europe)"  
+  "Sahilister X11 (India)"
+  "LibreHat X11 (Asia-Pacific)"
 )
 
 # Mirror test function with spinner integration

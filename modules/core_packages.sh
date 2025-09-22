@@ -44,7 +44,9 @@ apt_install_if_needed(){
   # Try pkg install first (preferred), then fallback to apt install
   # Exit code 100 means package already installed - treat as success
   if command -v pkg >/dev/null 2>&1; then
-    if pkg install -y "$pkg" >/dev/null 2>&1 || [ $? -eq 100 ]; then
+    pkg install -y "$pkg" >/dev/null 2>&1
+    local pkg_result=$?
+    if [ $pkg_result -eq 0 ] || [ $pkg_result -eq 100 ]; then
       ok "$pkg installed successfully via pkg"
       return 0
     else
@@ -53,7 +55,9 @@ apt_install_if_needed(){
   fi
   
   # Fallback to apt install - also handle exit code 100
-  if apt install -y "$pkg" >/dev/null 2>&1 || [ $? -eq 100 ]; then
+  apt install -y "$pkg" >/dev/null 2>&1
+  local apt_result=$?
+  if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
     ok "$pkg installed successfully via apt"
     return 0
   else
@@ -146,17 +150,25 @@ ensure_mirror_applied(){
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
-  # Update package indexes to ensure they're current
-  info "Updating package indexes with selected mirror..."
-  if command -v pkg >/dev/null 2>&1; then
-    run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'
-  else
-    run_with_progress "Update indexes (apt)" 15 bash -c 'apt update >/dev/null 2>&1 || true'
+  # Update package indexes to ensure they're current (silent if already done)
+  if [ "${PACKAGES_UPDATED:-0}" != "1" ]; then
+    # Apply termux-reload-settings first to ensure configuration is loaded
+    if command -v termux-reload-settings >/dev/null 2>&1; then
+      run_with_progress "Reload Termux settings" 3 termux-reload-settings
+    fi
+    
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Update indexes (pkg)" 15 bash -c 'pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Update indexes (apt)" 15 bash -c 'apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1 || true'
+    fi
+    export PACKAGES_UPDATED=1
   fi
   
-  # Add user-facing info for transparency when mirror name is available
-  if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ]; then
+  # Add user-facing info for transparency when mirror name is available (only once)
+  if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ] && [ "${MIRROR_INFO_SHOWN:-0}" != "1" ]; then
     info "Using mirror: ${SELECTED_MIRROR_NAME} for package operations"
+    export MIRROR_INFO_SHOWN=1
   fi
   
   return 0
@@ -215,6 +227,8 @@ install_core_packages(){
     "tmux"            # Terminal multiplexer
     "python"          # Python language
     "openssh"         # SSH client/server
+    "git"             # Version control system
+    "gh"              # GitHub CLI
     "pulseaudio"      # Audio system
     "dbus"            # System bus
     "fontconfig"      # Font management
@@ -299,28 +313,39 @@ install_x11_packages(){
 
 # Update package lists using appropriate Termux commands
 update_package_lists(){
+  if [ "${PACKAGES_UPDATED:-0}" = "1" ]; then
+    return 0  # Already updated this session
+  fi
+  
   info "Updating package lists..."
   
   # Ensure selected mirror is applied before updating
   ensure_mirror_applied
   
+  # Apply termux-reload-settings to ensure configuration is current
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    run_with_progress "Reload Termux settings" 3 termux-reload-settings
+  fi
+  
   # Try pkg update first (preferred Termux command), then fallback to apt update
   if command -v pkg >/dev/null 2>&1; then
     if run_with_progress "Update package lists (pkg)" 30 bash -c '
-      pkg update -y >/dev/null 2>&1
+      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
     '; then
       ok "Package lists updated via pkg"
+      export PACKAGES_UPDATED=1
       return 0
     else
       warn "pkg update failed, trying apt update..."
     fi
   fi
   
-  # Fallback to apt update
+  # Fallback to apt update with proper options
   if run_with_progress "Update package lists (apt)" 30 bash -c '
     apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
   '; then
     ok "Package lists updated via apt"
+    export PACKAGES_UPDATED=1
     return 0
   else
     warn "Package list update failed"

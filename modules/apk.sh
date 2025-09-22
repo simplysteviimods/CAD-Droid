@@ -307,7 +307,7 @@ select_apk_directory(){
   info "  2. Choose custom location with file picker"
   echo ""
   
-  local choice
+  local choice=1
   if ! read_option "Select option" choice 1 2 1; then
     info "Using default location"
     return 0

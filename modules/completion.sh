@@ -15,7 +15,7 @@ show_completion_summary(){
   info "CAD-Droid setup completed successfully!"
   
   printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
-  printf "${PASTEL_CYAN}                    🎉 SETUP COMPLETE! 🎉                     ${RESET}\n"
+  printf "${PASTEL_CYAN}                     SETUP COMPLETE!                      ${RESET}\n"
   printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
   
   printf "${PASTEL_LAVENDER}Your Android device is now a powerful development workstation!${RESET}\n\n"

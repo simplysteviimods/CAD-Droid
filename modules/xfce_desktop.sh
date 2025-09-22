@@ -50,17 +50,22 @@ declare -a XFCE_OPTIONAL_PACKAGES=(
 install_termux_xfce(){
   info "Installing XFCE desktop environment in Termux..."
   
-  # Update repositories first
-  if ! run_with_progress "Update package lists" 15 bash -c 'apt-get update >/dev/null 2>&1'; then
-    warn "Package list update had issues, continuing anyway"
+  # Update repositories first (silent if already done)
+  if [ "${PACKAGES_UPDATED:-0}" != "1" ]; then
+    if ! run_with_progress "Update package lists" 15 bash -c 'apt-get update >/dev/null 2>&1'; then
+      warn "Package list update had issues, continuing anyway"
+    fi
   fi
   
-  # Install core XFCE packages
+  # Install core XFCE packages with detailed progress
   local installed_count=0
   local failed_packages=()
+  local total_packages=${#TERMUX_XFCE_PACKAGES[@]}
+  local current=0
   
   for package in "${TERMUX_XFCE_PACKAGES[@]}"; do
-    if apt_install_with_spinner "$package"; then
+    current=$((current + 1))
+    if run_with_progress "Install $package ($current/$total_packages)" 30 apt_install_if_needed "$package"; then
       installed_count=$((installed_count + 1))
     else
       failed_packages+=("$package")

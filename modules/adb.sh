@@ -471,3 +471,143 @@ disconnect_adb(){
     ok "ADB disconnected"
   fi
 }
+
+# === Critical System Configuration ===
+
+# Disable phantom process killer (CRITICAL for app stability)
+disable_phantom_process_killer(){
+  printf "\n${PASTEL_RED}CRITICAL SYSTEM CONFIGURATION${RESET}\n"
+  printf "${PASTEL_YELLOW}═══════════════════════════════════════${RESET}\n\n"
+  
+  printf "${PASTEL_CYAN}What is the Phantom Process Killer?${RESET}\n"
+  printf "Android's phantom process killer terminates background processes\n"
+  printf "to save battery, but this breaks many useful apps and services.\n\n"
+  
+  printf "${PASTEL_RED}Why disable it?${RESET}\n"
+  printf "${PASTEL_CYAN}├─${RESET} Prevents apps from being randomly terminated\n"
+  printf "${PASTEL_CYAN}├─${RESET} Allows background services to run reliably\n"
+  printf "${PASTEL_CYAN}├─${RESET} Enables better multitasking and automation\n"
+  printf "${PASTEL_CYAN}└─${RESET} Essential for development and power user workflows\n\n"
+  
+  # Test ADB connection first
+  if ! test_adb_connection >/dev/null 2>&1; then
+    printf "${PASTEL_RED}WARNING: ADB not connected!${RESET}\n"
+    printf "Please complete ADB wireless setup first.\n\n"
+    return 1
+  fi
+  
+  printf "${PASTEL_GREEN}✓${RESET} ADB connection verified\n"
+  printf "${PASTEL_YELLOW}Disabling phantom process killer...${RESET}\n"
+  
+  # Execute the critical command
+  if adb shell "settings put global settings_enable_monitor_phantom_procs false" 2>/dev/null; then
+    printf "${PASTEL_GREEN}SUCCESS!${RESET} Phantom process killer disabled\n"
+    printf "${PASTEL_CYAN}Your apps will now run more reliably in the background.${RESET}\n\n"
+    
+    # Verify the setting
+    local current_setting
+    current_setting=$(adb shell "settings get global settings_enable_monitor_phantom_procs" 2>/dev/null | tr -d '\r\n')
+    if [ "$current_setting" = "false" ] || [ "$current_setting" = "null" ]; then
+  printf "${PASTEL_GREEN}Setting verified: phantom process killer is OFF\n"
+      return 0
+    else
+      printf "${PASTEL_YELLOW}WARNING:${RESET} Setting verification: current value is '$current_setting'\n"
+      return 0
+    fi
+  else
+    printf "${PASTEL_RED}FAILED${RESET} to disable phantom process killer\n"
+    printf "This may be due to insufficient ADB permissions.\n"
+    printf "Try: Settings → Developer Options → Disable 'Remove background activities'\n\n"
+    return 1
+  fi
+}
+
+# Enhanced ADB setup with phantom process killer emphasis
+setup_adb_with_phantom_killer(){
+  printf "\n${PASTEL_PINK}═══ ADB SETUP - CRITICAL FOR SYSTEM STABILITY ═══${RESET}\n\n"
+  
+  printf "${PASTEL_RED}IMPORTANT:${RESET} ${PASTEL_YELLOW}ADB setup is essential for disabling the phantom process killer!${RESET}\n"
+  printf "Without this step, your apps may be randomly terminated by Android.\n\n"
+  
+  # Run normal ADB setup
+  if ! setup_adb_wireless; then
+    printf "${PASTEL_RED}WARNING: ADB setup failed or incomplete${RESET}\n"
+    printf "You can retry this later, but phantom process killer will remain active.\n"
+    return 1
+  fi
+  
+  # Now disable phantom process killer
+  printf "\n${PASTEL_YELLOW}Now for the critical step...${RESET}\n"
+  sleep 2
+  
+  disable_phantom_process_killer
+}
+
+# === Termux:Boot Integration ===
+
+# Set up automatic phantom process killer disable via Termux:Boot
+setup_termux_boot_phantom_killer(){
+  info "Setting up automatic phantom process killer disable via Termux:Boot..."
+  
+  # Create boot directory
+  local boot_dir="$HOME/.termux/boot"
+  mkdir -p "$boot_dir" 2>/dev/null || true
+  
+  # Create boot script for phantom process killer
+  local boot_script="$boot_dir/disable-phantom-killer.sh"
+  cat > "$boot_script" << 'BOOT_SCRIPT_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Termux:Boot script to disable phantom process killer on device boot
+# This ensures the phantom process killer is always disabled
+
+# Wait a bit for system to be ready
+sleep 30
+
+# Check if ADB is available
+if command -v adb >/dev/null 2>&1; then
+    # Try to disable phantom process killer
+    if adb shell "settings put global settings_enable_monitor_phantom_procs false" 2>/dev/null; then
+        echo "$(date): Phantom process killer disabled via boot script" >> ~/.termux/boot/phantom-killer.log
+    else
+        echo "$(date): Failed to disable phantom process killer - ADB not ready" >> ~/.termux/boot/phantom-killer.log
+    fi
+else
+    echo "$(date): ADB not available for phantom process killer disable" >> ~/.termux/boot/phantom-killer.log
+fi
+BOOT_SCRIPT_EOF
+
+  chmod +x "$boot_script"
+  ok "Termux:Boot phantom process killer disable script created"
+  
+  # Also add fallback to widget shortcuts
+  add_phantom_killer_fallback_to_widgets
+}
+
+# Add phantom process killer fallback to existing widget shortcuts
+add_phantom_killer_fallback_to_widgets(){
+  info "Adding phantom process killer fallback to widget shortcuts..."
+  
+  local widget_shortcuts="$HOME/.shortcuts"
+  
+  # Update all existing widgets to include phantom killer disable as fallback
+  for widget in "$widget_shortcuts"/*; do
+    if [ -f "$widget" ] && [ "$(basename "$widget")" != "phantom-killer" ]; then
+      # Add phantom killer disable to the beginning of each widget
+      local temp_file=$(mktemp)
+      {
+        echo "#!/data/data/com.termux/files/usr/bin/bash"
+        echo "# Auto-disable phantom process killer when using widgets"
+        echo "if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -q device; then"
+        echo "  adb shell 'settings put global settings_enable_monitor_phantom_procs false' 2>/dev/null || true"
+        echo "fi"
+        echo ""
+        tail -n +2 "$widget"  # Skip the first shebang line
+      } > "$temp_file"
+      
+      mv "$temp_file" "$widget"
+      chmod +x "$widget"
+    fi
+  done
+  
+  ok "Phantom process killer fallback added to all widgets"
+}
