@@ -331,13 +331,14 @@ download_essential_apks(){
     pecho "$PASTEL_GREEN" "1. Install each APK manually from the file manager"
     pecho "$PASTEL_GREEN" "2. Grant the requested permissions for full functionality"
     echo ""
+    printf "${PASTEL_YELLOW}Press Enter to review Termux permissions and continue...${RESET} "
+    read -r
+    
     pecho "$PASTEL_CYAN" "What will happen next:"
     info "• Android App Settings will open"
     info "• You can review app permissions there if needed"
     info "• APK downloads will begin automatically"
     echo ""
-    printf "${PASTEL_YELLOW}Press Enter to open permission settings and continue with download...${RESET} "
-    read -r
     
     # Open Android app permission settings
     if command -v am >/dev/null 2>&1; then

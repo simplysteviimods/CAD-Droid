@@ -125,6 +125,31 @@ wait_for_termux_api(){
     return 0
   fi
   
+  # Ask user if they want Termux:API (make it optional)
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "Termux:API Installation (Optional)"
+    echo ""
+    pecho "$PASTEL_CYAN" "Termux:API provides useful functions to access:"
+    info "• GPS location and sensors"
+    info "• Camera and flashlight control"
+    info "• WiFi info and network details"
+    info "• Phone calls and SMS features"
+    info "• System notifications and clipboard"
+    info "• Battery status and device info"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Termux:API is useful for development tasks but not required for basic setup."
+    echo ""
+    
+    if ask_yes_no "Do you want to install Termux:API?" "y"; then
+      info "Checking for Termux:API installation..."
+    else
+      info "Skipping Termux:API installation"
+      TERMUX_API_VERIFIED="skipped_by_user"
+      return 0
+    fi
+  fi
+  
   local max_attempts="${TERMUX_API_WAIT_MAX:-4}" 
   local delay_seconds="${TERMUX_API_WAIT_DELAY:-3}"
   local current_attempt=1  # Initialize counter safely
@@ -162,6 +187,17 @@ wait_for_termux_api(){
       break  # Safety break to prevent infinite loops
     fi
   done
+  
+  # Final check - if still not found, offer to skip
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    warn "Termux:API not detected after $max_attempts attempts"
+    if ask_yes_no "Continue without Termux:API?" "y"; then
+      info "Continuing setup without Termux:API"
+      TERMUX_API_VERIFIED="skipped_after_attempts"
+      return 0
+    fi
+  fi
   
   TERMUX_API_VERIFIED="no"
   debug "Termux:API unavailable after ${max_attempts} attempts"

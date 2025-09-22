@@ -315,10 +315,20 @@ select_apk_directory(){
   
   if [ "$choice" = "2" ]; then
     info "Opening file picker... Please select a folder for APK downloads."
+    echo ""
+    pecho "$PASTEL_CYAN" "Instructions:"
+    info "• The Android file picker will open"
+    info "• Navigate to your desired folder" 
+    info "• Tap any file in that folder to select it"
+    info "• You have 60 seconds to make your selection"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Press Enter to open the file picker..."
+    read -r || true
     
-    # Try to get directory using termux-storage-get
+    # Try to get directory using termux-storage-get with longer timeout
     local selected_dir
-    if selected_dir=$(termux-storage-get 2>/dev/null | head -1); then
+    info "Opening file picker (60 second timeout)..."
+    if selected_dir=$(timeout 60 termux-storage-get 2>/dev/null | head -1); then
       if [ -n "$selected_dir" ] && [ -d "$(dirname "$selected_dir")" ]; then
         USER_SELECTED_APK_DIR="$(dirname "$selected_dir")/CAD-Droid-APKs"
         info "Selected custom location: $USER_SELECTED_APK_DIR"
@@ -326,7 +336,7 @@ select_apk_directory(){
         warn "Invalid selection, using default location"
       fi
     else
-      warn "File picker failed, using default location"
+      warn "File picker timeout or cancelled, using default location"
     fi
   fi
   
