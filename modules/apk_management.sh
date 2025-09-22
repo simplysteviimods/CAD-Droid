@@ -12,15 +12,14 @@ readonly _CAD_APK_MANAGEMENT_LOADED=1
 
 # APK Configuration
 readonly APK_DOWNLOAD_DIR="$HOME/storage/downloads/cad-droid-apks"
-readonly APK_TEMP_DIR="$TMPDIR/apk_downloads"
+readonly APK_TEMP_DIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/apk_downloads"
 
 # F-Droid API configuration
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"
 readonly FDROID_REPO_BASE="https://f-droid.org/repo"
 
-# Essential APKs from F-Droid with their package IDs
+# Essential APKs from F-Droid with their package IDs - Only Termux plugins
 declare -A ESSENTIAL_APKS=(
-  ["Termux"]="com.termux"
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
   ["Termux:Float"]="com.termux.float"
@@ -28,6 +27,7 @@ declare -A ESSENTIAL_APKS=(
   ["Termux:Tasker"]="com.termux.tasker"
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
+  ["Termux:GUI"]="com.termux.gui"
 )
 
 # Initialize APK management system
@@ -188,8 +188,12 @@ download_fdroid_apk(){
     "com.termux.x11")
       github_url="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
       ;;
+    "com.termux.gui")
+      github_url="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
+      ;;
+    # Non-Termux APKs don't have GitHub fallbacks, rely on F-Droid
     *)
-      err "No GitHub backup available for $app_name"
+      err "No GitHub backup available for $app_name (F-Droid only)"
       return 1
       ;;
   esac
@@ -208,9 +212,38 @@ download_fdroid_apk(){
   return 1
 }
 
-# Download all essential APKs before user interaction
+# Download all essential APKs after user confirms permissions
 download_essential_apks(){
-  info "Pre-downloading essential APKs from F-Droid..."
+  info "Preparing to download essential Termux plugin APKs..."
+  
+  # Show permission prompt before downloading
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== Termux Plugin Permissions Required ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "The following Termux plugins will be downloaded and require specific permissions:"
+    echo ""
+    pecho "$PASTEL_CYAN" "• Termux:API - Phone, SMS, Location, Camera, Microphone permissions"
+    pecho "$PASTEL_CYAN" "• Termux:Boot - Boot permission to start services automatically"
+    pecho "$PASTEL_CYAN" "• Termux:Widget - Display over other apps permission"
+    pecho "$PASTEL_CYAN" "• Other plugins - Standard app permissions"
+    echo ""
+    pecho "$PASTEL_PINK" "After downloading, you'll need to:"
+    pecho "$PASTEL_GREEN" "1. Install each APK manually from the file manager"
+    pecho "$PASTEL_GREEN" "2. Grant the requested permissions for full functionality"
+    echo ""
+    printf "${PASTEL_YELLOW}Press Enter to open permission settings and continue with download...${RESET} "
+    read -r
+    
+    # Open Android app permission settings
+    if command -v am >/dev/null 2>&1; then
+      info "Opening Android permission settings..."
+      am start -a android.settings.APPLICATION_SETTINGS >/dev/null 2>&1 || true
+      sleep 2  # Give user time to see the settings opened
+    fi
+  fi
+  
+  info "Downloading essential Termux plugin APKs..."
   
   local download_count=0
   local success_count=0
@@ -311,7 +344,7 @@ check_apk_permissions(){
   for i in "${!install_order[@]}"; do
     local app="${install_order[$i]}"
     local num=$((i + 1))
-    printf "${PASTEL_CYAN}%d.${RESET} ${PASTEL_LAVENDER}%s${RESET}\n" "$num" "$app"
+    printf "${PASTEL_CYAN}%d.${RESET} ${PASTEL_PURPLE}%s${RESET}\n" "$num" "$app"
     
     # Add specific permission requirements
     case "$app" in
@@ -403,10 +436,6 @@ assist_apk_permissions(){
     esac
   fi
 }
-  done
-  
-  printf "\n${PASTEL_YELLOW}Important:${RESET} Grant all requested permissions during installation\n\n"
-}
 
 # Main APK management function
 manage_apks(){
@@ -474,4 +503,5 @@ export -f init_apk_system
 export -f download_fdroid_apk
 export -f download_essential_apks
 export -f open_apk_directory
-export -f manage_
+export -f manage_apks
+export -f cleanup_apk_temp

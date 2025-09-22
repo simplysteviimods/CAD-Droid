@@ -114,9 +114,12 @@ load_all_modules() {
   # 3. Specialized modules (can be loaded in any order)
   load_module "termux_props"
   load_module "apk"
+  load_module "apk_management"
   load_module "adb"
   load_module "core_packages"
+  load_module "mirror_config"
   load_module "nano"
+  load_module "xfce_desktop"
 
   # 4. Enhanced feature modules
   load_module "snapshots"
@@ -125,6 +128,9 @@ load_all_modules() {
   load_module "widgets"
   load_module "diagnostics"
   load_module "complete_steps"
+  load_module "completion"
+  load_module "feature_parity"
+  load_module "help"
 
   pecho "$PASTEL_PINK" "✓ All modules loaded successfully"
   
@@ -215,54 +221,67 @@ step_apk(){
     return 0
   fi
   
-  # Start F-Droid APK downloads BEFORE file picker
+  # Follow original setup approach - setup directory first, then download
+  select_apk_directory || {
+    warn "APK directory setup failed, using fallback"
+    USER_SELECTED_APK_DIR="/storage/emulated/0/Download/CAD-Droid-APKs"
+    mkdir -p "$USER_SELECTED_APK_DIR" 2>/dev/null || true
+  }
+  
+  # Start F-Droid APK downloads like original
   info "Starting F-Droid APK downloads..."
-  local temp_apk_dir="/storage/emulated/0/Download/CAD-Droid-APKs-temp"
-  mkdir -p "$temp_apk_dir" 2>/dev/null || true
+  local failed=0
+  APK_MISSING=()
   
-  # Download essential Termux APKs from F-Droid
-  local apk_success=0
-  local apk_total=4
-  
-  if run_with_progress "Download Termux:API" 30 bash -c '
-    fetch_termux_addon "Termux-API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
-  '; then
-    apk_success=$((apk_success + 1))
+  # Download essential Termux APKs using original approach
+  if ! fetch_termux_addon "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:API")
+    failed=$((failed + 1))
   fi
   
-  if run_with_progress "Download Termux:GUI" 30 bash -c '
-    fetch_termux_addon "Termux-GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
-  '; then
-    apk_success=$((apk_success + 1))
+  if ! fetch_termux_addon "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:X11")
+    failed=$((failed + 1))
   fi
   
-  if run_with_progress "Download Termux:X11" 30 bash -c '
-    fetch_termux_addon "Termux-X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
-  '; then
-    apk_success=$((apk_success + 1))
+  if ! fetch_termux_addon "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:GUI")
+    failed=$((failed + 1))
   fi
   
-  if run_with_progress "Download Termux:Widget" 30 bash -c '
-    fetch_termux_addon "Termux-Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "'$temp_apk_dir'" >/dev/null 2>&1
-  '; then
-    apk_success=$((apk_success + 1))
+  if ! fetch_termux_addon "Termux:Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:Widget")
+    failed=$((failed + 1))
   fi
   
-  info "Downloaded $apk_success/$apk_total APK files"
-  
-  # NOW show file picker for final destination
-  select_apk_directory
-  
-  # Move downloaded APKs to user-selected directory
-  if [ -d "$temp_apk_dir" ] && [ "$apk_success" -gt 0 ]; then
-    run_with_progress "Moving APKs to selected directory" 10 bash -c '
-      mv "'$temp_apk_dir'"/*.apk "'${USER_SELECTED_APK_DIR:-/storage/emulated/0/Download/CAD-Droid-APKs}'"/ 2>/dev/null || true
-      rmdir "'$temp_apk_dir'" 2>/dev/null || true
-    '
+  # Show download results
+  if [ "$failed" -eq 0 ]; then
+    ok "All APKs downloaded successfully to: $USER_SELECTED_APK_DIR"
+  else
+    warn "$failed APK(s) failed to download"
   fi
   
-  # Setup the final APK directory
-  setup_apk_directory || true
+  # Open APK directory and provide permission guidance AFTER downloads
+  info "Opening APK directory for installation..."
+  open_file_manager "$USER_SELECTED_APK_DIR" || warn "Could not open APK directory"
+  
+  # Provide permission instructions after downloads
+  echo ""
+  pecho "$PASTEL_YELLOW" "PERMISSION SETUP REQUIRED:"
+  info "After installing each APK, configure permissions:"
+  info "• Termux:API - Phone, SMS, Location, Camera, Microphone"
+  info "• Termux:X11 - Display over other apps, Battery optimization disabled"
+  info "• Other APKs - Standard app permissions as requested"
+  echo ""
+  
+  # Pause for manual installation like original
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    info "Install APK files by tapping them, configure permissions, then press Enter..."
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
+    sleep "${APK_PAUSE_TIMEOUT:-45}"
+  fi
   
   mark_step_status "success"
 }
@@ -278,25 +297,34 @@ step_usercfg(){
 step_prefetch(){
   info "Prefetching packages for offline use..."
   
-  # Ensure selected mirror is applied before prefetching packages  
-  ensure_mirror_applied
+  # Use modular package list updating to ensure indexes are current
+  update_package_lists || {
+    warn "Failed to update package lists, proceeding with prefetch anyway"
+  }
   
+  # Download core packages for offline installation
   if command -v pkg >/dev/null 2>&1; then
-    run_with_progress "Download package lists (pkg)" 30 bash -c 'pkg update -y >/dev/null 2>&1' || true
     run_with_progress "Download core packages (pkg)" 30 bash -c 'pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
   else
-    run_with_progress "Download package lists (apt)" 30 bash -c 'apt update >/dev/null 2>&1' || true
     run_with_progress "Download core packages (apt)" 30 bash -c 'apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
   fi
+  
   mark_step_status "success"  
 }
 
 step_xfce(){
-  info "Installing XFCE desktop environment for Termux and containers..."
-  # Install XFCE for Termux first
-  step_xfce_termux || true
-  # Then install X11 packages for container compatibility  
-  install_x11_packages || true
+  info "Installing XFCE desktop environment..."
+  
+  # Use modular XFCE desktop installation which handles both Termux and containers
+  if declare -f install_xfce_desktop >/dev/null 2>&1; then
+    install_xfce_desktop || true
+  else
+    # Fallback to existing approach if xfce_desktop module not available
+    warn "XFCE desktop module not available, using fallback approach"
+    step_xfce_termux || true
+    install_x11_packages || true
+  fi
+  
   mark_step_status "success"
 }
 
@@ -310,6 +338,27 @@ step_final(){
   info "Finalizing configuration..."
   configure_nano_editor || true
   set_nano_as_default || true
+  mark_step_status "success"
+}
+
+step_adb(){
+  # Use modular ADB setup from adb module
+  info "Setting up ADB wireless debugging..."
+  
+  # Check if ADB setup should be skipped
+  if [ "$ENABLE_ADB" != "1" ] || [ "$SKIP_ADB" = "1" ]; then
+    info "ADB setup skipped per configuration"
+    mark_step_status "skipped"
+    return 0
+  fi
+  
+  # Call the ADB wireless helper from the adb module
+  if declare -f adb_wireless_helper >/dev/null 2>&1; then
+    adb_wireless_helper || true
+  else
+    warn "ADB module functions not available, skipping ADB setup"
+  fi
+  
   mark_step_status "success"
 }
 
