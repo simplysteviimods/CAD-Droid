@@ -358,8 +358,11 @@ execute_all_steps() {
   local i=0
   
   info "Starting installation with $step_count steps..."
+  echo "DEBUG: Step execution starting with step_count=$step_count" >&2
   
   while [ "$i" -lt "$step_count" ]; do
+    echo "DEBUG: About to execute step $i (${STEP_NAME[$i]:-UNKNOWN}) - current step_count=$step_count" >&2
+    
     if ! execute_step "$i"; then
       # Step failed - decide whether to continue or abort
       local step_name="${STEP_NAME[$i]}"
@@ -371,14 +374,20 @@ execute_all_steps() {
       fi
     fi
     
+    echo "DEBUG: Completed step $i, about to increment" >&2
+    
     # Safe increment
     i=$(add_int "$i" 1) || break
+    
+    echo "DEBUG: Incremented to i=$i, step_count is now ${#STEP_NAME[@]}" >&2
     
     # Update progress
     local progress
     progress=$(calculate_progress "$i" 0)
     debug "Progress: $progress% ($i/$step_count steps)"
   done
+  
+  echo "DEBUG: Step execution loop finished with i=$i, step_count=${#STEP_NAME[@]}" >&2
   
   # Show basic statistics - detailed completion handled by completion module
   show_step_statistics
