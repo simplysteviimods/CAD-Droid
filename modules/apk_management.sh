@@ -237,8 +237,6 @@ download_fdroid_apk(){
   local package_id="$1"
   local app_name="${2:-$package_id}"
   
-  info "Downloading $app_name..."
-  
   # Add to pending list
   PENDING_APKS+=("$app_name")
   save_apk_state
@@ -262,10 +260,19 @@ download_fdroid_apk(){
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
   
-  # Try F-Droid first
+  # Try F-Droid first with proper spinner
   local download_url
   if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
-    if download_with_spinner "$download_url" "$output_file" "Download $app_name (F-Droid)"; then
+    if run_with_progress "Download $app_name from F-Droid" 30 bash -c "
+      if command -v wget >/dev/null 2>&1; then
+        wget -q --timeout=30 --tries=3 -O '$output_file' '$download_url'
+      elif command -v curl >/dev/null 2>&1; then
+        curl -sL --max-time 30 --retry 3 -o '$output_file' '$download_url'
+      else
+        echo 'No download tool available' >&2
+        exit 1
+      fi
+    "; then
       # Verify download
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
         ok "$app_name downloaded successfully from F-Droid"
@@ -309,7 +316,16 @@ download_fdroid_apk(){
   esac
   
   if [ -n "$github_url" ]; then
-    if download_with_spinner "$github_url" "$output_file" "Download $app_name (GitHub)"; then
+    if run_with_progress "Download $app_name from GitHub" 45 bash -c "
+      if command -v wget >/dev/null 2>&1; then
+        wget -q --timeout=45 --tries=3 -O '$output_file' '$github_url'
+      elif command -v curl >/dev/null 2>&1; then
+        curl -sL --max-time 45 --retry 3 -o '$output_file' '$github_url'
+      else
+        echo 'No download tool available' >&2
+        exit 1
+      fi
+    "; then
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
         ok "$app_name downloaded successfully from GitHub"
         # Update tracking arrays

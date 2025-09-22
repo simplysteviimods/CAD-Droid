@@ -34,17 +34,22 @@ show_completion_summary(){
   printf "${PASTEL_YELLOW}IMPORTANT: Termux restart required to apply all changes${RESET}\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    pecho "$PASTEL_CYAN" "Press Enter to restart Termux and complete setup..."
+    pecho "$PASTEL_CYAN" "Press Enter to logout and exit Termux to complete setup..."
     read -r || true
     
-    # Force Termux restart by killing the app
-    info "Restarting Termux to apply all changes..."
-    sleep 2
+    # Force logout and exit to complete installation
+    info "Logging out and exiting Termux to apply all changes..."
+    info "Please manually restart Termux after it exits to complete setup."
+    sleep 3
+    
+    # Kill current session to force logout
     if command -v am >/dev/null 2>&1; then
-      # Kill Termux app to force restart
+      # First try graceful exit
       am force-stop com.termux >/dev/null 2>&1 || true
     fi
-    exit 0
+    
+    # Force exit of current shell
+    exec exit 0
   else
     printf "${PASTEL_PINK}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
   fi

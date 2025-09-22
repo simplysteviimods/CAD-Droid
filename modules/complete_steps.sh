@@ -452,14 +452,15 @@ if command -v apt-get >/dev/null 2>&1; then
   apt-get update >/dev/null 2>&1
   
   # Download packages in batches with clear progress  
-  echo "Downloading ${#prefetch_packages[@]} development packages in batches..."
   local batch_size=5
   local batch_num=1
   local total_batches=\$(( (${#prefetch_packages[@]} + batch_size - 1) / batch_size ))
   
+  echo "Processing \$total_batches batches of development packages..."
+  
   for ((i=0; i<${#prefetch_packages[@]}; i+=batch_size)); do
     local batch=("\${prefetch_packages[@]:i:batch_size}")
-    echo "Processing batch \$batch_num/\$total_batches: \${batch[*]}"
+    echo "Batch \$batch_num/\$total_batches: \${batch[*]}"
     apt-get -o Acquire::http::No-Cache=true \\
             -o Acquire::https::No-Cache=true \\
             --download-only -y install "\${batch[@]}" >/dev/null 2>&1 || {
@@ -488,7 +489,7 @@ PREFETCH_EOF
     chmod +x "$prefetch_script" 2>/dev/null || true
     
     # Run prefetch in container
-    run_with_progress "Download container packages for offline installation" 180 \
+    run_with_progress "Download development packages for offline use" 180 \
         proot-distro login "$container_name" -- bash < "$prefetch_script"
     
     # Clean up
