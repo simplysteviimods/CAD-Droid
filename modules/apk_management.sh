@@ -31,7 +31,8 @@ readonly FDROID_API_BASE="https://f-droid.org/api/v1"
 readonly FDROID_REPO_BASE="https://f-droid.org/repo"
 
 # Essential APKs from F-Droid with their package IDs - Complete Termux plugin suite
-declare -A ESSENTIAL_APKS=(
+declare -gA ESSENTIAL_APKS 2>/dev/null || true
+ESSENTIAL_APKS=(
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
   ["Termux:Float"]="com.termux.float"
@@ -363,11 +364,25 @@ download_fdroid_apk(){
 download_essential_apks(){
   info "Downloading essential Termux plugin APKs..."
   
+  # Ensure ESSENTIAL_APKS is properly declared and accessible
+  if ! declare -p ESSENTIAL_APKS >/dev/null 2>&1; then
+    err "ESSENTIAL_APKS array not properly declared"
+    return 1
+  fi
+  
+  # Get APK count with error handling
+  local apk_count=0
+  if [ "${#ESSENTIAL_APKS[@]}" -gt 0 ]; then
+    apk_count=${#ESSENTIAL_APKS[@]}
+  else
+    err "No APKs defined in ESSENTIAL_APKS"
+    return 1
+  fi
+  
   # Brief informational message only - no user interaction during downloads
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
     pecho "$PASTEL_CYAN" "Downloading Termux plugins automatically..."
-    local apk_count=${#ESSENTIAL_APKS[@]}
     pecho "$PASTEL_YELLOW" "• $apk_count APK files will be downloaded"
     pecho "$PASTEL_YELLOW" "• Permission setup will follow after all downloads complete"
     echo ""
@@ -376,7 +391,6 @@ download_essential_apks(){
   local download_count=0
   local success_count=0
   local failed_apks=()
-  local apk_count=${#ESSENTIAL_APKS[@]}
   
   # Download all APKs automatically without user prompts
   for app_name in "${!ESSENTIAL_APKS[@]}"; do
