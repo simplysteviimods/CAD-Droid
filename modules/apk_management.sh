@@ -358,8 +358,10 @@ fetch_github_release(){
     return 1
   fi
   
-  # Use original filename if available, otherwise use app name
-  local final_filename="${original_filename:-${app_name}.apk}"
+  # Use original filename if available, otherwise use sanitized app name
+  local sanitized_app_name="${app_name//:/-}"  # Replace colons with hyphens
+  sanitized_app_name="${sanitized_app_name// /_}"   # Replace spaces with underscores
+  local final_filename="${original_filename:-${sanitized_app_name}.apk}"
   local out="$outdir/$final_filename"
   
   # Download the APK file with original name
@@ -393,15 +395,19 @@ fetch_termux_addon(){
     fi
   fi
   
+  # Sanitize filename by replacing colons and spaces with safe characters
+  local safe_name="${name//:/-}"  # Replace colons with hyphens
+  safe_name="${safe_name// /_}"   # Replace spaces with underscores
+  
   # Always prioritize F-Droid first for consistency across all APKs
   if [ "$prefer" = "0" ]; then
     # Try F-Droid first by default for all APKs (including Termux:GUI)
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if fetch_fdroid_api "$pkg" "$outdir/${safe_name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${safe_name}.apk"; then
       success=1
     fi
   else
     # Legacy: if F-Droid is explicitly preferred (keep for compatibility)
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if fetch_fdroid_api "$pkg" "$outdir/${safe_name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${safe_name}.apk"; then
       success=1
     fi
   fi
@@ -409,7 +415,7 @@ fetch_termux_addon(){
   # Fall back to GitHub only if F-Droid failed
   if [ $success -eq 0 ]; then
     if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$safe_name"; then
         success=1
       fi
     fi
@@ -556,7 +562,9 @@ download_fdroid_apk(){
   fi
   
   # Create friendly filename (no temp files, direct download)
-  local output_file="$APK_DOWNLOAD_DIR/${app_name// /_}.apk"
+  local sanitized_name="${app_name//:/-}"    # Replace colons with hyphens
+  sanitized_name="${sanitized_name// /_}"    # Replace spaces with underscores
+  local output_file="$APK_DOWNLOAD_DIR/${sanitized_name}.apk"
   
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
