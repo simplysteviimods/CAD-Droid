@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
-# CAD-Droid Logging Module
-# Logging functions, output formatting, and progress display
+# CAD-Droid Logging Library
+# Logging functions and output formatting for consistent messaging
 ###############################################################################
 
 # Prevent multiple inclusion
@@ -10,371 +10,317 @@ if [ -n "${_CAD_LOGGING_LOADED:-}" ]; then
 fi
 readonly _CAD_LOGGING_LOADED=1
 
+# === Logging Configuration ===
+
+# Log levels
+readonly LOG_LEVEL_DEBUG=0
+readonly LOG_LEVEL_INFO=1
+readonly LOG_LEVEL_WARN=2
+readonly LOG_LEVEL_ERROR=3
+
+# Current log level (can be overridden by environment)
+CURRENT_LOG_LEVEL="${LOG_LEVEL:-$LOG_LEVEL_INFO}"
+
+# Log file location (if logging to file is enabled)
+LOG_FILE="${RUN_LOG:+$HOME/cad-droid-setup.log}"
+
+# === Terminal Utilities ===
+
+# Get terminal width with fallback
+get_terminal_width() {
+  local width=80
+  
+  if command -v tput >/dev/null 2>&1; then
+    width=$(tput cols 2>/dev/null || echo 80)
+  elif [ -n "${COLUMNS:-}" ]; then
+    width="$COLUMNS"
+  fi
+  
+  # Validate and constrain width
+  case "$width" in
+    *[!0-9]*) width=80 ;;
+    *) 
+      [ "$width" -lt 40 ] && width=40
+      [ "$width" -gt 200 ] && width=200
+      ;;
+  esac
+  
+  echo "$width"
+}
+
+# Strip ANSI escape sequences for length calculation
+strip_ansi() {
+  local text="$1"
+  echo "$text" | sed 's/\x1b\[[0-9;]*m//g'
+}
+
+# Get actual text length without ANSI codes
+get_text_length() {
+  local text="$1"
+  local clean_text
+  clean_text=$(strip_ansi "$text")
+  echo "${#clean_text}"
+}
+
 # === Core Logging Functions ===
 
-# Print colored text with automatic color reset
-# Parameters: color_escape_sequence, text_to_print
-pecho(){ 
-  local c="${1:-$FALLBACK_COLOR}"
+# Write to log file if enabled
+write_to_log() {
+  local level="$1"
+  local message="$2"
+  
+  if [ -n "$LOG_FILE" ]; then
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local clean_message
+    clean_message=$(strip_ansi "$message")
+    echo "[$timestamp] [$level] $clean_message" >> "$LOG_FILE"
+  fi
+}
+
+# Debug messages (only shown when DEBUG=1)
+debug() {
+  [ "$CURRENT_LOG_LEVEL" -gt "$LOG_LEVEL_DEBUG" ] && return 0
+  [ "${DEBUG:-0}" != "1" ] && return 0
+  
+  local message="$*"
+  write_to_log "DEBUG" "$message"
+  printf "${DIM}${PASTEL_CYAN}[DEBUG]${RESET}${DIM} %s${RESET}\n" "$message" >&2
+}
+
+# Informational messages
+info() {
+  [ "$CURRENT_LOG_LEVEL" -gt "$LOG_LEVEL_INFO" ] && return 0
+  
+  local message="$*"
+  write_to_log "INFO" "$message"
+  printf "${PASTEL_CYAN}ℹ${RESET} %s\n" "$message" >&2
+}
+
+# Warning messages  
+warn() {
+  [ "$CURRENT_LOG_LEVEL" -gt "$LOG_LEVEL_WARN" ] && return 0
+  
+  local message="$*"
+  write_to_log "WARN" "$message"
+  printf "${PASTEL_YELLOW}⚠${RESET} %s\n" "$message" >&2
+}
+
+# Error messages
+err() {
+  local message="$*"
+  write_to_log "ERROR" "$message"
+  printf "${VIBRANT_RED}✗${RESET} %s\n" "$message" >&2
+}
+
+# Success messages
+ok() {
+  local message="$*"
+  write_to_log "SUCCESS" "$message"
+  printf "${PASTEL_GREEN}✓${RESET} %s\n" "$message" >&2
+}
+
+# === Enhanced Logging Functions ===
+
+# Info with icon
+info_icon() {
+  local icon="$1"
   shift
-  printf "%b%s%b\n" "$c" "$*" '\033[0m'
-}
-
-# Print informational message in cyan (title cards never wrap, body text wraps appropriately)
-info(){ 
   local message="$*"
-  # Simple approach: wrap if message is very long (over 100 chars) and not a title/header
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
-    while IFS= read -r line; do
-      pecho '\033[38;2;175;238;238m' "$line"
-    done < <(format_body_text "$message")
-  else
-    pecho '\033[38;2;175;238;238m' "$message"
-  fi
-  log_event info "${CURRENT_STEP_INDEX:-unknown}" info "$*"
+  write_to_log "INFO" "$icon $message"
+  printf "${PASTEL_CYAN}%s${RESET} %s\n" "$icon" "$message" >&2
 }
 
-# Print warning message in yellow (same logic as info)
-warn(){ 
+# Highlighted info messages
+highlight() {
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
-    while IFS= read -r line; do
-      pecho '\033[38;2;255;255;224m' "$line"
-    done < <(format_body_text "$message")
-  else
-    pecho '\033[38;2;255;255;224m' "$message"
-  fi
-  log_event warn "${CURRENT_STEP_INDEX:-unknown}" warn "$*"
+  write_to_log "HIGHLIGHT" "$message"
+  printf "${BG_PASTEL_LAVENDER}${BOLD} %s ${RESET}\n" "$message" >&2
 }
 
-# Print success message in green (same logic as info)
-ok(){ 
+# Step messages with numbering
+step() {
+  local step_num="$1"
+  shift
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
-    while IFS= read -r line; do
-      pecho '\033[38;2;152;251;152m' "$line"
-    done < <(format_body_text "$message")
-  else
-    pecho '\033[38;2;152;251;152m' "$message"
-  fi
-  log_event success "${CURRENT_STEP_INDEX:-unknown}" success "$*"
+  write_to_log "STEP" "Step $step_num: $message"
+  printf "${PASTEL_PINK}[${BOLD}%s${RESET}${PASTEL_PINK}]${RESET} %s\n" "$step_num" "$message" >&2
 }
 
-# Print error message in pink/red (same logic as info)
-err(){ 
-  local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
-    while IFS= read -r line; do
-      pecho '\033[38;2;255;192;203m' "$line"
-    done < <(format_body_text "$message")
-  else
-    pecho '\033[38;2;255;192;203m' "$message"
-  fi
-  log_event error "${CURRENT_STEP_INDEX:-unknown}" error "$*"
-}
-
-# Print debug message in purple (only if DEBUG=1)
-debug(){ 
-  [ "${DEBUG:-0}" = "1" ] && pecho '\033[38;2;221;160;221m' "[DEBUG] $*"
-}
-
-# === Structured Logging ===
-
-# Write structured log entry to JSON event log
-# Parameters: action, phase, status, detail, duration
-log_event(){
-  local ts action phase status detail dur
+# Section headers
+section() {
+  local title="$*"
+  local width
+  width=$(get_terminal_width)
+  local border_char="─"
   
-  # Generate ISO 8601 timestamp
-  ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "unknown")
+  write_to_log "SECTION" "$title"
   
-  # Extract parameters with defaults
-  action="${1:-unknown}"
-  phase="${2:-null}"
-  status="${3:-unknown}"
-  detail="${4:-}"
-  dur="${5:-}"
-  
-  # Escape double quotes in strings to prevent JSON corruption
-  action=$(printf "%s" "$action" | sed 's/"/\\"/g')
-  detail=$(printf "%s" "$detail" | sed 's/"/\\"/g')
-  
-  # Build JSON entry
-  local json_entry
-  json_entry=$(cat <<JSON_LOG_EOF
-{
-  "timestamp": "$ts",
-  "action": "$action",
-  "phase": $phase,
-  "status": "$status",
-  "detail": "$detail"
-JSON_LOG_EOF
-)
-  
-  # Add duration if provided
-  if [ -n "$dur" ]; then
-    json_entry="${json_entry}, \"duration\": $dur"
-  fi
-  
-  json_entry="${json_entry}}"
-  
-  # Write to event log if available
-  if [ -n "${EVENT_LOG:-}" ] && [ -f "${EVENT_LOG:-}" ]; then
-    printf "%s\n" "$json_entry" >> "$EVENT_LOG" 2>/dev/null || true
-  fi
-  
-  # Also log to session file if RUN_LOG is enabled
-  if [ "${RUN_LOG:-0}" = "1" ]; then
-    local session_log="${HOME:-/tmp}/setup-session.log"
-    printf "%s [%s] %s: %s\n" "$ts" "$status" "$action" "$detail" >> "$session_log" 2>/dev/null || true
-  fi
-}
-
-# === Progress Display Functions ===
-
-# Safe division for progress calculations
-safe_progress_div() {
-  local num="${1:-0}" den="${2:-1}"
-  
-  # Validate inputs are numeric
-  case "$num" in *[!0-9]*) num=0;; esac
-  case "$den" in *[!0-9]*) den=1;; esac
-  
-  # Prevent division by zero
-  if [ "$den" -eq 0 ]; then
-    den=1
-  fi
-  
-  # Perform safe calculation
-  if [ "$num" -le "$den" ]; then
-    # Normal case: num/den * 100
-    echo $(( num * 100 / den ))
-  else
-    # Clamp to 100% if somehow exceeded
-    echo 100
-  fi
-}
-
-# Run a command with animated progress display and proper logging
-# Parameters: description, estimated_time_seconds, command...
-run_with_progress(){
-  local desc="$1" est="$2"
-  shift 2
-  
-  # Validate estimated time is numeric and reasonable
-  case "$est" in
-    (*[!0-9]*) est=30;;   # Non-numeric, use default
-    (*) 
-      if [ "$est" -lt 1 ] 2>/dev/null; then est=30; fi    # Minimum time
-      if [ "$est" -gt 600 ] 2>/dev/null; then est=600; fi # Maximum time (10 min)
-    ;;
-  esac
-  
-  local logf="$TMPDIR/cmd_$$.log"
-  local start_time=$(date +%s)
-  
-  # Start background process
-  "$@" > "$logf" 2>&1 &
-  local pid=$!
-  
-  # Progress animation variables with safe initialization
-  local elapsed=0 frame=0 pct=0
-  local delay="${SPINNER_DELAY:-0.02}"
-  
-  # Show progress while command runs
-  while kill -0 "$pid" 2>/dev/null; do
-    # Calculate elapsed time safely
-    local current_time
-    current_time=$(date +%s 2>/dev/null || echo "$start_time")
-    elapsed=$((current_time - start_time))
-    
-    # Calculate percentage with bounds checking
-    if [ "$elapsed" -le "$est" ] 2>/dev/null; then
-      pct=$(safe_progress_div "$elapsed" "$est")
-    else
-      # Beyond estimate - show slowing progress
-      local over=$((elapsed - est))
-      local tail
-      if [ "$est" -gt 3 ] 2>/dev/null; then
-        tail=$((est / 3))
-      else
-        tail=5
-      fi
-      
-      if [ "$tail" -lt 5 ] 2>/dev/null; then tail=5; fi
-      
-      if [ "$tail" -gt 0 ] 2>/dev/null; then
-        add=$((over * 10 / tail))
-      else
-        add=0
-      fi
-      
-      if [ "$add" -gt 10 ] 2>/dev/null; then add=10; fi
-      pct=$((90 + add))
-    fi
-    
-    if [ "$pct" -gt 99 ] 2>/dev/null; then pct=99; fi  # Never show 100% while running
-    
-    # Get current spinner character with bounds checking
-    local spinner_count=${#BRAILLE_CHARS[@]} sym_idx sym
-    if [ "$spinner_count" -gt 0 ] 2>/dev/null; then
-      sym_idx=$((frame % spinner_count))
-      sym="${BRAILLE_CHARS[$sym_idx]:-*}"
-    else
-      sym="*"
-    fi
-    
-    # Display progress line with spinner, message, and percentage
-    local display_width cols
-    cols=$(get_terminal_width)
-    if [ "$cols" -gt 14 ] 2>/dev/null; then
-      display_width=$((cols - 14))
-    else
-      display_width=40
-    fi
-    
-    printf "\r\033[38;2;175;238;238m%s\033[0m \033[38;2;175;238;238m%-*.*s\033[0m \033[38;2;173;216;230m(%3d%%)\033[0m" \
-      "$sym" "$display_width" "$display_width" "$desc" "$pct"
-    
-    # Safe frame increment
-    if [ "$frame" -lt 10000 ] 2>/dev/null; then
-      frame=$((frame + 1))
-    else
-      frame=0  # Reset to prevent overflow
-    fi
-    
-    safe_sleep "$delay"
+  # Create border
+  local border=""
+  local i=0
+  while [ $i -lt "$width" ]; do
+    border="${border}${border_char}"
+    i=$((i + 1))
   done
   
-  # Wait for process to complete and capture exit code
-  wait "$pid"
-  local rc=$?
+  printf "\n${PASTEL_LAVENDER}%s${RESET}\n" "$border" >&2
+  printf "${BOLD}${PASTEL_PINK}%s${RESET}\n" "$title" >&2
+  printf "${PASTEL_LAVENDER}%s${RESET}\n\n" "$border" >&2
+}
+
+# Progress messages
+progress() {
+  local current="$1"
+  local total="$2"
+  local message="$3"
   
-  # Calculate final duration
-  local end_time
-  end_time=$(date +%s 2>/dev/null || echo "$start_time")
-  local dur=$((end_time - start_time))
-  
-  # Clear progress line and show final result
-  printf "\r%*s\r" 80 ""
-  
-  local message
-  if [ $rc -eq 0 ]; then
-    message="✓ $desc"
-    pecho '\033[38;2;152;251;152m' "$message"
-    log_event cmd_done "${CURRENT_STEP_INDEX:-unknown}" success "$desc" "$dur"
-  else
-    message="✗ $desc (failed)"
-    pecho '\033[38;2;255;192;203m' "$message"
-    log_event cmd_done "${CURRENT_STEP_INDEX:-unknown}" fail "$message" "$dur"
+  local percentage=0
+  if [ "$total" -gt 0 ] 2>/dev/null; then
+    percentage=$(( (current * 100) / total ))
   fi
   
-  # Clean up temporary log file
-  rm -f "$logf" 2>/dev/null || true
-  return $rc
+  write_to_log "PROGRESS" "($current/$total - ${percentage}%) $message"
+  printf "${PASTEL_CYAN}[${BOLD}%s${RESET}${PASTEL_CYAN}/${BOLD}%s${RESET}${PASTEL_CYAN}]${RESET} %s ${DIM}(${percentage}%%)${RESET}\n" \
+    "$current" "$total" "$message" >&2
 }
 
-# Run command with progress but don't fail the script if it fails
-soft_step(){ 
-  run_with_progress "$@" || true
-}
+# === Message Formatting ===
 
-# === Time and Duration Formatting ===
-
-# Format duration in seconds to human-readable format
-format_duration() {
-  local seconds="${1:-0}"
+# Center text in terminal
+center_text() {
+  local text="$1"
+  local width="${2:-$(get_terminal_width)}"
   
-  # Validate input is numeric
-  case "$seconds" in
-    *[!0-9]*) seconds=0 ;;
-  esac
+  local text_length
+  text_length=$(get_text_length "$text")
   
-  if [ "$seconds" -lt 60 ]; then
-    printf "%ds" "$seconds"
-  elif [ "$seconds" -lt 3600 ]; then
-    local mins=$((seconds / 60))
-    local secs=$((seconds % 60))
-    printf "%dm %ds" "$mins" "$secs"
-  else
-    local hours=$((seconds / 3600))
-    local mins=$(((seconds % 3600) / 60))
-    printf "%dh %dm" "$hours" "$mins"
-  fi
-}
-
-# Calculate ETA (estimated time of arrival) for remaining work
-ETA() {
-  local completed="${1:-0}" total="${2:-1}" elapsed="${3:-0}"
-  
-  # Validate all inputs are numeric
-  case "$completed" in *[!0-9]*) completed=0 ;; esac
-  case "$total" in *[!0-9]*) total=1 ;; esac
-  case "$elapsed" in *[!0-9]*) elapsed=0 ;; esac
-  
-  # Avoid division by zero
-  if [ "$completed" -eq 0 ] || [ "$total" -eq 0 ]; then
-    echo "Unknown"
+  if [ "$text_length" -ge "$width" ]; then
+    echo "$text"
     return
   fi
   
-  # Calculate remaining time
-  local remaining_work=$((total - completed))
-  if [ "$remaining_work" -le 0 ]; then
-    echo "Complete"
-    return
-  fi
-  
-  # Calculate estimated remaining seconds
-  local rate_per_unit=$((elapsed / completed))
-  local eta_seconds=$((remaining_work * rate_per_unit))
-  
-  format_duration "$eta_seconds"
+  local padding=$(( (width - text_length) / 2 ))
+  printf "%*s%s\n" "$padding" "" "$text"
 }
 
-# === File Size and Disk Space ===
-
-# Format bytes into human-readable format
-format_bytes() {
-  local bytes="${1:-0}"
+# Create a box around text
+text_box() {
+  local text="$*"
+  local width
+  width=$(get_terminal_width)
+  local max_text_width=$((width - 4))  # Account for box borders
   
-  # Validate input is numeric
-  case "$bytes" in
-    *[!0-9]*) bytes=0 ;;
-  esac
-  
-  if [ "$bytes" -lt 1024 ]; then
-    printf "%d B" "$bytes"
-  elif [ "$bytes" -lt 1048576 ]; then
-    printf "%.1f KB" "$(( bytes * 10 / 1024 )).$(( (bytes * 10 / 1024) % 10 ))"
-  elif [ "$bytes" -lt 1073741824 ]; then
-    local mb=$((bytes / 1048576))
-    printf "%d MB" "$mb"
-  else
-    local gb=$((bytes / 1073741824))
-    printf "%d GB" "$gb"
-  fi
-}
-
-# Check disk space and warn if low
-check_disk_space() {
-  local path="${1:-$HOME}"
-  local min_free_mb="${2:-100}"
-  
-  if command -v df >/dev/null 2>&1; then
-    local available_kb
-    available_kb=$(df "$path" 2>/dev/null | awk 'NR==2 {print $4}' 2>/dev/null || echo "0")
-    local available_mb=$((available_kb / 1024))
-    
-    if [ "$available_mb" -lt "$min_free_mb" ] 2>/dev/null; then
-      warn "Low disk space: $(format_bytes $((available_mb * 1024 * 1024))) available in $path"
-      return 1
+  # Split text into lines if too long
+  local lines=()
+  while [ ${#text} -gt "$max_text_width" ]; do
+    local line="${text:0:$max_text_width}"
+    local last_space="${line%% *}"
+    if [ "$last_space" != "$line" ]; then
+      # Break at last word boundary
+      line="${text%% ${text#* * * * * * * * * *}}"
+      text="${text#$line }"
     else
-      debug "Disk space OK: $(format_bytes $((available_mb * 1024 * 1024))) available in $path"
-      return 0
+      # Force break if no spaces
+      text="${text:$max_text_width}"
     fi
-  else
-    warn "Cannot check disk space - df command not available"
-    return 1
+    lines+=("$line")
+  done
+  [ -n "$text" ] && lines+=("$text")
+  
+  # Draw box
+  local border_top="┌"
+  local border_bottom="└"
+  local border_side="│"
+  local border_char="─"
+  
+  local i=0
+  while [ $i -lt $((max_text_width + 2)) ]; do
+    border_top="${border_top}${border_char}"
+    border_bottom="${border_bottom}${border_char}"
+    i=$((i + 1))
+  done
+  border_top="${border_top}┐"
+  border_bottom="${border_bottom}┘"
+  
+  printf "${PASTEL_LAVENDER}%s${RESET}\n" "$border_top" >&2
+  
+  for line in "${lines[@]}"; do
+    local line_length
+    line_length=$(get_text_length "$line")
+    local padding=$((max_text_width - line_length))
+    printf "${PASTEL_LAVENDER}%s${RESET} %s%*s ${PASTEL_LAVENDER}%s${RESET}\n" \
+      "$border_side" "$line" "$padding" "" "$border_side" >&2
+  done
+  
+  printf "${PASTEL_LAVENDER}%s${RESET}\n" "$border_bottom" >&2
+}
+
+# === Log Level Management ===
+
+# Set log level
+set_log_level() {
+  local level="$1"
+  case "$level" in
+    "debug"|"DEBUG"|"0") CURRENT_LOG_LEVEL="$LOG_LEVEL_DEBUG" ;;
+    "info"|"INFO"|"1") CURRENT_LOG_LEVEL="$LOG_LEVEL_INFO" ;;
+    "warn"|"WARN"|"warning"|"WARNING"|"2") CURRENT_LOG_LEVEL="$LOG_LEVEL_WARN" ;;
+    "error"|"ERROR"|"err"|"ERR"|"3") CURRENT_LOG_LEVEL="$LOG_LEVEL_ERROR" ;;
+    *) 
+      warn "Invalid log level: $level. Using INFO."
+      CURRENT_LOG_LEVEL="$LOG_LEVEL_INFO"
+      ;;
+  esac
+}
+
+# Get current log level name
+get_log_level() {
+  case "$CURRENT_LOG_LEVEL" in
+    "$LOG_LEVEL_DEBUG") echo "DEBUG" ;;
+    "$LOG_LEVEL_INFO") echo "INFO" ;;
+    "$LOG_LEVEL_WARN") echo "WARN" ;;
+    "$LOG_LEVEL_ERROR") echo "ERROR" ;;
+    *) echo "UNKNOWN" ;;
+  esac
+}
+
+# === Initialization ===
+
+# Initialize logging system
+init_logging() {
+  # Set log level from environment if provided
+  if [ -n "${LOG_LEVEL:-}" ]; then
+    set_log_level "$LOG_LEVEL"
+  fi
+  
+  # Create log file if logging is enabled
+  if [ -n "$LOG_FILE" ]; then
+    local log_dir
+    log_dir=$(dirname "$LOG_FILE")
+    mkdir -p "$log_dir" 2>/dev/null || true
+    
+    # Write session header
+    {
+      echo ""
+      echo "========================================"
+      echo "CAD-Droid Setup Session Started"
+      echo "Date: $(date)"
+      echo "Log Level: $(get_log_level)"
+      echo "========================================"
+    } >> "$LOG_FILE"
   fi
 }
+
+# Initialize on module load
+init_logging
+
+# Export functions for use by other modules
+export -f debug info warn err ok
+export -f info_icon highlight step section progress
+export -f center_text text_box
+export -f get_terminal_width strip_ansi get_text_length
+export -f set_log_level get_log_level
+export -f write_to_log
+
+# Export log level constants
+export LOG_LEVEL_DEBUG LOG_LEVEL_INFO LOG_LEVEL_WARN LOG_LEVEL_ERROR
