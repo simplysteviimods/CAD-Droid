@@ -21,10 +21,10 @@ readonly APK_STATE_DIR="$HOME/.cad/apk-state"
 # Global APK download directory (set during initialization)
 APK_DOWNLOAD_DIR=""
 
-# APK download tracking arrays - persistent across sessions
-declare -a DOWNLOADED_APKS=()
-declare -a FAILED_APKS=()
-declare -a PENDING_APKS=()
+# APK download tracking arrays - persistent across sessions with global scope
+declare -ga DOWNLOADED_APKS=()
+declare -ga FAILED_APKS=()
+declare -ga PENDING_APKS=()
 
 # F-Droid API configuration
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"

@@ -349,10 +349,11 @@ upgrade_packages(){
     return 1
   }
   
-  # Simple upgrade approach
+  # Simple upgrade approach with non-interactive flags
   if command -v pkg >/dev/null 2>&1; then
     info "Upgrading packages with pkg..."
-    if pkg upgrade -y >/dev/null 2>&1; then
+    # Use non-interactive mode and overwrite configs automatically
+    if DEBIAN_FRONTEND=noninteractive pkg upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" >/dev/null 2>&1; then
       ok "Packages upgraded successfully via pkg"
       return 0
     else
@@ -360,9 +361,9 @@ upgrade_packages(){
     fi
   fi
   
-  # Fallback to apt upgrade
+  # Fallback to apt upgrade with non-interactive flags
   info "Upgrading packages with apt..."
-  if apt-get upgrade -y >/dev/null 2>&1; then
+  if DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" >/dev/null 2>&1; then
     ok "Packages upgraded successfully via apt"
     return 0
   else
