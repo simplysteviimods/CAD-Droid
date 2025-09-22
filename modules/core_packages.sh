@@ -437,12 +437,8 @@ step_mirror(){
   for i in "${!names[@]}"; do 
     local seq
     seq=$(color_for_index "$i")
-    # Highlight official mirrors
-    if [[ "${names[$i]}" == *"Official"* ]]; then
-      printf "%b[%d] %s ★%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
-    else
-      printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
-    fi
+    # Display mirrors with consistent formatting (★ already in name)
+    printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
   done
   
   # Auto-select option

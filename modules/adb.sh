@@ -277,38 +277,10 @@ adb_wireless_helper(){
     return 0
   fi
   
+  # No duplicate dialog - all instructions are now in step_adb
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_PURPLE" "=== CRITICAL: ADB Wireless Setup ==="
-    echo ""
-    pecho "$PASTEL_YELLOW" "ADB wireless debugging is ESSENTIAL for Linux development on Android!"
-    echo ""
-    pecho "$PASTEL_CYAN" "Why ADB is critical:"
-    info "• Disables Android's Phantom Process Killer that terminates Linux processes"
-    info "• Prevents random termination of development tools, servers, and long-running tasks"
-    info "• Ensures stable operation of container environments and desktop sessions"
-    info "• Required for professional development work on Android devices"
-    echo ""
-    pecho "$PASTEL_PINK" "Without ADB, Android will randomly kill your Linux processes!"
-    echo ""
-    
-    pecho "$PASTEL_PURPLE" "What you need to do:"
-    echo ""
-    pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
-    pecho "$PASTEL_PINK" "2. In Settings > System > Developer Options"
-    pecho "$PASTEL_PINK" "3. Enable 'Wireless debugging'"  
-    pecho "$PASTEL_PINK" "4. Tap 'Pair device with pairing code'"
-    pecho "$PASTEL_PINK" "5. Note the IP address, port, and 6-digit code shown"
-    pecho "$PASTEL_PINK" "6. Return to Termux to enter the pairing information"
-    echo ""
-    pecho "$PASTEL_YELLOW" "Press Enter to open Developer Settings and start the process..."
-    read -r || true
-    
-    # Open developer settings once
-    open_developer_settings
-    
-    echo ""
-    pecho "$PASTEL_CYAN" "After setting up wireless debugging, press Enter to continue..."
+    pecho "$PASTEL_CYAN" "After enabling wireless debugging, press Enter to continue..."
     read -r || true
   fi
   
@@ -380,42 +352,34 @@ step_adb(){
     return 0
   fi
   
-  # Single comprehensive prompt with all instructions
+  # Single comprehensive prompt with all instructions BEFORE opening settings
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    draw_card "Android Debug Bridge (ADB) Wireless Setup" "Optional - Enable wireless debugging for development"
+    draw_card "Android Debug Bridge (ADB) Wireless Setup" "CRITICAL - Essential for Linux development stability"
     echo ""
     
-    pecho "$PASTEL_PURPLE" "What is ADB Wireless Debugging?"
-    format_body_text "ADB allows you to connect wirelessly to your device for development and debugging. This is useful for advanced development workflows, file transfers, and device management, but is optional for basic usage."
+    pecho "$PASTEL_YELLOW" "ADB wireless debugging is ESSENTIAL for Linux development on Android!"
+    echo ""
+    pecho "$PASTEL_CYAN" "Why ADB is critical:"
+    info "• Disables Android's Phantom Process Killer that terminates Linux processes"
+    info "• Prevents random termination of development tools, servers, and long-running tasks"
+    info "• Ensures stable operation of container environments and desktop sessions"
+    info "• Required for professional development work on Android devices"
+    echo ""
+    pecho "$PASTEL_PINK" "Without ADB, Android will randomly kill your Linux processes!"
     echo ""
     
-    pecho "$PASTEL_PURPLE" "Setup Instructions:"
+    pecho "$PASTEL_PURPLE" "What you need to do:"
     echo ""
-    pecho "$PASTEL_PINK" "1. Enable Developer Options:"
-    info "   • Go to Settings > About phone"
-    info "   • Tap 'Build number' 7 times rapidly"
-    info "   • Developer options will be enabled"
-    echo ""
-    pecho "$PASTEL_PINK" "2. Split-screen Setup:"
-    info "   • Split your screen between Settings and Termux"
-    info "   • Go to Settings > System > Developer Options"
-    info "   • Turn ON 'Wireless debugging'"
-    info "   • Tap 'Pair device with pairing code'"
-    info "   • Note the IP address, port, and 6-digit code"
-    echo ""
-    pecho "$PASTEL_PINK" "3. Manual Entry:"
-    info "   • Setup will prompt for IP, port, and pairing code"
-    info "   • Then prompt for the debugging port"
-    info "   • Automatically pair your device"
+    pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
+    pecho "$PASTEL_PINK" "2. In Settings > System > Developer Options"
+    pecho "$PASTEL_PINK" "3. Enable 'Wireless debugging'"  
+    pecho "$PASTEL_PINK" "4. Tap 'Pair device with pairing code'"
+    pecho "$PASTEL_PINK" "5. Note the IP address, port, and 6-digit code shown"
+    pecho "$PASTEL_PINK" "6. Return to Termux to enter the pairing information"
     echo ""
     
-    pecho "$PASTEL_CYAN" "Please open Settings now and go to:"
-    info "   Settings > System > Developer Options > Wireless debugging"
-    info "   Tap 'Pair device with pairing code' and note the details"
-    echo ""
-    
-    if ! ask_yes_no "Ready to continue with ADB pairing?" "y"; then
+    if ! ask_yes_no "Ready to open Developer Settings and start ADB setup?" "y"; then
       info "Skipping ADB wireless setup"
       mark_step_status "skipped"
       return 0
@@ -438,7 +402,7 @@ step_adb(){
     return 0
   fi
   
-  # Open developer settings
+  # Open developer settings once and run the helper (no duplicate prompts)
   if ! open_developer_settings; then
     info "Please manually navigate to Developer Options and enable Wireless debugging"
   fi

@@ -330,6 +330,7 @@ step_usercfg(){
   detect_phone
   configure_termux_properties || true
   configure_bash_prompt || true
+  configure_nano_colors || true
   mark_step_status "success"
 }
 

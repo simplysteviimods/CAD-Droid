@@ -228,12 +228,12 @@ configure_bash_prompt(){
   cat >> "$bashrc" << 'BASH_PROMPT_EOF'
 
 # CAD-Droid prompt theme
-# Pink username, purple typed text
+# Pastel pink username, pastel purple typed text
 # Username uses TERMUX_USERNAME if set, otherwise \u@\h
 cad_reset='\[\e[0m\]'
-cad_pink='\[\e[38;5;205m\]'
-cad_sky='\[\e[38;5;117m\]'
-cad_purple_input='\[\e[38;5;141m\]'
+cad_pastel_pink='\[\e[38;5;217m\]'    # Pastel pink for username
+cad_pastel_cyan='\[\e[38;5;159m\]'    # Pastel cyan for path
+cad_pastel_purple='\[\e[38;5;183m\]'  # Pastel purple for input text
 
 # Compose display name from TERMUX_USERNAME or fallback to \u@\h
 if [ -n "${TERMUX_USERNAME:-}" ]; then
@@ -242,8 +242,8 @@ else
   cad_name='\u@\h'
 fi
 
-# Prompt: <pink>name</pink>:<sky>cwd</sky> and leave purple color active for typed text
-PS1="${cad_pink}\${cad_name}${cad_reset}:${cad_sky}\w${cad_reset} ${cad_purple_input}"
+# Prompt: <pastel_pink>name</pastel_pink>:<pastel_cyan>cwd</pastel_cyan> and leave pastel purple color active for typed text
+PS1="${cad_pastel_pink}\${cad_name}${cad_reset}:${cad_pastel_cyan}\w${cad_reset} ${cad_pastel_purple}"
 
 # Reset color after each command so output returns to normal
 PROMPT_COMMAND="echo -ne '\033[0m'"
@@ -253,6 +253,49 @@ BASH_PROMPT_EOF
   chmod 644 "$bashrc" 2>/dev/null || true
   
   ok "Bash prompt theme configured in ~/.bashrc"
+}
+
+# Configure nano editor with pastel colors
+configure_nano_colors(){
+  local nanorc="$HOME/.nanorc"
+  
+  # Check if nano color configuration is already present
+  if grep -q "# CAD-Droid nano theme" "$nanorc" 2>/dev/null; then
+    debug "Nano color theme already configured"
+    return 0
+  fi
+  
+  info "Configuring nano editor with pastel colors..."
+  
+  # Add nano color configuration
+  cat >> "$nanorc" << 'NANO_CONFIG_EOF'
+
+# CAD-Droid nano theme
+# Pastel colors for better readability
+set titlecolor brightwhite,lightmagenta
+set statuscolor brightwhite,lightcyan
+set selectedcolor brightwhite,lightblue
+set stripecolor yellow
+set numbercolor lightcyan
+set keycolor lightcyan
+set functioncolor lightgreen
+
+# Syntax highlighting with pastel colors
+include "/data/data/com.termux/files/usr/share/nano/*.nanorc"
+
+# Enhanced editor behavior
+set tabsize 2
+set autoindent
+set smooth
+set mouse
+set linenumbers
+set constantshow
+NANO_CONFIG_EOF
+  
+  # Set proper permissions
+  chmod 644 "$nanorc" 2>/dev/null || true
+  
+  ok "Nano editor configured with pastel colors"
 }
 
 # === Termux Configuration ===
