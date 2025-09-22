@@ -264,30 +264,12 @@ step_apk(){
     warn "APK system initialization failed, but continuing..."
   fi
   
-  # Download essential APKs using the new APK management system
+  # Download essential APKs automatically (no user interaction during downloads)
   if download_essential_apks; then
     ok "APK downloads completed successfully"
     
-    # Open APK directory for installation
-    open_apk_directory || warn "Could not open APK directory"
-    
-    # Provide permission instructions after downloads
-    echo ""
-    pecho "$PASTEL_YELLOW" "PERMISSION SETUP REQUIRED:"
-    info "After installing each APK, configure permissions:"
-    info "• Termux:API - Phone, SMS, Location, Camera, Microphone"
-    info "• Termux:X11 - Display over other apps, Battery optimization disabled"
-    info "• Other APKs - Standard app permissions as requested"
-    echo ""
-    
-    # Pause for manual installation
-    if [ "$NON_INTERACTIVE" != "1" ]; then
-      info "Install APK files by tapping them, configure permissions, then press Enter..."
-      read -r || true
-    else
-      info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
-      sleep "${APK_PAUSE_TIMEOUT:-45}"
-    fi
+    # Handle permissions and installation AFTER all downloads are complete
+    setup_apk_permissions
     
     mark_step_status "success"
   else
@@ -517,6 +499,9 @@ main_execution(){
   # Load all modules first
   load_all_modules
   
+  # Set installation flag at the very beginning
+  set_install_flag
+  
   # Early Termux:API detection for better UX fallbacks
   if have_termux_api 2>/dev/null; then
     TERMUX_API_VERIFIED="yes"
@@ -543,6 +528,8 @@ main_execution(){
   
   # Execute all registered steps
   if execute_all_steps; then
+    # Clear installation flag on successful completion
+    clear_install_flag
     show_final_completion
     return 0
   else

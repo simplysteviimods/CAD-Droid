@@ -30,7 +30,7 @@ declare -a PENDING_APKS=()
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"
 readonly FDROID_REPO_BASE="https://f-droid.org/repo"
 
-# Essential APKs from F-Droid with their package IDs - Only Termux plugins
+# Essential APKs from F-Droid with their package IDs - Complete Termux plugin suite
 declare -A ESSENTIAL_APKS=(
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
@@ -40,6 +40,18 @@ declare -A ESSENTIAL_APKS=(
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
   ["Termux:GUI"]="com.termux.gui"
+)
+
+# GitHub backup URLs for Termux plugins when F-Droid fails
+declare -A TERMUX_GITHUB_URLS=(
+  ["com.termux.api"]="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
+  ["com.termux.boot"]="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
+  ["com.termux.float"]="https://github.com/termux/termux-float/releases/latest/download/termux-float.apk"
+  ["com.termux.styling"]="https://github.com/termux/termux-styling/releases/latest/download/termux-styling.apk"
+  ["com.termux.tasker"]="https://github.com/termux/termux-tasker/releases/latest/download/termux-tasker.apk"
+  ["com.termux.widget"]="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
+  ["com.termux.x11"]="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
+  ["com.termux.gui"]="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
 )
 
 # Initialize APK management system with persistent storage
@@ -156,7 +168,7 @@ save_apk_state(){
   fi
 }
 
-# Download file with progress spinner
+# Download file with progress spinner using wget
 # Parameters: url, output_file, description
 download_with_spinner(){
   local url="$1"
@@ -170,18 +182,25 @@ download_with_spinner(){
   # Ensure output directory exists
   mkdir -p "$(dirname "$output_file")" 2>/dev/null || true
   
+  # Remove any existing file
+  rm -f "$output_file" 2>/dev/null || true
+  
   # Use run_with_progress to show spinner during download
-  if run_with_progress "$description" 20 bash -c "
-    if command -v wget >/dev/null 2>&1; then
-      wget -q --timeout=30 --tries=3 --progress=bar:force -O '$output_file' '$url' 2>&1 | sed 's/^/  /'
-    elif command -v curl >/dev/null 2>&1; then
-      curl -sL --max-time 30 --retry 3 --progress-bar -o '$output_file' '$url' 2>&1 | sed 's/^/  /'
+  if run_with_progress "$description" 25 wget \
+    --quiet \
+    --timeout=30 \
+    --tries=3 \
+    --user-agent="CAD-Droid-APK-Downloader/1.0" \
+    --no-check-certificate \
+    --output-document="$output_file" \
+    "$url"; then
+    # Verify the download actually worked
+    if [ -f "$output_file" ] && [ -s "$output_file" ]; then
+      return 0
     else
-      echo 'No download tool available' >&2
-      exit 1
+      rm -f "$output_file" 2>/dev/null
+      return 1
     fi
-  "; then
-    return 0
   else
     rm -f "$output_file" 2>/dev/null
     return 1
@@ -312,32 +331,8 @@ download_fdroid_apk(){
   
   # Fallback to GitHub releases for Termux apps
   warn "F-Droid download failed, trying GitHub backup..."
-  local github_url=""
-  case "$package_id" in
-    "com.termux")
-      github_url="https://github.com/termux/termux-app/releases/latest/download/termux-app_universal.apk"
-      ;;
-    "com.termux.api")
-      github_url="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
-      ;;
-    "com.termux.boot")
-      github_url="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
-      ;;
-    "com.termux.widget")
-      github_url="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
-      ;;
-    "com.termux.x11")
-      github_url="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
-      ;;
-    "com.termux.gui")
-      github_url="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
-      ;;
-    # Non-Termux APKs don't have GitHub fallbacks, rely on F-Droid
-    *)
-      err "No GitHub backup available for $app_name (F-Droid only)"
-      return 1
-      ;;
-  esac
+  
+  local github_url="${TERMUX_GITHUB_URLS[$package_id]}"
   
   if [ -n "$github_url" ]; then
     info "📦 Downloading $app_name from GitHub..."
@@ -352,6 +347,8 @@ download_fdroid_apk(){
         return 0
       fi
     fi
+  else
+    warn "No GitHub backup available for $app_name"
   fi
   
   err "Failed to download $app_name from both F-Droid and GitHub"
@@ -364,68 +361,93 @@ download_fdroid_apk(){
 
 # Download all essential APKs after user confirms permissions
 download_essential_apks(){
-  info "Preparing to download essential Termux plugin APKs..."
+  info "Downloading essential Termux plugin APKs..."
   
-  # Show permission prompt before downloading
+  # Brief informational message only - no user interaction during downloads
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_PURPLE" "=== Termux Plugin Permissions Required ==="
+    pecho "$PASTEL_CYAN" "📦 Downloading Termux plugins automatically..."
+    pecho "$PASTEL_YELLOW" "• ${#ESSENTIAL_APKS[@]} APK files will be downloaded"
+    pecho "$PASTEL_YELLOW" "• Permission setup will follow after all downloads complete"
     echo ""
-    pecho "$PASTEL_YELLOW" "The following Termux plugins will be downloaded and require specific permissions:"
-    echo ""
-    pecho "$PASTEL_CYAN" "• Termux:API - Phone, SMS, Location, Camera, Microphone permissions"
-    pecho "$PASTEL_CYAN" "• Termux:Boot - Boot permission to start services automatically"
-    pecho "$PASTEL_CYAN" "• Termux:Widget - Display over other apps permission"
-    pecho "$PASTEL_CYAN" "• Other plugins - Standard app permissions"
-    echo ""
-    pecho "$PASTEL_PINK" "After downloading, you'll need to:"
-    pecho "$PASTEL_GREEN" "1. Install each APK manually from the file manager"
-    pecho "$PASTEL_GREEN" "2. Grant the requested permissions for full functionality"
-    echo ""
-    printf "${PASTEL_YELLOW}Press Enter to review Termux permissions and continue...${RESET} "
-    read -r
-    
-    pecho "$PASTEL_CYAN" "What will happen next:"
-    info "• Android App Settings will open"
-    info "• You can review app permissions there if needed"
-    info "• APK downloads will begin automatically"
-    echo ""
-    
-    # Open Android app permission settings
-    if command -v am >/dev/null 2>&1; then
-      info "Opening Android App Settings..."
-      am start -a android.settings.APPLICATION_SETTINGS >/dev/null 2>&1 || true
-      sleep 2  # Give user time to see the settings opened
-    fi
   fi
-  
-  info "Downloading essential Termux plugin APKs..."
   
   local download_count=0
   local success_count=0
   local failed_apks=()
   
+  # Download all APKs automatically without user prompts
   for app_name in "${!ESSENTIAL_APKS[@]}"; do
     local package_id="${ESSENTIAL_APKS[$app_name]}"
     download_count=$((download_count + 1))
     
-    if download_fdroid_apk "$package_id" "$app_name" >/dev/null; then
+    info "Downloading ($download_count/${#ESSENTIAL_APKS[@]}): $app_name"
+    
+    if download_fdroid_apk "$package_id" "$app_name"; then
       success_count=$((success_count + 1))
     else
       failed_apks+=("$app_name")
+      warn "Failed to download: $app_name"
     fi
   done
   
-  # Report results
+  # Report download results
   if [ "$success_count" -eq "$download_count" ]; then
-    ok "All $download_count essential APKs downloaded successfully"
+    ok "✅ All $download_count essential APKs downloaded successfully"
   else
     local failed_count=$((download_count - success_count))
-    warn "$success_count/$download_count APKs downloaded successfully"
-    
+    warn "⚠️  $success_count/$download_count APKs downloaded successfully"
     if [ ${#failed_apks[@]} -gt 0 ]; then
       warn "Failed downloads: ${failed_apks[*]}"
     fi
+  fi
+  
+  return 0
+}
+
+# Handle APK installation and permission setup after downloads are complete
+setup_apk_permissions(){
+  info "Setting up APK installation and permissions..."
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== APK Installation & Permissions Setup ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "All Termux plugin APKs have been downloaded successfully!"
+    echo ""
+    pecho "$PASTEL_CYAN" "Required permissions for each plugin:"
+    echo ""
+    pecho "$PASTEL_GREEN" "• Termux:API - Phone, SMS, Location, Camera, Microphone"
+    pecho "$PASTEL_GREEN" "• Termux:Boot - Boot permission to start services automatically" 
+    pecho "$PASTEL_GREEN" "• Termux:Widget - Display over other apps permission"
+    pecho "$PASTEL_GREEN" "• Termux:X11 - Display over other apps, battery optimization disabled"
+    pecho "$PASTEL_GREEN" "• Other plugins - Standard app permissions as requested"
+    echo ""
+    pecho "$PASTEL_PINK" "Installation steps:"
+    pecho "$PASTEL_CYAN" "1. Open the APK directory (will open automatically)"
+    pecho "$PASTEL_CYAN" "2. Install each APK by tapping on it"
+    pecho "$PASTEL_CYAN" "3. Grant all requested permissions for full functionality"
+    echo ""
+    
+    printf "${PASTEL_YELLOW}Press Enter when ready to open APK directory...${RESET} "
+    read -r
+  else
+    info "Non-interactive mode: APK directory will open automatically"
+  fi
+  
+  # Open APK directory for installation
+  open_apk_directory || warn "Could not open APK directory"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    info "📱 Install each APK file by tapping on it in the file manager"
+    info "⚙️  Configure permissions as requested by each app"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after installing all APKs and configuring permissions...${RESET} "
+    read -r
+  else
+    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
+    sleep "${APK_PAUSE_TIMEOUT:-45}"
   fi
   
   return 0
@@ -737,4 +759,5 @@ export -f download_essential_apks
 export -f open_apk_directory
 export -f manage_apks
 export -f cleanup_apk_temp
+export -f setup_apk_permissions
 export -f cleanup_apk_installer_files

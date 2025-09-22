@@ -1089,9 +1089,57 @@ setup_ssh_keys(){
 
 # === Installation Management ===
 
+# Installation flag to track CAD-Droid installation attempts
+readonly INSTALL_FLAG_FILE="$HOME/.cad/install_in_progress"
+readonly INSTALL_COMPLETE_FLAG="$HOME/.cad/install_complete"
+
+# Set installation flag at the beginning of install
+set_install_flag(){
+  info "Setting installation flag..."
+  mkdir -p "$(dirname "$INSTALL_FLAG_FILE")" 2>/dev/null || true
+  echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_FLAG_FILE"
+  export CAD_DROID_INSTALLING=1
+}
+
+# Clear installation flag on successful completion
+clear_install_flag(){
+  if [ -f "$INSTALL_FLAG_FILE" ]; then
+    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null || true
+  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_COMPLETE_FLAG"
+  unset CAD_DROID_INSTALLING
+}
+
 # Check for previous CAD-Droid installation
 check_previous_install(){
   info "Checking for previous CAD-Droid installation..."
+  
+  # Check for active installation flag first
+  if [ -f "$INSTALL_FLAG_FILE" ]; then
+    local flag_date
+    flag_date=$(cat "$INSTALL_FLAG_FILE" 2>/dev/null || echo "unknown")
+    warn "Previous installation attempt detected (started: $flag_date)"
+    
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
+      printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+      printf "${PASTEL_PINK}🗑️  Remove previous installation files and start fresh? (y/N):${RESET} "
+      local response
+      read -r response || response="n"
+      case "${response,,}" in
+        y|yes)
+          cleanup_previous_install
+          set_install_flag  # Set new flag for this attempt
+          return 0
+          ;;
+        *)
+          info "Continuing with existing installation state"
+          set_install_flag  # Still set flag for this attempt
+          return 0
+          ;;
+      esac
+    fi
+  fi
   
   local install_markers=(
     "$HOME/.cad"
@@ -1175,6 +1223,9 @@ check_previous_install(){
   else
     ok "No previous installation detected"
   fi
+  
+  # Set installation flag for this attempt
+  set_install_flag
 }
 
 # Clean up previous CAD-Droid installation files
@@ -1191,6 +1242,14 @@ cleanup_previous_install(){
   
   local cleaned_count=0
   local total_size=0
+  
+  # Clean up installation flags first
+  if [ -f "$INSTALL_FLAG_FILE" ]; then
+    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
+  fi
+  if [ -f "$INSTALL_COMPLETE_FLAG" ]; then
+    rm -f "$INSTALL_COMPLETE_FLAG" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
+  fi
   
   # Clean up standard installation files
   for item in "${cleanup_items[@]}"; do
