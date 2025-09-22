@@ -350,12 +350,16 @@ setup_apk_directory(){
   info "  3. Return & continue."
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    pecho "$PASTEL_CYAN" "Press Enter to open folder..."
+    echo ""
+    pecho "$PASTEL_CYAN" "Next step: File manager will open to show APK location"
+    info "You can install APKs by tapping them from the file manager"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Press Enter to open folder..."
     read -r || true
   fi
   
-  # Try to open file manager
-  if open_file_manager "$target"; then
+  # Try to open file manager with enhanced prompts
+  if open_file_manager "$target" "false"; then  # Don't show duplicate prompt
     info "File manager opened successfully"
   else
     info "Please manually navigate to: $target"

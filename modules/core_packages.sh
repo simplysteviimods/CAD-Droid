@@ -400,53 +400,117 @@ upgrade_packages(){
 step_mirror(){
   pecho "$PASTEL_PURPLE" "Choose Termux mirror:"
   
-  # Available mirrors with geographic distribution
-  local urls=(
-    "https://packages.termux.dev/apt/termux-main"
-    "https://packages-cf.termux.dev/apt/termux-main"
-    "https://fau.mirror.termux.dev/apt/termux-main"
-    "https://mirror.bfsu.edu.cn/termux/apt/termux-main"
-    "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
-    "https://grimler.se/termux/termux-main"
-    "https://termux.mentality.rip/termux/apt/termux-main"
-  )
+  # Detect user's region for better mirror suggestions
+  local user_region
+  if command -v detect_user_region >/dev/null 2>&1; then
+    user_region=$(detect_user_region)
+    info "Detected region: $user_region"
+  else
+    user_region="global"
+  fi
   
-  local names=(
-    "Default"
-    "Cloudflare (US Anycast)"
-    "FAU (DE)"
-    "BFSU (CN)"
-    "Tsinghua (CN)"
-    "Grimler (SE)"
-    "Mentality (UK)"
-  )
+  # Get region-appropriate mirrors and names
+  local -a urls names
+  if command -v get_regional_mirrors >/dev/null 2>&1 && command -v get_regional_mirror_names >/dev/null 2>&1; then
+    mapfile -t urls < <(get_regional_mirrors "$user_region" "main")
+    mapfile -t names < <(get_regional_mirror_names "$user_region" "main")
+  else
+    # Fallback to static list if regional functions not available
+    urls=(
+      "https://packages.termux.dev/apt/termux-main"
+      "https://packages-cf.termux.dev/apt/termux-main"
+      "https://fau.mirror.termux.dev/apt/termux-main"
+      "https://mirror.bfsu.edu.cn/termux/apt/termux-main"
+      "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+      "https://grimler.se/termux/termux-main"
+      "https://termux.mentality.rip/termux/apt/termux-main"
+    )
+    names=(
+      "Default"
+      "Cloudflare (US Anycast)"
+      "FAU (DE)"
+      "BFSU (CN)"
+      "Tsinghua (CN)"
+      "Grimler (SE)"
+      "Mentality (UK)"
+    )
+  fi
+  
+  # Show regional recommendation
+  if [ "$user_region" != "global" ]; then
+    pecho "$PASTEL_GREEN" "Recommended for your region ($user_region):"
+    info "  • Official mirrors are listed first (always preferred)"
+    info "  • Regional mirrors follow for better performance"
+    echo ""
+  fi
   
   # Display mirror options with colors
   local i
   for i in "${!names[@]}"; do 
     local seq
     seq=$(color_for_index "$i")
-    printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
+    # Highlight official mirrors
+    if [[ "${names[$i]}" == *"Official"* ]]; then
+      printf "%b[%d] %s ★%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
+    else
+      printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
+    fi
   done
+  
+  # Auto-select option
+  echo ""
+  pecho "$PASTEL_CYAN" "Options:"
+  info "  • Press Enter for auto-selection (tests speed)"
+  info "  • Type number (0-$((${#names[@]}-1))) for manual selection"
   
   local idx=""
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    idx=0
+    # Auto-select in non-interactive mode
+    idx="auto"
   else
     local max_index
     max_index=$(sub_int "${#names[@]}" 1)
-    printf "%bMirror (0-%s default 0): %b" "$PASTEL_PINK" "$max_index" '\033[0m'
+    printf "%bMirror (0-%s, Enter=auto): %b" "$PASTEL_PINK" "$max_index" '\033[0m'
     read -r idx
   fi
   
-  # Validate selection
-  case "$idx" in
-    *[!0-9]*) idx=0 ;;
-    *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
-  esac
+  # Handle auto-selection
+  if [ -z "$idx" ] || [ "$idx" = "auto" ]; then
+    info "Auto-selecting fastest mirror..."
+    if command -v select_fastest_mirror >/dev/null 2>&1; then
+      local best_mirror
+      if best_mirror=$(select_fastest_mirror "main"); then
+        SELECTED_MIRROR_URL="$best_mirror"
+        # Find the corresponding name
+        local j
+        for j in "${!urls[@]}"; do
+          if [ "${urls[$j]}" = "$best_mirror" ]; then
+            SELECTED_MIRROR_NAME="${names[$j]}"
+            break
+          fi
+        done
+        [ -z "$SELECTED_MIRROR_NAME" ] && SELECTED_MIRROR_NAME="Auto-selected"
+      else
+        warn "Auto-selection failed, using default mirror"
+        idx=0
+      fi
+    else
+      warn "Auto-selection not available, using default mirror"
+      idx=0
+    fi
+  fi
   
-  SELECTED_MIRROR_NAME="${names[$idx]}"
-  SELECTED_MIRROR_URL="${urls[$idx]}"
+  # Manual selection fallback
+  if [ -n "$idx" ] && [ "$idx" != "auto" ]; then
+    # Validate selection
+    case "$idx" in
+      *[!0-9]*) idx=0 ;;
+      *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
+    esac
+    
+    SELECTED_MIRROR_NAME="${names[$idx]}"
+    SELECTED_MIRROR_URL="${urls[$idx]}"
+  fi
   
   # Write mirror configuration
   run_with_progress "Write mirror config" 5 bash -c "echo 'deb ${SELECTED_MIRROR_URL} stable main' > '$PREFIX/etc/apt/sources.list'"

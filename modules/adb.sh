@@ -230,9 +230,23 @@ connect_adb_device(){
 
 # === Android Settings Integration ===
 
-# Open Android developer settings
+# Open Android developer settings with user guidance
 open_developer_settings(){
   local settings_opened=false
+  
+  # Show clear instructions before launching settings
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== Opening Android Developer Settings ==="
+    echo ""
+    pecho "$PASTEL_CYAN" "What will happen next:"
+    info "• Android Settings app will open"
+    info "• Navigate to: System > Developer Options"
+    info "• Find and enable 'Wireless debugging'"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Press Enter to open Developer Settings..."
+    read -r
+  fi
   
   info "Opening Android Developer Settings..."
   

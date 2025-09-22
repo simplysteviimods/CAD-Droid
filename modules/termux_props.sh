@@ -440,9 +440,10 @@ secure_password_input() {
 
 # === Termux-specific File Operations ===
 
-# Open file manager to display directory
+# Open file manager to display directory with user guidance
 open_file_manager(){
   local target="${1:-/storage/emulated/0/Download}"
+  local show_prompt="${2:-true}"
   
   # Validate directory exists
   if [ ! -d "$target" ]; then
@@ -450,6 +451,22 @@ open_file_manager(){
       warn "Cannot create directory: $target"
       return 1
     fi
+  fi
+  
+  # Show user guidance unless suppressed
+  if [ "$show_prompt" = "true" ] && [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== Opening File Manager ==="
+    echo ""
+    pecho "$PASTEL_CYAN" "What will happen next:"
+    info "• Android file manager will open"
+    info "• Navigate to the displayed folder location"
+    info "• You can browse and manage files there"
+    echo ""
+    info "Target folder: $target"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Press Enter to open file manager..."
+    read -r
   fi
   
   local opened=0
