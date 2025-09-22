@@ -151,34 +151,6 @@ save_apk_state(){
     } > "$state_file" 2>/dev/null || warn "Could not save APK state"
   fi
 }
-  local fallback_dir="$HOME/cad-droid-apks"
-  
-  if ! run_with_progress "Setup APK directories" 5 bash -c "
-    mkdir -p '$primary_dir' &&
-    chmod 755 '$primary_dir'
-  " 2>/dev/null; then
-    warn "Failed to create primary APK directory, using fallback"
-    primary_dir="$fallback_dir"
-    if ! run_with_progress "Setup fallback APK directory" 5 bash -c "
-      mkdir -p '$primary_dir' &&
-      chmod 755 '$primary_dir'
-    "; then
-      err "Failed to create APK directories"
-      return 1
-    fi
-    # Update the global variable for this session
-    export APK_DOWNLOAD_DIR="$primary_dir"
-  fi
-  
-  # Create temp directory
-  run_with_progress "Setup temp directory" 3 bash -c "
-    mkdir -p '$APK_TEMP_DIR' &&
-    chmod 755 '$APK_TEMP_DIR'
-  "
-  
-  ok "APK management system initialized"
-  info "APK download directory: $primary_dir"
-}
 
 # Query F-Droid API for package information
 query_fdroid_package(){
@@ -190,7 +162,7 @@ query_fdroid_package(){
   fi
   
   local api_url="$FDROID_API_BASE/packages/$package_id"
-  local response_file="$APK_TEMP_DIR/fdroid_${package_id}.json"
+  local response_file="$APK_STATE_DIR/fdroid_${package_id}.json"
   
   # Download package information
   if ! download_with_spinner "$api_url" "$response_file" "Query F-Droid API"; then
@@ -618,8 +590,9 @@ manage_apks(){
 
 # Cleanup function for APK temporary files
 cleanup_apk_temp(){
-  if [ -d "$APK_TEMP_DIR" ]; then
-    run_with_progress "Clean APK temp files" 3 rm -rf "$APK_TEMP_DIR"
+  if [ -d "$APK_STATE_DIR" ]; then
+    # Only clean up F-Droid API response files, not the state files
+    find "$APK_STATE_DIR" -name "fdroid_*.json" -type f -delete 2>/dev/null || true
   fi
 }
 
