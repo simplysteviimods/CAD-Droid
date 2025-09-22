@@ -178,7 +178,7 @@ configure_bash_prompt(){
     return 0
   fi
   
-  info "Configuring pink username and purple input theme..."
+  info "Configuring pastel pink username and purple input theme..."
   
   # Persist current TERMUX_USERNAME/PHONETYPE to environment
   if ! grep -q '^export TERMUX_USERNAME=' "$bashrc" 2>/dev/null; then
@@ -191,13 +191,13 @@ configure_bash_prompt(){
   # Add prompt configuration to ~/.bashrc
   cat >> "$bashrc" << 'BASH_PROMPT_EOF'
 
-# CAD-Droid prompt theme
-# Pink username, purple typed text
+# CAD-Droid prompt theme using pastel colors
+# Pink username, purple typed text, cyan path
 # Username uses TERMUX_USERNAME if set, otherwise \u@\h
 cad_reset='\[\e[0m\]'
-cad_pink='\[\e[38;5;205m\]'
-cad_sky='\[\e[38;5;117m\]'
-cad_purple_input='\[\e[38;5;141m\]'
+cad_pink='\[\e[38;2;255;182;193m\]'     # Pastel pink for username
+cad_cyan='\[\e[38;2;175;238;238m\]'     # Pastel cyan for path
+cad_purple='\[\e[38;2;221;160;221m\]'   # Pastel purple for input
 
 # Compose display name from TERMUX_USERNAME or fallback to \u@\h
 if [ -n "${TERMUX_USERNAME:-}" ]; then
@@ -206,8 +206,8 @@ else
   cad_name='\u@\h'
 fi
 
-# Prompt: <pink>name</pink>:<sky>cwd</sky> and leave purple color active for typed text
-PS1="${cad_pink}\${cad_name}${cad_reset}:${cad_sky}\w${cad_reset} ${cad_purple_input}"
+# Prompt: <pink>name</pink>:<cyan>cwd</cyan> and leave purple color active for typed text
+PS1="${cad_pink}\${cad_name}${cad_reset}:${cad_cyan}\w${cad_reset} ${cad_purple}"
 
 # Reset color after each command so output returns to normal
 PROMPT_COMMAND="echo -ne '\033[0m'"

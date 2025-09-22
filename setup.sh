@@ -310,6 +310,41 @@ step_final(){
   info "Finalizing configuration..."
   configure_nano_editor || true
   set_nano_as_default || true
+  
+  # Show completion message
+  echo ""
+  pecho "$PASTEL_GREEN" "🎉 CAD-Droid setup completed successfully!"
+  echo ""
+  info "Your Termux environment is now configured with:"
+  info "  • XFCE Desktop Environment (works in Termux and Ubuntu)"
+  info "  • Essential development tools and packages"
+  info "  • Optimized mirror configuration for faster downloads"
+  info "  • APK installations for enhanced functionality"
+  echo ""
+  
+  # Reboot prompt
+  pecho "$PASTEL_YELLOW" "To ensure all changes take effect properly,"
+  pecho "$PASTEL_YELLOW" "it is recommended to restart Termux."
+  echo ""
+  pecho "$PASTEL_CYAN" "Press Enter to restart Termux now..."
+  read -r || true
+  
+  # Perform Termux restart
+  info "Restarting Termux..."
+  run_with_progress "Preparing restart" 3 bash -c 'sleep 1'
+  
+  # Force restart Termux by exiting and triggering restart
+  if command -v am >/dev/null 2>&1; then
+    # Use Android Activity Manager to restart Termux
+    am force-stop com.termux 2>/dev/null || true
+    sleep 1
+    am start -n com.termux/.HomeActivity 2>/dev/null || true
+  else
+    # Fallback: just exit with special code
+    info "Please manually restart Termux to complete setup"
+    exit 0
+  fi
+  
   mark_step_status "success"
 }
 
