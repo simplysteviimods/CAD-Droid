@@ -963,7 +963,7 @@ cad_droid_completion(){
   printf "${PASTEL_CYAN}├─${RESET} Container support installed\n"
   printf "${PASTEL_CYAN}└─${RESET} XFCE desktop environment ready\n\n"
   
-  printf "${PASTEL_YELLOW}🚀 Quick Start Guide:${RESET}\n"
+  printf "${PASTEL_YELLOW}Quick Start Guide:${RESET}\n"
   printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to home screen (especially phantom-killer)\n"
   printf "${PASTEL_CYAN}2.${RESET} Start XFCE desktop: ~/.cad/scripts/start-xfce-termux.sh\n" 
   printf "${PASTEL_CYAN}3.${RESET} Access Ubuntu container: proot-distro login ubuntu\n"

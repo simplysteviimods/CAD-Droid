@@ -1065,17 +1065,26 @@ manage_apks(){
     sleep 5
   fi
   
-  # Open APK directory for user installation
-  open_apk_directory
-  
-  # Single consolidated wait for installation with clear instructions
+  # Single consolidated wait for installation with clear instructions BEFORE opening file manager
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "In the file manager that just opened:"
+    pecho "$PASTEL_YELLOW" "Next step - File manager will open:"
     pecho "$PASTEL_CYAN" "• Navigate to the CAD-Droid-APKs folder if not already there"
     pecho "$PASTEL_CYAN" "• Install Termux-API.apk FIRST (other plugins depend on it)"
     pecho "$PASTEL_CYAN" "• Then install the remaining APK files by tapping each one"
     pecho "$PASTEL_CYAN" "• Grant all requested permissions for full functionality"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter to open file manager...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: opening file manager automatically"
+  fi
+  
+  # Open APK directory for user installation
+  open_apk_directory
+  
+  # Wait for user to complete installation
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
     printf "${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
     read -r || true
