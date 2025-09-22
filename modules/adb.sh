@@ -277,15 +277,13 @@ adb_wireless_helper(){
     return 0
   fi
   
-  info "ADB Wireless Setup - Manual Configuration"
-  
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_PURPLE" "=== IMPORTANT: ADB & Android Phantom Process Killer ==="
+    pecho "$PASTEL_PURPLE" "=== CRITICAL: ADB Wireless Setup ==="
     echo ""
-    pecho "$PASTEL_YELLOW" "ADB wireless debugging is CRITICAL for Linux development on Android!"
+    pecho "$PASTEL_YELLOW" "ADB wireless debugging is ESSENTIAL for Linux development on Android!"
     echo ""
-    pecho "$PASTEL_CYAN" "Why ADB is essential:"
+    pecho "$PASTEL_CYAN" "Why ADB is critical:"
     info "• Disables Android's Phantom Process Killer that terminates Linux processes"
     info "• Prevents random termination of development tools, servers, and long-running tasks"
     info "• Ensures stable operation of container environments and desktop sessions"
@@ -294,22 +292,23 @@ adb_wireless_helper(){
     pecho "$PASTEL_PINK" "Without ADB, Android will randomly kill your Linux processes!"
     echo ""
     
-    pecho "$PASTEL_PURPLE" "ADB Wireless Setup Instructions:"
+    pecho "$PASTEL_PURPLE" "What you need to do:"
     echo ""
     pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
     pecho "$PASTEL_PINK" "2. In Settings > System > Developer Options"
     pecho "$PASTEL_PINK" "3. Enable 'Wireless debugging'"  
     pecho "$PASTEL_PINK" "4. Tap 'Pair device with pairing code'"
     pecho "$PASTEL_PINK" "5. Note the IP address, port, and 6-digit code shown"
+    pecho "$PASTEL_PINK" "6. Return to Termux to enter the pairing information"
     echo ""
-    pecho "$PASTEL_YELLOW" "Press Enter to open Developer Settings..."
+    pecho "$PASTEL_YELLOW" "Press Enter to open Developer Settings and start the process..."
     read -r || true
     
-    # Open developer settings
+    # Open developer settings once
     open_developer_settings
     
     echo ""
-    pecho "$PASTEL_CYAN" "Press Enter when you see the pairing dialog..."
+    pecho "$PASTEL_CYAN" "After setting up wireless debugging, press Enter to continue..."
     read -r || true
   fi
   

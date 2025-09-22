@@ -208,30 +208,35 @@ step_storage(){
   
   # Run termux-setup-storage first
   if command -v termux-setup-storage >/dev/null 2>&1; then
-    if [ "$NON_INTERACTIVE" != "1" ]; then
-      echo ""
-      pecho "$PASTEL_CYAN" "Storage Permission Required:"
-      info "• Termux needs access to device storage for APK downloads"
-      info "• Grant 'Files and media' permission when prompted"
-      info "• This enables saving files to Downloads folder"
-      echo ""
-      pecho "$PASTEL_YELLOW" "Press Enter to request storage permission..."
-      read -r || true
-    fi
-    
-    run_with_progress "Request storage permission" 10 termux-setup-storage
-    
-    # Wait for storage to be available
-    local attempts=0
-    while [ ! -d "$HOME/storage" ] && [ "$attempts" -lt 10 ]; do
-      sleep 1
-      attempts=$((attempts + 1))
-    done
-    
+    # Check if storage is already available
     if [ -d "$HOME/storage" ]; then
-      ok "Storage access granted successfully"
+      ok "Storage permission already granted"
     else
-      warn "Storage access may not be fully available yet"
+      if [ "$NON_INTERACTIVE" != "1" ]; then
+        echo ""
+        pecho "$PASTEL_CYAN" "Storage Permission Required:"
+        info "• Termux needs access to device storage for APK downloads"
+        info "• Grant 'Files and media' permission when prompted"
+        info "• This enables saving files to Downloads folder"
+        echo ""
+        pecho "$PASTEL_YELLOW" "Press Enter to request storage permission..."
+        read -r || true
+      fi
+      
+      run_with_progress "Request storage permission" 10 termux-setup-storage
+      
+      # Wait for storage to be available
+      local attempts=0
+      while [ ! -d "$HOME/storage" ] && [ "$attempts" -lt 10 ]; do
+        sleep 1
+        attempts=$((attempts + 1))
+      done
+      
+      if [ -d "$HOME/storage" ]; then
+        ok "Storage access granted successfully"
+      else
+        warn "Storage access may not be fully available yet"
+      fi
     fi
   else
     warn "termux-setup-storage not available"

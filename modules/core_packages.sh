@@ -400,67 +400,37 @@ upgrade_packages(){
 step_mirror(){
   pecho "$PASTEL_PURPLE" "Choose Termux mirror:"
   
-  # Detect user's region for better mirror suggestions
-  local user_region
-  if command -v detect_user_region >/dev/null 2>&1; then
-    user_region=$(detect_user_region)
-    info "Detected region: $user_region"
-  else
-    user_region="global"
-  fi
-  
-  # Get region-appropriate mirrors and names
+  # Use static reliable mirror list (no auto-detection)
   local -a urls names
-  if command -v get_regional_mirrors >/dev/null 2>&1 && command -v get_regional_mirror_names >/dev/null 2>&1; then
-    mapfile -t urls < <(get_regional_mirrors "$user_region" "main")
-    mapfile -t names < <(get_regional_mirror_names "$user_region" "main")
-    
-    # Debug output
-    debug "Regional functions returned ${#urls[@]} URLs and ${#names[@]} names"
-    
-    # If regional functions didn't return enough data, fall back to static list
-    if [ ${#urls[@]} -lt 2 ] || [ ${#names[@]} -lt 2 ]; then
-      warn "Regional mirror functions returned insufficient data, using static fallback"
-      urls=()
-      names=()
-    fi
-  fi
-  
-  # Use static fallback if regional functions not available or failed
-  if [ ${#urls[@]} -eq 0 ]; then
-    urls=(
-      "https://packages.termux.dev/apt/termux-main"
-      "https://packages-cf.termux.dev/apt/termux-main"
-      "https://fau.mirror.termux.dev/apt/termux-main"
-      "https://mirror.bfsu.edu.cn/termux/apt/termux-main"
-      "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
-      "https://grimler.se/termux/termux-main"
-      "https://termux.mentality.rip/termux/apt/termux-main"
-    )
-    names=(
-      "Official Termux (Global CDN)"
-      "Official Termux (Cloudflare CDN)"
-      "FAU (Germany)"
-      "BFSU (China)"
-      "Tsinghua (China)"
-      "Grimler (Sweden)"
-      "Mentality (North America)"
-    )
-  fi
-  
+  urls=(
+    "https://packages.termux.dev/apt/termux-main"
+    "https://packages-cf.termux.dev/apt/termux-main"
+    "https://fau.mirror.termux.dev/apt/termux-main"
+    "https://mirror.bfsu.edu.cn/termux/apt/termux-main"
+    "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+    "https://grimler.se/termux/termux-main"
+    "https://termux.mentality.rip/termux/apt/termux-main"
+  )
+  names=(
+    "Official Termux (Global CDN) ★"
+    "Official Termux (Cloudflare CDN) ★"
+    "FAU (Germany)"
+    "BFSU (China)"
+    "Tsinghua (China)"
+    "Grimler (Sweden)"
+    "Mentality (North America)"
+  )
+
   # Ensure we have at least one mirror
   if [ ${#urls[@]} -eq 0 ] || [ ${#names[@]} -eq 0 ]; then
     err "No mirrors available"
     return 1
   fi
-  
-  # Show regional recommendation
-  if [ "$user_region" != "global" ]; then
-    pecho "$PASTEL_GREEN" "Recommended for your region ($user_region):"
-    info "  • Official mirrors are listed first (always preferred)"
-    info "  • Regional mirrors follow for better performance"
-    echo ""
-  fi
+
+  # Show recommendation
+  echo ""
+  pecho "$PASTEL_GREEN" "Recommended: Official mirrors (marked with ★) are usually fastest and most reliable"
+  echo ""
   
   # Display mirror options with colors  
   local i

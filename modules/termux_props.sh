@@ -382,10 +382,16 @@ validate_termux_environment(){
 
 # Read user credentials with proper validation and timeout handling
 read_credential() {
-  local prompt="$1"
-  local var_name="$2"
+  local prompt="${1:-}"
+  local var_name="${2:-}"
   local validation_type="${3:-nonempty}"
   local is_password="${4:-false}"
+  
+  # Validate required parameters
+  if [ -z "$prompt" ] || [ -z "$var_name" ]; then
+    err "read_credential requires prompt and variable name parameters"
+    return 1
+  fi
   
   if [ "$is_password" = "true" ]; then
     secure_password_input "$prompt" "$var_name"
@@ -539,6 +545,34 @@ step_usercfg(){
 configure_git_with_timeout() {
   pecho "$PASTEL_PURPLE" "Configuring Git for version control..."
   
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    if ask_yes_no "Do you want to configure Git and GitHub?" "y"; then
+      configure_git_interactive
+      
+      # Ask about SSH key generation
+      echo ""
+      if ask_yes_no "Generate SSH key for GitHub?" "y"; then
+        generate_github_ssh_key
+      fi
+    else
+      info "Skipping Git configuration"
+      # Set minimal git config
+      if command -v git >/dev/null 2>&1; then
+        git config --global user.name "user" 2>/dev/null || true
+        git config --global user.email "user@example.com" 2>/dev/null || true
+        git config --global init.defaultBranch main 2>/dev/null || true
+        git config --global pull.rebase false 2>/dev/null || true
+      fi
+      return 0
+    fi
+  else
+    configure_git_interactive
+  fi
+}
+
+# Interactive Git configuration
+configure_git_interactive() {
   while true; do
     # Get git username
     read_nonempty "Enter Git username" GIT_USERNAME "${TERMUX_USERNAME%%@*}"
@@ -574,5 +608,74 @@ configure_git_with_timeout() {
     ok "Git configured: $GIT_USERNAME <$GIT_EMAIL>"
   else
     warn "Git not available for configuration"
+  fi
+}
+
+# Generate SSH key for GitHub
+generate_github_ssh_key() {
+  pecho "$PASTEL_PURPLE" "Generating SSH key for GitHub..."
+  
+  local ssh_dir="$HOME/.ssh"
+  local key_file="$ssh_dir/id_rsa"
+  
+  # Create SSH directory
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir"
+  
+  # Check if key already exists
+  if [ -f "$key_file" ]; then
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      if ask_yes_no "SSH key already exists. Overwrite?" "n"; then
+        rm -f "$key_file" "$key_file.pub"
+      else
+        info "Using existing SSH key"
+        cat "$key_file.pub" 2>/dev/null || warn "Could not read existing key"
+        return 0
+      fi
+    else
+      info "SSH key already exists"
+      return 0
+    fi
+  fi
+  
+  # Generate SSH key with GitHub email
+  info "Generating SSH key with email: $GIT_EMAIL"
+  ssh-keygen -t rsa -b 4096 -C "$GIT_EMAIL" -f "$key_file" -N "" >/dev/null 2>&1
+  
+  if [ -f "$key_file.pub" ]; then
+    ok "SSH key generated successfully"
+    
+    # Display the public key
+    echo ""
+    pecho "$PASTEL_CYAN" "Your SSH public key (copy this to GitHub):"
+    echo ""
+    cat "$key_file.pub"
+    echo ""
+    
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      pecho "$PASTEL_YELLOW" "Instructions:"
+      info "1. Copy the SSH key above"
+      info "2. Press Enter to open GitHub SSH settings"
+      info "3. Click 'New SSH key' and paste the key"
+      info "4. Give it a title (e.g., 'Termux Key')"
+      info "5. Click 'Add SSH key'"
+      echo ""
+      pecho "$PASTEL_GREEN" "Press Enter to open GitHub SSH settings..."
+      read -r || true
+      
+      # Open GitHub SSH settings
+      if command -v termux-open-url >/dev/null 2>&1; then
+        termux-open-url "https://github.com/settings/ssh/new"
+      elif command -v am >/dev/null 2>&1; then
+        am start -a android.intent.action.VIEW -d "https://github.com/settings/ssh/new" >/dev/null 2>&1 || true
+      fi
+      
+      echo ""
+      pecho "$PASTEL_CYAN" "Press Enter when you've added the SSH key to GitHub..."
+      read -r || true
+    fi
+  else
+    err "Failed to generate SSH key"
+    return 1
   fi
 }

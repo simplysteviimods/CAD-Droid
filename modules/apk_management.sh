@@ -80,12 +80,16 @@ init_apk_system(){
   # Try primary directory first (external storage)
   local selected_dir=""
   if mkdir -p "$APK_DOWNLOAD_DIR_PRIMARY" 2>/dev/null && [ -w "$APK_DOWNLOAD_DIR_PRIMARY" ]; then
-    selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"  
+    selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"
+    # Set proper permissions for APK directory
+    chmod 755 "$selected_dir" 2>/dev/null || true
     info "Using external storage for APKs: $selected_dir"
   else
     # Fallback to internal storage
     if mkdir -p "$APK_DOWNLOAD_DIR_FALLBACK" 2>/dev/null; then
       selected_dir="$APK_DOWNLOAD_DIR_FALLBACK"
+      # Set proper permissions for APK directory
+      chmod 755 "$selected_dir" 2>/dev/null || true
       warn "External storage not available, using internal storage: $selected_dir"
     else
       err "Cannot create any APK directory"

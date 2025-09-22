@@ -440,20 +440,28 @@ step_prefetch(){
     cat > "$prefetch_script" << PREFETCH_EOF
 #!/bin/bash
 
-echo "Prefetching packages..."
+echo "Prefetching development packages..."
 
 # Force refresh of package archives each run
 if command -v apt-get >/dev/null 2>&1; then
-  apt-get clean || true
+  echo "Cleaning package cache..."
+  apt-get clean >/dev/null 2>&1 || true
   rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
-  apt-get update
+  
+  echo "Updating package lists..."
+  apt-get update >/dev/null 2>&1
+  
   # Download packages without installing; force no-cache behavior
-  echo "Downloading package archives (fresh)..."
+  echo "Downloading ${#prefetch_packages[@]} development packages..."
   apt-get -o Acquire::http::No-Cache=true \\
           -o Acquire::https::No-Cache=true \\
-          --download-only -y install ${prefetch_packages[*]} 2>/dev/null || {
+          --download-only -y install ${prefetch_packages[*]} >/dev/null 2>&1 || {
       echo "Some packages may not be available in this distribution"
   }
+  
+  echo "Package download completed"
+else
+  echo "Package manager not available"
 fi
 
 # Show cache status
