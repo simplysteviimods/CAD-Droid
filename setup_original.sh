@@ -3882,8 +3882,17 @@ pkg_available(){
 apt_install_if_needed(){
   local p="$1"
   
-  # Update package lists first
-  run_with_progress "Update package lists" 3 bash -c "apt-get update >/dev/null 2>&1"
+  # Ensure selected mirror is applied before updating package lists
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  # Update package lists first using appropriate commands
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Update package lists (pkg)" 3 bash -c "pkg update -y >/dev/null 2>&1 || apt update >/dev/null 2>&1"
+  else
+    run_with_progress "Update package lists (apt)" 3 bash -c "apt update >/dev/null 2>&1"
+  fi
   
   # Skip if already installed
   if dpkg_is_installed "$p"; then
@@ -3896,8 +3905,12 @@ apt_install_if_needed(){
     return 0
   fi
   
-  # Install the package - treat exit code 100 as success (already installed)
-  run_with_progress "Install $p" 18 bash -c "apt-get -y install $p >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  # Install the package using appropriate Termux commands
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Install $p (pkg)" 18 bash -c "pkg install -y $p >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  else
+    run_with_progress "Install $p (apt)" 18 bash -c "apt install -y $p >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  fi
 }
 
 # Ensure wget/curl is available for downloads
@@ -3911,8 +3924,17 @@ ensure_download_tool(){
     return 0
   fi
   
-  # Install wget if neither is available
-  run_with_progress "Install wget for downloads" 10 bash -c "apt-get update >/dev/null 2>&1 && apt-get -y install wget >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  # Ensure selected mirror is applied before installing wget
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  # Install wget if neither is available using appropriate commands
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Install wget for downloads (pkg)" 10 bash -c "pkg update -y >/dev/null 2>&1 && pkg install -y wget >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  else
+    run_with_progress "Install wget for downloads (apt)" 10 bash -c "apt update >/dev/null 2>&1 && apt install -y wget >/dev/null 2>&1 || [ \$? -eq 100 ]"
+  fi
 }
 
 # Step 1: Configure storage access and permissions
@@ -4143,13 +4165,30 @@ step_mirror(){
   sanitize_sources_main_only
   verify_mirror
   
-  # Test the mirror with better error handling
-  if run_with_progress "Test mirror connection" 18 bash -c 'apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1'; then
+  # Test the mirror with better error handling using proper commands
+  local test_success=false
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Test mirror connection (pkg)" 18 bash -c 'pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1'; then
+      test_success=true
+    fi
+  fi
+  
+  if [ "$test_success" = false ]; then
+    if run_with_progress "Test mirror connection (apt)" 18 bash -c 'apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1'; then
+      test_success=true
+    fi
+  fi
+  
+  if [ "$test_success" = true ]; then
     ok "Mirror connection successful"
   else
     warn "Mirror connection failed, but continuing..."
     # Force update of package lists
-    run_with_progress "Force apt index update" 25 bash -c 'apt-get clean && apt-get update --fix-missing >/dev/null 2>&1 || true'
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Force package update (pkg)" 25 bash -c 'pkg clean && pkg update -y --fix-missing >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Force package update (apt)" 25 bash -c 'apt clean && apt update --fix-missing >/dev/null 2>&1 || true'
+    fi
   fi
   
   mark_step_status "success"
@@ -4160,7 +4199,15 @@ repair_runtime_libs(){
   local e
   e=$( (date >/dev/null) 2>&1 || true )
   if echo "$e" | grep -qi 'libpcre2-8.so'; then
-    run_with_progress "Repair libpcre2" 12 bash -c 'apt-get -y install pcre2 >/dev/null 2>&1 || true'
+    # Ensure selected mirror is applied before repairing libraries
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Repair libpcre2 (pkg)" 12 bash -c 'pkg install -y pcre2 >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Repair libpcre2 (apt)" 12 bash -c 'apt install -y pcre2 >/dev/null 2>&1 || true'
+    fi
   fi
 }
 
@@ -4189,60 +4236,57 @@ ensure_jq(){
   if command -v jq >/dev/null 2>&1; then
     return 0
   fi
-  run_with_progress "Install jq" 12 bash -c 'apt-get update >/dev/null 2>&1 || true; apt-get -y install jq >/dev/null 2>&1 || true'
+  
+  # Ensure selected mirror is applied before installing jq
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Install jq (pkg)" 12 bash -c 'pkg update -y >/dev/null 2>&1 || true; pkg install -y jq >/dev/null 2>&1 || true'
+  else
+    run_with_progress "Install jq (apt)" 12 bash -c 'apt update >/dev/null 2>&1 || true; apt install -y jq >/dev/null 2>&1 || true'
+  fi
 }
 
 # Step 3: Bootstrap essential system components
 step_bootstrap(){ 
   repair_runtime_libs
   network_ready_wait
-  run_with_progress "Baseline apt update" 18 bash -c 'apt-get update >/dev/null 2>&1 || true'
-  run_with_progress "Install baseline utils" 28 bash -c 'DEBIAN_FRONTEND=noninteractive apt-get -y -qq install coreutils termux-exec findutils procps grep sed gawk busybox curl jq >/dev/null 2>&1 || true'
+  
+  # Ensure selected mirror is applied before bootstrap operations
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Baseline update (pkg)" 18 bash -c 'pkg update -y >/dev/null 2>&1 || true'
+    run_with_progress "Install baseline utils (pkg)" 28 bash -c 'pkg install -y coreutils termux-exec findutils procps grep sed gawk busybox curl jq >/dev/null 2>&1 || true'
+  else
+    run_with_progress "Baseline update (apt)" 18 bash -c 'apt update >/dev/null 2>&1 || true'
+    run_with_progress "Install baseline utils (apt)" 28 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y -qq coreutils termux-exec findutils procps grep sed gawk busybox curl jq >/dev/null 2>&1 || true'
+  fi
   ensure_jq
   mark_step_status "success"
 }
 
-# Step 4: Enable X11 repository for desktop packages with safe retry logic
+# Step 4: Enable X11 repository for desktop packages with proper Termux commands
 step_x11repo(){ 
-  local commands=("apt-get update || true" "apt-get -y install x11-repo || [ \$? -eq 100 ] || false" "apt-get update || true") 
-  local labels=("Update apt lists" "Install x11-repo" "Refresh lists") 
-  local cmd_index=0
-  local max_attempts=3
+  # Ensure selected mirror is applied before X11 repo operations
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
   
-  # Process each command with retry logic
-  while [ "$cmd_index" -lt "${#commands[@]}" ] 2>/dev/null; do
-    local current_command="${commands[$cmd_index]:-}"
-    local current_label="${labels[$cmd_index]:-Command}"
-    local attempt=1
-    local success=0
-    
-    # Try each command multiple times for reliability
-    while [ "$attempt" -le "$max_attempts" ] 2>/dev/null && [ "$success" -eq 0 ]; do
-      if run_with_progress "$current_label" 24 bash -c "$current_command >/dev/null 2>&1"; then
-        success=1
-        break
-      else
-        # Only sleep between failed attempts, not after success
-        if [ "$attempt" -lt "$max_attempts" ] 2>/dev/null; then
-          safe_sleep 1
-        fi
-        
-        # Safe increment using validated arithmetic
-        if is_nonneg_int "${attempt:-0}" && [ "$attempt" -lt 10 ]; then
-          attempt=$(add_int "$attempt" 1)
-        else
-          break  # Safety break
-        fi
-      fi
-    done
-    
-    # Move to next command - safe increment using validated arithmetic
-    if is_nonneg_int "${cmd_index:-0}" && [ "$cmd_index" -lt 10 ]; then
-      cmd_index=$(add_int "$cmd_index" 1)
-    else
-      break  # Safety break
-    fi
-  done
+  # Update package lists first
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Update package lists (pkg)" 12 bash -c 'pkg update -y >/dev/null 2>&1 || true'
+    run_with_progress "Install x11-repo (pkg)" 24 bash -c 'pkg install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+    run_with_progress "Refresh package lists (pkg)" 12 bash -c 'pkg update -y >/dev/null 2>&1 || true'
+  else
+    run_with_progress "Update package lists (apt)" 12 bash -c 'apt update >/dev/null 2>&1 || true'
+    run_with_progress "Install x11-repo (apt)" 24 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+    run_with_progress "Refresh package lists (apt)" 12 bash -c 'apt update >/dev/null 2>&1 || true'
+  fi
   
   mark_step_status "success"
 }
@@ -4264,26 +4308,54 @@ APT_CONFIG_EOF
   mark_step_status "success"
 }
 
-# Step 6: System update and maintenance
+# Step 6: System update and maintenance using proper Termux commands
 step_systemup(){ 
-  if run_with_progress "System apt update" 28 bash -c 'apt-get update >/dev/null 2>&1 || true'; then
-    :
-  else
-    apt_fix_broken
+  # Ensure selected mirror is applied before system update
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
   fi
   
-  if run_with_progress "System apt upgrade" 75 bash -c 'apt-get -y upgrade >/dev/null 2>&1 || true'; then
-    :
+  # System update using appropriate package manager
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "System update (pkg)" 28 bash -c 'pkg update -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      apt_fix_broken
+    fi
+    
+    if run_with_progress "System upgrade (pkg)" 75 bash -c 'pkg upgrade -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      apt_fix_broken
+    fi
+    
+    run_with_progress "Verify termux-exec (pkg)" 6 bash -c 'dpkg -s termux-exec >/dev/null 2>&1 || pkg install -y termux-exec >/dev/null 2>&1 || true'
   else
-    apt_fix_broken
+    if run_with_progress "System update (apt)" 28 bash -c 'apt update >/dev/null 2>&1 || true'; then
+      :
+    else
+      apt_fix_broken
+    fi
+    
+    if run_with_progress "System upgrade (apt)" 75 bash -c 'apt upgrade -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      apt_fix_broken
+    fi
+    
+    run_with_progress "Verify termux-exec (apt)" 6 bash -c 'dpkg -s termux-exec >/dev/null 2>&1 || apt install -y termux-exec >/dev/null 2>&1 || true'
   fi
   
-  run_with_progress "Verify termux-exec" 6 bash -c 'dpkg -s termux-exec >/dev/null 2>&1 || apt-get -y install termux-exec >/dev/null 2>&1 || true'
   mark_step_status "success"
 }
 
 # Step 7: Install network tools with safe array iteration
 step_nettools(){
+  # Ensure selected mirror is applied before installing network tools
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   local tools=("wget" "nmap")
   local tools_count=${#tools[@]} tool_index=0
   
@@ -4292,7 +4364,11 @@ step_nettools(){
     local current_tool="${tools[$tool_index]:-}"
     
     if [ -n "$current_tool" ]; then
-      run_with_progress "Install $current_tool" 18 bash -c "apt-get -y install $current_tool >/dev/null 2>&1 || true"
+      if command -v pkg >/dev/null 2>&1; then
+        run_with_progress "Install $current_tool (pkg)" 18 bash -c "pkg install -y $current_tool >/dev/null 2>&1 || true"
+      else
+        run_with_progress "Install $current_tool (apt)" 18 bash -c "apt install -y $current_tool >/dev/null 2>&1 || true"
+      fi
       
       if command -v "$current_tool" >/dev/null 2>&1; then
         case "$current_tool" in
@@ -4525,8 +4601,17 @@ step_prefetch(){
     return 0
   fi
   
-  # Download packages without installing
-  run_with_progress "Download core packages" 28 bash -c "apt-get -y install --download-only ${need[*]} >/dev/null 2>&1 || true"
+  # Ensure selected mirror is applied before downloading packages
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  # Download packages without installing using appropriate command
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "Download core packages (pkg)" 28 bash -c "pkg install --download-only -y ${need[*]} >/dev/null 2>&1 || true"
+  else
+    run_with_progress "Download core packages (apt)" 28 bash -c "apt install --download-only -y ${need[*]} >/dev/null 2>&1 || true"
+  fi
   mark_step_status "success"
 }
 
@@ -4585,7 +4670,17 @@ step_adb(){
   # Install ADB if not present
   if ! command -v adb >/dev/null 2>&1; then
     info "Installing ADB..."
-    run_with_progress "Install android-tools" 15 bash -c 'apt-get update >/dev/null 2>&1 && apt-get -y install android-tools >/dev/null 2>&1 || true'
+    
+    # Ensure selected mirror is applied before installing android-tools
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Install android-tools (pkg)" 15 bash -c 'pkg update -y >/dev/null 2>&1 && pkg install -y android-tools >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Install android-tools (apt)" 15 bash -c 'apt update >/dev/null 2>&1 && apt install -y android-tools >/dev/null 2>&1 || true'
+    fi
   fi
   
   # Open developer settings
@@ -4625,12 +4720,34 @@ step_xfce(){
     return 0
   fi
   
-  # Try installing full XFCE meta-package first
-  if run_with_progress "Install xfce4 meta" 55 bash -c 'apt-get -y install xfce4 >/dev/null 2>&1'; then
+  # Ensure selected mirror is applied before installing XFCE
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  # Try installing full XFCE meta-package first using appropriate package manager
+  local install_success=false
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Install xfce4 meta (pkg)" 55 bash -c 'pkg install -y xfce4 >/dev/null 2>&1'; then
+      install_success=true
+    fi
+  fi
+  
+  if [ "$install_success" = false ]; then
+    if run_with_progress "Install xfce4 meta (apt)" 55 bash -c 'apt install -y xfce4 >/dev/null 2>&1'; then
+      install_success=true
+    fi
+  fi
+  
+  if [ "$install_success" = true ]; then
     mark_step_status "success"
   else
     # Fall back to individual components
-    run_with_progress "Install xfce4 parts" 50 bash -c 'apt-get -y install xfce4-session xfce4-panel xfce4-terminal xfce4-settings thunar >/dev/null 2>&1 || true'
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Install xfce4 parts (pkg)" 50 bash -c 'pkg install -y xfce4-session xfce4-panel xfce4-terminal xfce4-settings thunar >/dev/null 2>&1 || true'
+    else
+      run_with_progress "Install xfce4 parts (apt)" 50 bash -c 'apt install -y xfce4-session xfce4-panel xfce4-terminal xfce4-settings thunar >/dev/null 2>&1 || true'
+    fi
     mark_step_status "success"
   fi
 }
@@ -4716,9 +4833,19 @@ step_final(){
 
 # Fix common apt/dpkg issues (moved here to be accessible by step functions)
 apt_fix_broken(){ 
+  # Ensure selected mirror is applied before fixing broken packages
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
   run_with_progress "dpkg configure -a" 14 bash -c 'dpkg --configure -a >/dev/null 2>&1 || true'
-  run_with_progress "apt -f install" 14 bash -c 'apt-get -y -f install >/dev/null 2>&1 || true'
-  run_with_progress "apt clean" 5 bash -c 'apt-get clean >/dev/null 2>&1 || true'
+  if command -v pkg >/dev/null 2>&1; then
+    run_with_progress "fix packages (pkg)" 14 bash -c 'pkg install -f -y >/dev/null 2>&1 || true'
+    run_with_progress "clean cache (pkg)" 5 bash -c 'pkg clean >/dev/null 2>&1 || true'
+  else
+    run_with_progress "fix packages (apt)" 14 bash -c 'apt install -f -y >/dev/null 2>&1 || true'
+    run_with_progress "clean cache (apt)" 5 bash -c 'apt clean >/dev/null 2>&1 || true'
+  fi
 }
 
 # Configure Git and optionally set up GitHub SSH keys with timeout handling
@@ -4769,7 +4896,15 @@ generate_ssh_key_if_needed(){
   
   # Ensure openssh is available for SSH key generation
   if ! dpkg_is_installed "openssh"; then
-    run_with_progress "Install openssh" 8 bash -c "apt-get update >/dev/null 2>&1 && apt-get -y install openssh >/dev/null 2>&1 || [ \$? -eq 100 ]"
+    # Ensure selected mirror is applied before installing openssh
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Install openssh (pkg)" 8 bash -c "pkg update -y >/dev/null 2>&1 && pkg install -y openssh >/dev/null 2>&1 || [ \$? -eq 100 ]"
+    else
+      run_with_progress "Install openssh (apt)" 8 bash -c "apt update >/dev/null 2>&1 && apt install -y openssh >/dev/null 2>&1 || [ \$? -eq 100 ]"
+    fi
   fi
   
   # Generate Git SSH key if it doesn't exist
