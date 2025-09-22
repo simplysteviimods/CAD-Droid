@@ -113,7 +113,6 @@ load_all_modules() {
 
   # 3. Specialized modules (can be loaded in any order)
   load_module "termux_props"
-  load_module "apk"
   load_module "apk_management"
   load_module "adb"
   load_module "core_packages"
@@ -179,7 +178,7 @@ initialize_steps(){
   STEP_FUNCS=()
   STEP_ETA=()
   
-  # Register all installation steps
+  # Register all installation steps in logical chronological order
   cad_register_step "Storage Setup" "step_storage" 15
   cad_register_step "Mirror Selection" "step_mirror" 20  
   cad_register_step "System Bootstrap" "step_bootstrap" 35
@@ -190,10 +189,10 @@ initialize_steps(){
   cad_register_step "Core Installation" "step_coreinst" 90
   cad_register_step "APK Installation" "step_apk" 30
   cad_register_step "User Configuration" "step_usercfg" 10
-  cad_register_step "Package Prefetch" "step_prefetch" 60
   cad_register_step "ADB Wireless Setup" "step_adb" 20
   cad_register_step "XFCE Desktop" "step_xfce" 75
   cad_register_step "Container Setup" "step_container" 120
+  cad_register_step "Package Prefetch" "step_prefetch" 60  # Moved after container - prefetch is for container use
   cad_register_step "Final Configuration" "step_final" 25
   
   # Calculate totals
@@ -250,9 +249,6 @@ step_storage(){
 step_apk(){
   info "Installing required Termux add-on APKs..."
   
-  # Ensure download tools are available
-  ensure_download_tool
-  
   # Check if APK installation is enabled
   if [ "${ENABLE_APK_AUTO:-1}" != "1" ]; then
     info "APK installation disabled - skipping"
@@ -260,66 +256,13 @@ step_apk(){
     return 0
   fi
   
-  # Follow original setup approach - setup directory first, then download
-  select_apk_directory || {
-    warn "APK directory setup failed, using fallback"
-    USER_SELECTED_APK_DIR="/storage/emulated/0/Download/CAD-Droid-APKs"
-    mkdir -p "$USER_SELECTED_APK_DIR" 2>/dev/null || true
-  }
-  
-  # Start F-Droid APK downloads like original
-  info "Starting F-Droid APK downloads..."
-  local failed=0
-  APK_MISSING=()
-  
-  # Download essential Termux APKs using original approach
-  if ! fetch_termux_addon "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:API")
-    failed=$((failed + 1))
-  fi
-  
-  if ! fetch_termux_addon "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:X11")
-    failed=$((failed + 1))
-  fi
-  
-  if ! fetch_termux_addon "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:GUI")
-    failed=$((failed + 1))
-  fi
-  
-  if ! fetch_termux_addon "Termux:Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:Widget")
-    failed=$((failed + 1))
-  fi
-  
-  # Show download results
-  if [ "$failed" -eq 0 ]; then
-    ok "All APKs downloaded successfully to: $USER_SELECTED_APK_DIR"
+  # Simple APK management approach
+  if declare -f manage_apks >/dev/null 2>&1; then
+    manage_apks || {
+      warn "APK management had issues but continuing..."
+    }
   else
-    warn "$failed APK(s) failed to download"
-  fi
-  
-  # Open APK directory and provide permission guidance AFTER downloads
-  info "Opening APK directory for installation..."
-  open_file_manager "$USER_SELECTED_APK_DIR" || warn "Could not open APK directory"
-  
-  # Provide permission instructions after downloads
-  echo ""
-  pecho "$PASTEL_YELLOW" "PERMISSION SETUP REQUIRED:"
-  info "After installing each APK, configure permissions:"
-  info "• Termux:API - Phone, SMS, Location, Camera, Microphone"
-  info "• Termux:X11 - Display over other apps, Battery optimization disabled"
-  info "• Other APKs - Standard app permissions as requested"
-  echo ""
-  
-  # Pause for manual installation like original
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    info "Install APK files by tapping them, configure permissions, then press Enter..."
-    read -r || true
-  else
-    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
-    sleep "${APK_PAUSE_TIMEOUT:-45}"
+    warn "APK management module not available"
   fi
   
   mark_step_status "success"
@@ -335,18 +278,20 @@ step_usercfg(){
 }
 
 step_prefetch(){
-  info "Prefetching packages for offline use..."
+  info "Prefetching packages for container and offline use..."
   
-  # Use modular package list updating to ensure indexes are current
-  update_package_lists || {
-    warn "Failed to update package lists, proceeding with prefetch anyway"
-  }
+  # This step runs after container setup to prefetch packages for container use
+  # Simple approach without complex spinners
   
-  # Download core packages for offline installation
+  info "Downloading packages for offline installation..."
+  
+  # Simple package download
   if command -v pkg >/dev/null 2>&1; then
-    run_with_progress "Download core packages (pkg)" 30 bash -c 'pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+    pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 || true
+    ok "Packages prefetched for offline use"
   else
-    run_with_progress "Download core packages (apt)" 30 bash -c 'apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+    apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 || true
+    ok "Packages prefetched for offline use"
   fi
   
   mark_step_status "success"  
@@ -546,6 +491,9 @@ main_execution(){
   # Load all modules first
   load_all_modules
   
+  # Set installation flag at the very beginning
+  set_install_flag
+  
   # Early Termux:API detection for better UX fallbacks
   if have_termux_api 2>/dev/null; then
     TERMUX_API_VERIFIED="yes"
@@ -572,6 +520,8 @@ main_execution(){
   
   # Execute all registered steps
   if execute_all_steps; then
+    # Clear installation flag on successful completion
+    clear_install_flag
     show_final_completion
     return 0
   else

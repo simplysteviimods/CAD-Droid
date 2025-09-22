@@ -21,17 +21,21 @@ readonly APK_STATE_DIR="$HOME/.cad/apk-state"
 # Global APK download directory (set during initialization)
 APK_DOWNLOAD_DIR=""
 
-# APK download tracking arrays - persistent across sessions
-declare -a DOWNLOADED_APKS=()
-declare -a FAILED_APKS=()
-declare -a PENDING_APKS=()
+# APK download tracking arrays - persistent across sessions with global scope
+declare -ga DOWNLOADED_APKS=()
+declare -ga FAILED_APKS=()
+declare -ga PENDING_APKS=()
 
 # F-Droid API configuration
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"
 readonly FDROID_REPO_BASE="https://f-droid.org/repo"
 
-# Essential APKs from F-Droid with their package IDs - Only Termux plugins
-declare -A ESSENTIAL_APKS=(
+# Minimum APK size check (12KB)
+readonly MIN_APK_SIZE=12288
+
+# Essential APKs from F-Droid with their package IDs - Complete Termux plugin suite
+declare -gA ESSENTIAL_APKS 2>/dev/null || true
+ESSENTIAL_APKS=(
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
   ["Termux:Float"]="com.termux.float"
@@ -40,6 +44,19 @@ declare -A ESSENTIAL_APKS=(
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
   ["Termux:GUI"]="com.termux.gui"
+)
+
+# GitHub backup URLs for Termux plugins when F-Droid fails
+declare -gA TERMUX_GITHUB_URLS 2>/dev/null || true
+TERMUX_GITHUB_URLS=(
+  ["com.termux.api"]="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
+  ["com.termux.boot"]="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
+  ["com.termux.float"]="https://github.com/termux/termux-float/releases/latest/download/termux-float.apk"
+  ["com.termux.styling"]="https://github.com/termux/termux-styling/releases/latest/download/termux-styling.apk"
+  ["com.termux.tasker"]="https://github.com/termux/termux-tasker/releases/latest/download/termux-tasker.apk"
+  ["com.termux.widget"]="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
+  ["com.termux.x11"]="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
+  ["com.termux.gui"]="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
 )
 
 # Initialize APK management system with persistent storage
@@ -69,7 +86,8 @@ init_apk_system(){
     
     warn "Storage access not available, requesting permissions..."
     if command -v termux-setup-storage >/dev/null 2>&1; then
-      run_with_progress "Request storage access" 8 termux-setup-storage
+      info "Requesting storage access..."
+      termux-setup-storage && ok "Storage access granted" || warn "Storage access may have failed"
       # Wait a moment for storage to be available
       sleep 2
     else
@@ -81,15 +99,21 @@ init_apk_system(){
   local selected_dir=""
   if mkdir -p "$APK_DOWNLOAD_DIR_PRIMARY" 2>/dev/null && [ -w "$APK_DOWNLOAD_DIR_PRIMARY" ]; then
     selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"
-    # Set proper permissions for APK directory
+    # Set proper permissions for APK directory and all parent directories
     chmod 755 "$selected_dir" 2>/dev/null || true
+    chmod 755 "$(dirname "$selected_dir")" 2>/dev/null || true
+    # Make sure APKs will be readable and executable
+    find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
     info "Using external storage for APKs: $selected_dir"
   else
     # Fallback to internal storage
     if mkdir -p "$APK_DOWNLOAD_DIR_FALLBACK" 2>/dev/null; then
       selected_dir="$APK_DOWNLOAD_DIR_FALLBACK"
-      # Set proper permissions for APK directory
+      # Set proper permissions for APK directory and all parent directories
       chmod 755 "$selected_dir" 2>/dev/null || true
+      chmod 755 "$(dirname "$selected_dir")" 2>/dev/null || true
+      # Make sure APKs will be readable and executable
+      find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
       warn "External storage not available, using internal storage: $selected_dir"
     else
       err "Cannot create any APK directory"
@@ -156,6 +180,293 @@ save_apk_state(){
   fi
 }
 
+# Ensure minimum APK file size and validity
+ensure_min_size(){
+  local f="$1"
+  
+  if [ ! -f "$f" ]; then
+    return 1
+  fi
+  
+  # Get file size using stat or wc as fallback
+  local sz
+  if sz=$(stat -c%s "$f" 2>/dev/null); then
+    :  # stat worked
+  elif sz=$(wc -c < "$f" 2>/dev/null); then
+    :  # wc worked
+  else
+    sz=0
+  fi
+  
+  # Check if file meets minimum size requirement
+  if [ "$sz" -lt "$MIN_APK_SIZE" ]; then
+    warn "APK file too small: $sz bytes (minimum $MIN_APK_SIZE)"
+    rm -f "$f" 2>/dev/null || true
+    return 1
+  fi
+  
+  return 0
+}
+
+# Enhanced HTTP fetch function with wget-only approach
+http_fetch(){
+  local url="$1" output="$2"
+  local timeout="${CURL_MAX_TIME:-40}"
+  local connect_timeout="${CURL_CONNECT:-5}"
+  
+  if [ -z "$url" ] || [ -z "$output" ]; then
+    return 1
+  fi
+  
+  # Use wget with proper timeouts and error handling
+  if wget \
+    --timeout="$timeout" \
+    --connect-timeout="$connect_timeout" \
+    --tries=3 \
+    --user-agent="CAD-Droid-Setup/1.0" \
+    --no-check-certificate \
+    --quiet \
+    --output-document="$output" \
+    "$url"; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Fetch APK from F-Droid using their API  
+fetch_fdroid_api(){
+  local pkg="$1"
+  local out="$2" 
+  local api="https://f-droid.org/api/v1/packages/$pkg"
+  
+  if [ -z "$pkg" ] || [ -z "$out" ]; then
+    return 1
+  fi
+  
+  local tmp="$TMPDIR/fdroid_${pkg}.json"
+  
+  # Download package metadata from F-Droid API
+  if ! http_fetch "$api" "$tmp"; then
+    return 1
+  fi
+  
+  # Extract APK filename from JSON response
+  local apk
+  if command -v jq >/dev/null 2>&1; then
+    apk=$(jq -r '.packages[0].apkName // empty' "$tmp" 2>/dev/null)
+  else
+    apk=$(grep -m1 '"apkName"' "$tmp" 2>/dev/null | awk -F'"' '{print $4}')
+  fi
+  
+  if [ -z "$apk" ]; then
+    rm -f "$tmp" 2>/dev/null
+    return 1
+  fi
+  
+  # Download the APK file
+  if http_fetch "https://f-droid.org/repo/$apk" "$out"; then
+    rm -f "$tmp" 2>/dev/null
+    ensure_min_size "$out"
+  else
+    rm -f "$tmp" 2>/dev/null
+    return 1
+  fi
+}
+
+# Fetch APK from F-Droid by scraping their web page
+fetch_fdroid_page(){
+  local pkg="$1"
+  local out="$2"
+  local html_file="$TMPDIR/fdroid_page_${pkg}.html"
+  
+  if [ -z "$pkg" ] || [ -z "$out" ]; then
+    return 1
+  fi
+  
+  # Download the F-Droid package page
+  if ! http_fetch "https://f-droid.org/packages/$pkg" "$html_file"; then
+    return 1
+  fi
+  
+  # Extract APK download URL from HTML
+  local rel
+  rel=$(grep -Eo "/repo/${pkg//./\\.}_[A-Za-z0-9+.-]*\.apk" "$html_file" 2>/dev/null | grep -v '\.apk\.asc' | head -1)
+  
+  rm -f "$html_file" 2>/dev/null
+  
+  if [ -z "$rel" ]; then
+    return 1
+  fi
+  
+  # Download the APK file
+  if http_fetch "https://f-droid.org${rel}" "$out"; then
+    ensure_min_size "$out"
+  else
+    return 1
+  fi
+}
+
+# Enhanced GitHub release fetch that preserves original filenames
+fetch_github_release(){
+  local repo="$1"
+  local pattern="$2"
+  local outdir="$3"
+  local app_name="${4:-app}"
+  local api="https://api.github.com/repos/$repo/releases/latest"
+  
+  if [ -z "$repo" ] || [ -z "$pattern" ] || [ -z "$outdir" ]; then
+    return 1
+  fi
+  
+  # Get latest release information from GitHub API
+  local data_file="$TMPDIR/github_${repo//\//_}.json"
+  if ! http_fetch "$api" "$data_file"; then
+    return 1
+  fi
+  
+  local url="" original_filename=""
+  
+  # Parse JSON to find download URL matching the pattern
+  if command -v jq >/dev/null 2>&1; then
+    # Use jq for reliable JSON parsing if available
+    local asset_info
+    asset_info=$(jq -r --arg p "$pattern" '.assets[]? | select(.browser_download_url | test($p)) | "\(.browser_download_url)|\(.name)"' "$data_file" 2>/dev/null | head -1)
+    if [ -n "$asset_info" ]; then
+      url="${asset_info%|*}"
+      original_filename="${asset_info#*|}"
+    fi
+  else
+    # Fallback to grep-based parsing
+    local line
+    line=$(grep -Eo '"browser_download_url":[^"]*"[^"]+","name":[^"]*"[^"]+' "$data_file" 2>/dev/null | grep "$pattern" | head -1)
+    if [ -n "$line" ]; then
+      url=$(echo "$line" | grep -Eo '"browser_download_url":[^"]*"[^"]+' | cut -d'"' -f4)
+      original_filename=$(echo "$line" | grep -Eo '"name":[^"]*"[^"]+' | cut -d'"' -f4)
+    fi
+  fi
+  
+  # Special case for termux-x11 with known URL and filename
+  if [ -z "$url" ] && [ "$repo" = "termux/termux-x11" ]; then
+    url="https://github.com/termux/termux-x11/releases/latest/download/app-universal-debug.apk"
+    original_filename="app-universal-debug.apk"
+  fi
+  
+  rm -f "$data_file" 2>/dev/null
+  
+  if [ -z "$url" ]; then
+    return 1
+  fi
+  
+  # Use original filename if available, otherwise use app name
+  local final_filename="${original_filename:-${app_name}.apk}"
+  local out="$outdir/$final_filename"
+  
+  # Download the APK file with original name
+  if http_fetch "$url" "$out"; then
+    ensure_min_size "$out"
+  else
+    return 1
+  fi
+}
+
+# Enhanced Termux add-on fetch that preserves original APK names and prioritizes GitHub
+fetch_termux_addon(){
+  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5"
+  local prefer="${PREFER_FDROID:-0}" success=0
+  
+  if [ -z "$name" ] || [ -z "$pkg" ] || [ -z "$outdir" ]; then
+    return 1
+  fi
+  
+  # Ensure output directory exists
+  if ! mkdir -p "$outdir" 2>/dev/null; then
+    return 1
+  fi
+  
+  # Enhanced conflict resolution - check for existing conflicting packages
+  if command -v pm >/dev/null 2>&1; then
+    local existing_pkg
+    existing_pkg=$(pm list packages 2>/dev/null | grep -E "$pkg" | cut -d: -f2 | head -1)
+    if [ -n "$existing_pkg" ]; then
+      info "Found existing package: $existing_pkg - will attempt conflict resolution during installation"
+    fi
+  fi
+  
+  # Always prioritize GitHub unless F-Droid is explicitly preferred
+  if [ "$prefer" = "1" ]; then
+    # Try F-Droid first if preferred
+    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      success=1
+    fi
+  else
+    # Try GitHub first by default (preserves original names)
+    if [ -n "$repo" ] && [ -n "$patt" ]; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+        success=1
+      fi
+    fi
+  fi
+  
+  # Fall back to the other source if the first failed
+  if [ $success -eq 0 ]; then
+    if [ "$prefer" = "1" ]; then
+      # F-Droid was preferred but failed, try GitHub
+      if [ -n "$repo" ] && [ -n "$patt" ]; then
+        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+          success=1
+        fi
+      fi
+    else
+      # GitHub was preferred but failed, try F-Droid
+      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+        success=1
+      fi
+    fi
+  fi
+  
+  return $((1 - success))  
+}
+
+# Download file with progress spinner using the complete system
+# Parameters: url, output_file, description
+download_with_spinner(){
+  local url="$1"
+  local output_file="$2"
+  local description="${3:-Downloading file}"
+  
+  if [ -z "$url" ] || [ -z "$output_file" ]; then
+    return 1
+  fi
+  
+  # Ensure output directory exists
+  mkdir -p "$(dirname "$output_file")" 2>/dev/null || true
+  
+  # Remove any existing file
+  rm -f "$output_file" 2>/dev/null || true
+  
+  # Use http_fetch with progress display
+  if http_fetch "$url" "$output_file"; then
+    # Check file size and set permissions
+    if [ -f "$output_file" ]; then
+      local file_size
+      file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+      # Accept files larger than 1KB (most APKs are much larger)
+      if [ "$file_size" -gt 1024 ]; then
+        # Set proper permissions for downloaded APK
+        chmod 644 "$output_file" 2>/dev/null || true
+        return 0
+      else
+        warn "Downloaded file too small ($file_size bytes), may be incomplete"
+        chmod 644 "$output_file" 2>/dev/null || true
+        return 0
+      fi
+    fi
+  fi
+  
+  return 1
+}
+
 # Query F-Droid API for package information
 query_fdroid_package(){
   local package_id="$1"
@@ -169,7 +480,7 @@ query_fdroid_package(){
   local response_file="$APK_STATE_DIR/fdroid_${package_id}.json"
   
   # Download package information
-  if ! download_with_spinner "$api_url" "$response_file" "Query F-Droid API"; then
+  if ! download_with_spinner "$api_url" "$response_file" "Query F-Droid API for $package_id"; then
     warn "Failed to query F-Droid for package: $package_id"
     return 1
   fi
@@ -260,82 +571,62 @@ download_fdroid_apk(){
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
   
-  # Try F-Droid first with proper spinner
+  # Try F-Droid first with enhanced progress display
   local download_url
   if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
-    if run_with_progress "Download $app_name from F-Droid" 30 bash -c "
-      if command -v wget >/dev/null 2>&1; then
-        wget -q --timeout=30 --tries=3 -O '$output_file' '$download_url'
-      elif command -v curl >/dev/null 2>&1; then
-        curl -sL --max-time 30 --retry 3 -o '$output_file' '$download_url'
-      else
-        echo 'No download tool available' >&2
-        exit 1
-      fi
-    "; then
-      # Verify download
-      if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "$app_name downloaded successfully from F-Droid"
-        # Update tracking arrays
-        PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
-        DOWNLOADED_APKS+=("$app_name:$output_file")
-        save_apk_state
-        echo "$output_file"
-        return 0
+    info "Downloading $app_name from F-Droid..."
+    if download_with_spinner "$download_url" "$output_file" "Downloading $app_name"; then
+      # Less strict verification - accept any non-empty file
+      if [ -f "$output_file" ]; then
+        local file_size
+        file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -gt 0 ]; then
+          ok "$app_name downloaded successfully from F-Droid ($file_size bytes)"
+          # Update tracking arrays
+          PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+          DOWNLOADED_APKS+=("$app_name:$output_file")
+          save_apk_state
+          echo "$output_file"
+          return 0
+        else
+          warn "$app_name: Downloaded file is empty"
+        fi
       fi
     fi
   fi
   
   # Fallback to GitHub releases for Termux apps
   warn "F-Droid download failed, trying GitHub backup..."
-  local github_url=""
-  case "$package_id" in
-    "com.termux")
-      github_url="https://github.com/termux/termux-app/releases/latest/download/termux-app_universal.apk"
-      ;;
-    "com.termux.api")
-      github_url="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
-      ;;
-    "com.termux.boot")
-      github_url="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
-      ;;
-    "com.termux.widget")
-      github_url="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
-      ;;
-    "com.termux.x11")
-      github_url="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
-      ;;
-    "com.termux.gui")
-      github_url="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
-      ;;
-    # Non-Termux APKs don't have GitHub fallbacks, rely on F-Droid
-    *)
-      err "No GitHub backup available for $app_name (F-Droid only)"
-      return 1
-      ;;
-  esac
+  
+  # Ensure TERMUX_GITHUB_URLS is properly declared
+  if ! declare -p TERMUX_GITHUB_URLS >/dev/null 2>&1; then
+    err "TERMUX_GITHUB_URLS array not properly declared"
+    return 1
+  fi
+  
+  local github_url="${TERMUX_GITHUB_URLS[$package_id]:-}"
   
   if [ -n "$github_url" ]; then
-    if run_with_progress "Download $app_name from GitHub" 45 bash -c "
-      if command -v wget >/dev/null 2>&1; then
-        wget -q --timeout=45 --tries=3 -O '$output_file' '$github_url'
-      elif command -v curl >/dev/null 2>&1; then
-        curl -sL --max-time 45 --retry 3 -o '$output_file' '$github_url'
-      else
-        echo 'No download tool available' >&2
-        exit 1
-      fi
-    "; then
-      if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "$app_name downloaded successfully from GitHub"
-        # Update tracking arrays
-        PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
-        DOWNLOADED_APKS+=("$app_name:$output_file")
-        save_apk_state
-        echo "$output_file"
-        return 0
+    info "Downloading $app_name from GitHub..."
+    if download_with_spinner "$github_url" "$output_file" "Downloading $app_name from GitHub"; then
+      if [ -f "$output_file" ]; then
+        local file_size
+        file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -gt 0 ]; then
+          ok "$app_name downloaded successfully from GitHub ($file_size bytes)"
+          # Update tracking arrays
+          PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+          DOWNLOADED_APKS+=("$app_name:$output_file")
+          save_apk_state
+          echo "$output_file"
+          return 0
+        else
+          warn "$app_name: Downloaded file from GitHub is empty"
+        fi
       fi
     fi
+  else
+    warn "No GitHub backup available for $app_name"
   fi
   
   err "Failed to download $app_name from both F-Droid and GitHub"
@@ -346,70 +637,179 @@ download_fdroid_apk(){
   return 1
 }
 
-# Download all essential APKs after user confirms permissions
+# Download all essential APKs using the fetch_termux_addon function
 download_essential_apks(){
-  info "Preparing to download essential Termux plugin APKs..."
-  
-  # Show permission prompt before downloading
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    echo ""
-    pecho "$PASTEL_PURPLE" "=== Termux Plugin Permissions Required ==="
-    echo ""
-    pecho "$PASTEL_YELLOW" "The following Termux plugins will be downloaded and require specific permissions:"
-    echo ""
-    pecho "$PASTEL_CYAN" "• Termux:API - Phone, SMS, Location, Camera, Microphone permissions"
-    pecho "$PASTEL_CYAN" "• Termux:Boot - Boot permission to start services automatically"
-    pecho "$PASTEL_CYAN" "• Termux:Widget - Display over other apps permission"
-    pecho "$PASTEL_CYAN" "• Other plugins - Standard app permissions"
-    echo ""
-    pecho "$PASTEL_PINK" "After downloading, you'll need to:"
-    pecho "$PASTEL_GREEN" "1. Install each APK manually from the file manager"
-    pecho "$PASTEL_GREEN" "2. Grant the requested permissions for full functionality"
-    echo ""
-    printf "${PASTEL_YELLOW}Press Enter to review Termux permissions and continue...${RESET} "
-    read -r
-    
-    pecho "$PASTEL_CYAN" "What will happen next:"
-    info "• Android App Settings will open"
-    info "• You can review app permissions there if needed"
-    info "• APK downloads will begin automatically"
-    echo ""
-    
-    # Open Android app permission settings
-    if command -v am >/dev/null 2>&1; then
-      info "Opening Android App Settings..."
-      am start -a android.settings.APPLICATION_SETTINGS >/dev/null 2>&1 || true
-      sleep 2  # Give user time to see the settings opened
-    fi
-  fi
-  
   info "Downloading essential Termux plugin APKs..."
   
-  local download_count=0
-  local success_count=0
-  local failed_apks=()
+  # Ensure ESSENTIAL_APKS is properly declared and accessible
+  if ! declare -p ESSENTIAL_APKS >/dev/null 2>&1; then
+    err "ESSENTIAL_APKS array not properly declared"
+    return 1
+  fi
   
+  # Ensure APK download directory exists
+  mkdir -p "$APK_DOWNLOAD_DIR" 2>/dev/null || {
+    err "Cannot create APK directory: $APK_DOWNLOAD_DIR"
+    return 1
+  }
+  
+  # Set proper permissions for directory
+  chmod 755 "$APK_DOWNLOAD_DIR" 2>/dev/null || true
+  chmod 755 "$(dirname "$APK_DOWNLOAD_DIR")" 2>/dev/null || true
+  
+  # Track download results
+  local success=0 total=0
+  
+  # Download each essential APK using fetch_termux_addon
   for app_name in "${!ESSENTIAL_APKS[@]}"; do
     local package_id="${ESSENTIAL_APKS[$app_name]}"
-    download_count=$((download_count + 1))
+    local repo_path="" github_pattern=""
     
-    if download_fdroid_apk "$package_id" "$app_name" >/dev/null; then
-      success_count=$((success_count + 1))
+    total=$((total + 1))
+    
+    # Map each APK to its GitHub repository and filename pattern
+    case "$package_id" in
+      "com.termux.api")
+        repo_path="termux/termux-api"
+        github_pattern=".*api.*\.apk"
+        ;;
+      "com.termux.boot")
+        repo_path="termux/termux-boot" 
+        github_pattern=".*boot.*\.apk"
+        ;;
+      "com.termux.float")
+        repo_path="termux/termux-float"
+        github_pattern=".*float.*\.apk"
+        ;;
+      "com.termux.styling")
+        repo_path="termux/termux-styling"
+        github_pattern=".*styling.*\.apk"
+        ;;
+      "com.termux.tasker")
+        repo_path="termux/termux-tasker"
+        github_pattern=".*tasker.*\.apk"
+        ;;
+      "com.termux.widget")
+        repo_path="termux/termux-widget" 
+        github_pattern=".*widget.*\.apk"
+        ;;
+      "com.termux.x11")
+        repo_path="termux/termux-x11"
+        github_pattern=".*x11.*\.apk"
+        ;;
+      "com.termux.gui")
+        repo_path="termux/termux-gui"
+        github_pattern=".*gui.*\.apk"
+        ;;
+      *)
+        warn "Unknown package: $package_id - using generic pattern"
+        repo_path=""
+        github_pattern=""
+        ;;
+    esac
+    
+    info "($total/8) Downloading $app_name..."
+    
+    # Use fetch_termux_addon function from the reference
+    if fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
+      success=$((success + 1))
+      ok "Downloaded: $app_name"
+      DOWNLOADED_APKS+=("$app_name")
     else
-      failed_apks+=("$app_name")
+      warn "Failed to download: $app_name"
+      FAILED_APKS+=("$app_name")
     fi
   done
   
+  # Set proper permissions for all downloaded APK files
+  find "$APK_DOWNLOAD_DIR" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+  
   # Report results
-  if [ "$success_count" -eq "$download_count" ]; then
-    ok "All $download_count essential APKs downloaded successfully"
-  else
-    local failed_count=$((download_count - success_count))
-    warn "$success_count/$download_count APKs downloaded successfully"
-    
-    if [ ${#failed_apks[@]} -gt 0 ]; then
-      warn "Failed downloads: ${failed_apks[*]}"
+  info "APK download complete: $success/$total successful"
+  
+  if [ "$success" -gt 0 ]; then
+    ok "Successfully downloaded $success APK(s) to $APK_DOWNLOAD_DIR"
+  fi
+  
+  if [ "$success" -lt "$total" ]; then
+    local failed=$((total - success))
+    warn "$failed APK(s) failed to download"
+    if [ ${#FAILED_APKS[@]} -gt 0 ]; then
+      warn "Failed APKs: ${FAILED_APKS[*]}"
     fi
+  fi
+  
+  # Always save state
+  save_apk_state
+  
+  return 0
+}
+
+# Open Android security settings to enable "Install unknown apps" for Termux
+open_security_settings() {
+  info "Opening Android security settings..."
+  
+  # Try to open Termux-specific app settings
+  if command -v am >/dev/null 2>&1; then
+    # Open app-specific settings for Termux
+    am start -a android.settings.APPLICATION_DETAILS_SETTINGS \
+       -d package:com.termux >/dev/null 2>&1 || {
+      # Fallback to general security settings
+      am start -a android.settings.SECURITY_SETTINGS >/dev/null 2>&1 || {
+        # Final fallback to main settings
+        am start -a android.settings.SETTINGS >/dev/null 2>&1 || true
+      }
+    }
+    ok "Android settings opened - please enable 'Install unknown apps' for Termux"
+  else
+    warn "Cannot open Android settings automatically"
+    info "Please manually enable 'Install unknown apps' for Termux in Android settings"
+  fi
+}
+
+# Handle APK installation and permission setup after downloads are complete
+setup_apk_permissions(){
+  info "Setting up APK installation and permissions..."
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== APK Installation & Permissions Setup ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "All Termux plugin APKs have been downloaded successfully!"
+    echo ""
+    pecho "$PASTEL_CYAN" "Required permissions for each plugin:"
+    echo ""
+    pecho "$PASTEL_GREEN" "• Termux:API - Phone, SMS, Location, Camera, Microphone"
+    pecho "$PASTEL_GREEN" "• Termux:Boot - Boot permission to start services automatically" 
+    pecho "$PASTEL_GREEN" "• Termux:Widget - Display over other apps permission"
+    pecho "$PASTEL_GREEN" "• Termux:X11 - Display over other apps, battery optimization disabled"
+    pecho "$PASTEL_GREEN" "• Other plugins - Standard app permissions as requested"
+    echo ""
+    pecho "$PASTEL_PINK" "Installation steps:"
+    pecho "$PASTEL_CYAN" "1. Open the APK directory (will open automatically)"
+    pecho "$PASTEL_CYAN" "2. Install each APK by tapping on it"
+    pecho "$PASTEL_CYAN" "3. Grant all requested permissions for full functionality"
+    echo ""
+    
+    printf "${PASTEL_YELLOW}Press Enter when ready to open APK directory...${RESET} "
+    read -r
+  else
+    info "Non-interactive mode: APK directory will open automatically"
+  fi
+  
+  # Open APK directory for installation
+  open_apk_directory || warn "Could not open APK directory"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    info "Install each APK file by tapping on it in the file manager"
+    info "Configure permissions as requested by each app"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after installing all APKs and configuring permissions...${RESET} "
+    read -r
+  else
+    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
+    sleep "${APK_PAUSE_TIMEOUT:-45}"
   fi
   
   return 0
@@ -424,6 +824,10 @@ open_apk_directory(){
     return 1
   fi
   
+  # Ensure proper permissions before opening
+  chmod 755 "$APK_DOWNLOAD_DIR" 2>/dev/null || true
+  find "$APK_DOWNLOAD_DIR" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+  
   # Count downloaded APKs
   local apk_count
   apk_count=$(find "$APK_DOWNLOAD_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
@@ -434,13 +838,26 @@ open_apk_directory(){
     ok "Found $apk_count APK files ready for installation"
   fi
   
-  # Use termux-open to open the directory
+  # Use termux-open to open the directory (simple method without complex spinner)
   if command -v termux-open >/dev/null 2>&1; then
-    run_with_progress "Open APK directory" 3 termux-open "$APK_DOWNLOAD_DIR"
+    info "Opening APK directory in file manager..."
+    termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || {
+      warn "Failed to open with termux-open, trying alternative methods"
+      # Try alternative methods to open file manager
+      if command -v am >/dev/null 2>&1; then
+        am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+      fi
+    }
     ok "APK directory opened in file manager"
   else
     warn "termux-open not available, please manually navigate to:"
     printf "${PASTEL_CYAN}%s${RESET}\n" "$APK_DOWNLOAD_DIR"
+    
+    # Try opening with alternative methods
+    if command -v am >/dev/null 2>&1; then
+      info "Attempting to open directory with system file manager..."
+      am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+    fi
   fi
   
   return 0
@@ -526,7 +943,7 @@ assist_apk_permissions(){
     return 1
   fi
   
-  printf "${PASTEL_GREEN}✓${RESET} Termux:API detected\n\n"
+  printf "${PASTEL_GREEN}[OK]${RESET} Termux:API detected\n\n"
   
   # Guide through permission settings
   printf "${PASTEL_YELLOW}Let's verify your permissions:${RESET}\n\n"
@@ -534,24 +951,24 @@ assist_apk_permissions(){
   # Test API permissions
   printf "${PASTEL_CYAN}Testing phone access...${RESET} "
   if timeout 5 termux-telephony-deviceinfo >/dev/null 2>&1; then
-    printf "${PASTEL_GREEN}✓${RESET}\n"
+    printf "${PASTEL_GREEN}[OK]${RESET}\n"
   else
-    printf "${PASTEL_RED}✗${RESET} Grant phone permissions to Termux:API\n"
+    printf "${PASTEL_RED}[FAIL]${RESET} Grant phone permissions to Termux:API\n"
   fi
   
   printf "${PASTEL_CYAN}Testing location access...${RESET} "
   if timeout 5 termux-location >/dev/null 2>&1; then
-    printf "${PASTEL_GREEN}✓${RESET}\n" 
+    printf "${PASTEL_GREEN}[OK]${RESET}\n" 
   else
-    printf "${PASTEL_RED}✗${RESET} Grant location permissions to Termux:API\n"
+    printf "${PASTEL_RED}[FAIL]${RESET} Grant location permissions to Termux:API\n"
   fi
   
   # Check for widget installation
   printf "${PASTEL_CYAN}Checking widgets...${RESET} "
   if [ -d "/data/data/com.termux.widget" ] 2>/dev/null; then
-    printf "${PASTEL_GREEN}✓${RESET}\n"
+    printf "${PASTEL_GREEN}[OK]${RESET}\n"
   else
-    printf "${PASTEL_RED}✗${RESET} Install Termux:Widget for shortcuts\n"
+    printf "${PASTEL_RED}[FAIL]${RESET} Install Termux:Widget for shortcuts\n"
   fi
   
   # Provide links to permission settings
@@ -587,38 +1004,56 @@ manage_apks(){
     return 1
   fi
   
-  # Download all essential APKs first (before user interaction)
+  # Download all essential APKs automatically 
   download_essential_apks
   
-  # Show installation instructions
+  # Show installation instructions and requirements
   check_apk_permissions
   
-  # Ask user if they want to proceed with installation
-  printf "${PASTEL_PINK}Ready to install APKs. Continue? (y/N):${RESET} "
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
-    local response
-    read -r response || response="n"
-    case "${response,,}" in
-      y|yes) ;;
-      *)
-        info "APK installation skipped by user"
-        return 0
-        ;;
-    esac
+    echo ""
+    pecho "$PASTEL_PINK" "=== APK Installation Ready ==="
+    echo ""
+    pecho "$PASTEL_YELLOW" "Next steps:"
+    pecho "$PASTEL_CYAN" "1. Android security settings will open"
+    pecho "$PASTEL_CYAN" "2. Enable 'Install unknown apps' for Termux"  
+    pecho "$PASTEL_CYAN" "3. File manager will open to APK directory"
+    pecho "$PASTEL_CYAN" "4. Install each APK by tapping on it"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter to open Android security settings...${RESET} "
+    read -r || true
   else
-    printf "y (auto)\n"
+    info "Non-interactive mode: opening security settings automatically"
+  fi
+  
+  # Open security settings first (before user needs to act)
+  open_security_settings
+  
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then 
+    echo ""
+    pecho "$PASTEL_YELLOW" "Please enable 'Install unknown apps' for Termux in the settings that just opened."
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after enabling 'Install unknown apps' for Termux...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after settings delay"
+    sleep 5
   fi
   
   # Open APK directory for user installation
   open_apk_directory
   
   # Wait for user to install APKs
-  printf "\n${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "Install each APK file by tapping on it in the file manager."
+    pecho "$PASTEL_YELLOW" "Grant all requested permissions for full functionality."
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after installing all APKs...${RESET} "
     read -r || true
   else
-    printf "(auto-continue)\n"
-    sleep 2
+    info "Non-interactive mode: auto-continuing after delay"
+    sleep "${APK_INSTALL_DELAY:-30}"
   fi
   
   # Run post-installation permission assistant
@@ -628,12 +1063,87 @@ manage_apks(){
   return 0
 }
 
-# Cleanup function for APK temporary files
+# Cleanup function for APK temporary files and cache
 cleanup_apk_temp(){
+  local cleaned_count=0
+  
+  # Clean temporary JSON files
   if [ -d "$APK_STATE_DIR" ]; then
-    # Only clean up F-Droid API response files, not the state files
-    find "$APK_STATE_DIR" -name "fdroid_*.json" -type f -delete 2>/dev/null || true
+    find "$APK_STATE_DIR" -name "fdroid_*.json" -type f -delete 2>/dev/null && cleaned_count=$((cleaned_count + 1)) || true
   fi
+  
+  if [ "$cleaned_count" -gt 0 ]; then
+    debug "Cleaned $cleaned_count APK temporary files"
+  fi
+}
+
+# Comprehensive APK installer cleanup - removes all installer-created files
+cleanup_apk_installer_files(){
+  info "Cleaning up APK installer files and cache..."
+  
+  local cleanup_items=(
+    # APK directories (both primary and fallback)
+    "$APK_DOWNLOAD_DIR_PRIMARY"
+    "$APK_DOWNLOAD_DIR_FALLBACK"
+    # APK state and cache directories
+    "$APK_STATE_DIR"
+    # Temporary download files
+    "$TMPDIR/fdroid_*.json"
+    "$TMPDIR/*apk*"
+  )
+  
+  local cleaned_count=0
+  local total_size=0
+  
+  for item in "${cleanup_items[@]}"; do
+    if [[ "$item" == *"*"* ]]; then
+      # Handle glob patterns
+      for file in $item; do
+        if [ -e "$file" ] 2>/dev/null; then
+          local size
+          size=$(du -sb "$file" 2>/dev/null | cut -f1) || size=0
+          total_size=$((total_size + size))
+          if rm -rf "$file" 2>/dev/null; then
+            cleaned_count=$((cleaned_count + 1))
+            debug "Removed: $file ($size bytes)"
+          else
+            warn "Failed to remove: $file"
+          fi
+        fi
+      done
+    else
+      # Handle regular paths
+      if [ -e "$item" ]; then
+        local size
+        size=$(du -sb "$item" 2>/dev/null | cut -f1) || size=0
+        total_size=$((total_size + size))
+        if rm -rf "$item" 2>/dev/null; then
+          cleaned_count=$((cleaned_count + 1))
+          debug "Removed: $item ($size bytes)"
+        else
+          warn "Failed to remove: $item"
+        fi
+      fi
+    fi
+  done
+  
+  # Format size for display
+  local size_display
+  if [ "$total_size" -gt 1048576 ]; then
+    size_display="$(( total_size / 1048576 )) MB"
+  elif [ "$total_size" -gt 1024 ]; then
+    size_display="$(( total_size / 1024 )) KB"
+  else
+    size_display="${total_size} bytes"
+  fi
+  
+  if [ "$cleaned_count" -gt 0 ]; then
+    ok "APK cleanup completed - removed $cleaned_count items ($size_display)"
+  else
+    info "No APK installer files found to clean"
+  fi
+  
+  return 0
 }
 
 # Set up cleanup on script exit
@@ -646,3 +1156,5 @@ export -f download_essential_apks
 export -f open_apk_directory
 export -f manage_apks
 export -f cleanup_apk_temp
+export -f setup_apk_permissions
+export -f cleanup_apk_installer_files

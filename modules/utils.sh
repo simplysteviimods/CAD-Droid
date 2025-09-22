@@ -1089,9 +1089,57 @@ setup_ssh_keys(){
 
 # === Installation Management ===
 
+# Installation flag to track CAD-Droid installation attempts
+readonly INSTALL_FLAG_FILE="$HOME/.cad/install_in_progress"
+readonly INSTALL_COMPLETE_FLAG="$HOME/.cad/install_complete"
+
+# Set installation flag at the beginning of install
+set_install_flag(){
+  info "Setting installation flag..."
+  mkdir -p "$(dirname "$INSTALL_FLAG_FILE")" 2>/dev/null || true
+  echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_FLAG_FILE"
+  export CAD_DROID_INSTALLING=1
+}
+
+# Clear installation flag on successful completion
+clear_install_flag(){
+  if [ -f "$INSTALL_FLAG_FILE" ]; then
+    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null || true
+  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_COMPLETE_FLAG"
+  unset CAD_DROID_INSTALLING
+}
+
 # Check for previous CAD-Droid installation
 check_previous_install(){
   info "Checking for previous CAD-Droid installation..."
+  
+  # Check for active installation flag first
+  if [ -f "$INSTALL_FLAG_FILE" ]; then
+    local flag_date
+    flag_date=$(cat "$INSTALL_FLAG_FILE" 2>/dev/null || echo "unknown")
+    warn "Previous installation attempt detected (started: $flag_date)"
+    
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
+      printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+      printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
+      local response
+      read -r response || response="n"
+      case "${response,,}" in
+        y|yes)
+          cleanup_previous_install
+          set_install_flag  # Set new flag for this attempt
+          return 0
+          ;;
+        *)
+          info "Continuing with existing installation state"
+          set_install_flag  # Still set flag for this attempt
+          return 0
+          ;;
+      esac
+    fi
+  fi
   
   local install_markers=(
     "$HOME/.cad"
@@ -1100,8 +1148,17 @@ check_previous_install(){
     "$PREFIX/etc/motd"
   )
   
+  # Also check for APK installer files
+  local apk_markers=(
+    "/storage/emulated/0/Download/CAD-Droid-APKs"
+    "$HOME/.cad/apks"
+    "$HOME/.cad/apk-state"
+  )
+  
   local found_markers=()
+  local found_apk_files=()
   local found=false
+  local apk_files_found=false
   
   for marker in "${install_markers[@]}"; do
     if [ -e "$marker" ]; then
@@ -1110,16 +1167,46 @@ check_previous_install(){
     fi
   done
   
+  for apk_marker in "${apk_markers[@]}"; do
+    if [ -e "$apk_marker" ]; then
+      found_apk_files+=("$apk_marker")
+      apk_files_found=true
+      found=true
+    fi
+  done
+  
   if [ "$found" = true ]; then
     printf "\n${PASTEL_YELLOW}Previous CAD-Droid installation detected!${RESET}\n\n"
-    printf "${PASTEL_CYAN}Found installation files:${RESET}\n"
-    for marker in "${found_markers[@]}"; do
-      printf "${PASTEL_LAVENDER}  - %s${RESET}\n" "$marker"
-    done
+    
+    if [ ${#found_markers[@]} -gt 0 ]; then
+      printf "${PASTEL_CYAN}Found installation files:${RESET}\n"
+      for marker in "${found_markers[@]}"; do
+        printf "${PASTEL_LAVENDER}  - %s${RESET}\n" "$marker"
+      done
+    fi
+    
+    if [ ${#found_apk_files[@]} -gt 0 ]; then
+      printf "\n${PASTEL_CYAN}Found APK installer files:${RESET}\n"
+      for apk_file in "${found_apk_files[@]}"; do
+        local apk_count=""
+        if [ -d "$apk_file" ]; then
+          apk_count=$(find "$apk_file" -name "*.apk" -type f 2>/dev/null | wc -l)
+          if [ "$apk_count" -gt 0 ]; then
+            apk_count=" ($apk_count APK files)"
+          else
+            apk_count=""
+          fi
+        fi
+        printf "${PASTEL_LAVENDER}  - %s${apk_count}${RESET}\n" "$apk_file"
+      done
+    fi
+    
     printf "\n"
     
     if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "${PASTEL_PINK}Would you like to clean up the previous installation? (y/N):${RESET} "
+      printf "${PASTEL_PINK}Would you like to clean up ALL previous installation files?${RESET}\n"
+      printf "${PASTEL_YELLOW}   This includes configuration, APKs, cache, and temporary files.${RESET}\n"
+      printf "${PASTEL_PINK}   Continue cleanup? (y/N):${RESET} "
       local response
       read -r response || response="n"
       case "${response,,}" in
@@ -1136,6 +1223,9 @@ check_previous_install(){
   else
     ok "No previous installation detected"
   fi
+  
+  # Set installation flag for this attempt
+  set_install_flag
 }
 
 # Clean up previous CAD-Droid installation files
@@ -1151,9 +1241,46 @@ cleanup_previous_install(){
   )
   
   local cleaned_count=0
+  local total_size=0
   
+  # Clean up installation flags first
+  if [ -f "$INSTALL_FLAG_FILE" ]; then
+    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
+  fi
+  if [ -f "$INSTALL_COMPLETE_FLAG" ]; then
+    rm -f "$INSTALL_COMPLETE_FLAG" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
+  fi
+  
+  # Completely wipe previous configurations to prevent conflicts
+  local config_files=(
+    "$HOME/.bashrc"
+    "$HOME/.termux/termux.properties" 
+    "$HOME/.termux/colors.properties"
+    "$HOME/.termux/font.ttf"
+    "$HOME/.nanorc"
+    "$PREFIX/etc/nanorc"
+  )
+  
+  for config_file in "${config_files[@]}"; do
+    if [ -f "$config_file" ]; then
+      local config_size
+      config_size=$(du -sb "$config_file" 2>/dev/null | cut -f1) || config_size=0
+      total_size=$((total_size + config_size))
+      if rm -f "$config_file" 2>/dev/null; then
+        cleaned_count=$((cleaned_count + 1))
+        debug "Removed config file: $config_file"
+      else
+        warn "Failed to remove config file: $config_file"
+      fi
+    fi
+  done
+  
+  # Clean up standard installation files
   for item in "${cleanup_items[@]}"; do
     if [ -e "$item" ]; then
+      local size
+      size=$(du -sb "$item" 2>/dev/null | cut -f1) || size=0
+      total_size=$((total_size + size))
       if rm -rf "$item" 2>/dev/null; then
         cleaned_count=$((cleaned_count + 1))
         debug "Removed: $item"
@@ -1163,18 +1290,57 @@ cleanup_previous_install(){
     fi
   done
   
-  # Clean up specific bash additions (preserve user's other content)
-  if [ -f "$HOME/.bashrc" ] && grep -q "CAD-Droid" "$HOME/.bashrc" 2>/dev/null; then
-    local temp_bashrc
-    temp_bashrc=$(mktemp)
-    if grep -v "CAD-Droid\|cad-status\|cad-help\|cad-update" "$HOME/.bashrc" > "$temp_bashrc" 2>/dev/null; then
-      mv "$temp_bashrc" "$HOME/.bashrc"
-      cleaned_count=$((cleaned_count + 1))
-      debug "Cleaned CAD-Droid entries from .bashrc"
-    else
-      rm -f "$temp_bashrc" 2>/dev/null
-    fi
+  # Clean up APK installer files and cache if the function exists
+  if command -v cleanup_apk_installer_files >/dev/null 2>&1; then
+    cleanup_apk_installer_files
+  else
+    # Fallback APK cleanup if the dedicated function isn't available
+    local apk_cleanup_items=(
+      "/storage/emulated/0/Download/CAD-Droid-APKs"
+      "$HOME/.cad/apks"
+      "$HOME/.cad/apk-state"
+    )
+    
+    for apk_item in "${apk_cleanup_items[@]}"; do
+      if [ -e "$apk_item" ]; then
+        local apk_size
+        apk_size=$(du -sb "$apk_item" 2>/dev/null | cut -f1) || apk_size=0
+        total_size=$((total_size + apk_size))
+        if rm -rf "$apk_item" 2>/dev/null; then
+          cleaned_count=$((cleaned_count + 1))
+          debug "Removed APK files: $apk_item"
+        else
+          warn "Failed to remove APK files: $apk_item"
+        fi
+      fi
+    done
   fi
   
-  ok "Cleanup completed - removed $cleaned_count items"
+  # Clean up any remaining cache files in temp directories
+  local temp_patterns=("$TMPDIR/cad*" "$TMPDIR/*apk*" "$TMPDIR/fdroid*")
+  for temp_pattern in "${temp_patterns[@]}"; do
+    for temp_file in $temp_pattern; do
+      if [ -e "$temp_file" ] 2>/dev/null; then
+        local temp_size
+        temp_size=$(du -sb "$temp_file" 2>/dev/null | cut -f1) || temp_size=0
+        total_size=$((total_size + temp_size))
+        if rm -rf "$temp_file" 2>/dev/null; then
+          cleaned_count=$((cleaned_count + 1))
+          debug "Removed cache: $temp_file"
+        fi
+      fi
+    done
+  done
+  
+  # Format size for display
+  local size_display
+  if [ "$total_size" -gt 1048576 ]; then
+    size_display="$(( total_size / 1048576 )) MB"
+  elif [ "$total_size" -gt 1024 ]; then
+    size_display="$(( total_size / 1024 )) KB"
+  else
+    size_display="${total_size} bytes"
+  fi
+  
+  ok "Cleanup completed - removed $cleaned_count items ($size_display)"
 }

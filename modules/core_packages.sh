@@ -312,25 +312,21 @@ update_package_lists(){
   # Ensure selected mirror is applied and sources file is written before updating
   ensure_mirror_applied
   
-  # Try pkg update first (preferred Termux command), then fallback to apt update
+  # Simple approach - try pkg first, then apt
   if command -v pkg >/dev/null 2>&1; then
-    info "Using pkg for package list updates (Termux native)"
-    if run_with_progress "Update package lists (pkg)" 30 bash -c '
-      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
-    '; then
+    info "Updating with pkg..."
+    if pkg update -y >/dev/null 2>&1; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
       return 0
     else
-      warn "pkg update failed, trying apt update..."
+      warn "pkg update failed, trying apt..."
     fi
   fi
   
-  # Fallback to apt-get update with proper options
-  info "Using apt for package list updates (fallback)"
-  if run_with_progress "Update package lists (apt)" 30 bash -c '
-    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
-  '; then
+  # Fallback to apt-get update
+  info "Updating with apt..."
+  if apt-get update >/dev/null 2>&1; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
     return 0
@@ -347,49 +343,36 @@ upgrade_packages(){
   # Ensure selected mirror is applied and sources file is written before upgrading
   ensure_mirror_applied
   
-  # Always update package lists immediately before upgrading
-  # This ensures package indexes are current before upgrades
+  # Always update package lists first
+  update_package_lists || {
+    warn "Failed to update package lists before upgrade"
+    return 1
+  }
+  
+  # Upgrade with spinners and non-interactive flags
   if command -v pkg >/dev/null 2>&1; then
-    # Use pkg (Termux's preferred package manager)
-    info "Using pkg for package operations (Termux native)"
-    
-    # Update first, then upgrade with pkg
-    if run_with_progress "Update package lists (pkg)" 30 bash -c '
-      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
+    if run_with_progress "Upgrading packages with pkg" 45 bash -c '
+      DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
     '; then
-      info "Package lists updated successfully"
-      if run_with_progress "Upgrade packages (pkg)" 60 bash -c '
-        pkg upgrade -y -o Acquire::Retries=3 >/dev/null 2>&1
-      '; then
-        ok "Packages upgraded successfully via pkg"
-        export PACKAGES_UPDATED=1
-        return 0
-      else
-        warn "pkg upgrade failed, trying apt upgrade..."
-      fi
+      ok "Packages upgraded successfully via pkg"
+      return 0
     else
-      warn "pkg update failed before upgrade, trying apt..."
+      warn "pkg upgrade failed, trying apt..."
     fi
   fi
   
-  # Fallback: update first, then upgrade with apt
-  info "Using apt for package operations (fallback)"
-  if run_with_progress "Update package lists (apt)" 30 bash -c '
-    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 >/dev/null 2>&1
+  # Fallback to apt upgrade with spinner and non-interactive flags
+  if run_with_progress "Upgrading packages with apt" 45 bash -c '
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+      -o Dpkg::Options::="--force-confdef" \
+      -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
   '; then
-    info "Package lists updated successfully"
-    if run_with_progress "Upgrade packages (apt)" 60 bash -c '
-      apt-get upgrade -y -o Acquire::Retries=3 >/dev/null 2>&1
-    '; then
-      ok "Packages upgraded successfully via apt"
-      export PACKAGES_UPDATED=1
-      return 0
-    else
-      warn "Package upgrade had issues"
-      return 1
-    fi
+    ok "Packages upgraded successfully via apt"
+    return 0
   else
-    warn "Package list update failed before upgrade"
+    warn "Package upgrade failed"
     return 1
   fi
 }
@@ -505,65 +488,23 @@ step_mirror(){
   fi
   
   # Write mirror configuration
-  run_with_progress "Write mirror config" 5 bash -c "echo 'deb ${SELECTED_MIRROR_URL} stable main' > '$PREFIX/etc/apt/sources.list'"
+  # Simple mirror configuration
+  echo "deb ${SELECTED_MIRROR_URL} stable main" > "$PREFIX/etc/apt/sources.list"
   
   # Reload settings and clean up sources
-  soft_step "Reload termux settings (post-mirror)" 5 bash -c 'command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || exit 0'
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    termux-reload-settings >/dev/null 2>&1 || true
+  fi
+  
   sanitize_sources_main_only
   verify_mirror
   
-  # Test the mirror and automatically fallback if needed
-  if run_with_progress "Test mirror connection" 18 bash -c 'apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1'; then
+  # Simple mirror test
+  info "Testing mirror connection..."
+  if apt-get update >/dev/null 2>&1; then
     ok "Mirror connection successful: ${SELECTED_MIRROR_NAME}"
   else
-    warn "Selected mirror failed, trying alternatives..."
-    
-    # Iterate through official mirrors first, then others
-    local fallback_attempted=false
-    local max_attempts=3
-    local attempt=0
-    
-    for i in "${!urls[@]}"; do
-      # Skip the already tried mirror
-      if [ "$i" -eq "$idx" ]; then
-        continue
-      fi
-      
-      # Limit attempts to prevent hanging
-      if [ "$attempt" -ge "$max_attempts" ]; then
-        break
-      fi
-      
-      local test_url="${urls[$i]}"
-      local test_name="${names[$i]}"
-      
-      info "Trying ${test_name}..."
-      
-      # Update selected mirror variables for fallback testing
-      SELECTED_MIRROR_NAME="$test_name"
-      SELECTED_MIRROR_URL="$test_url"
-      
-      # Apply the fallback mirror and test
-      ensure_mirror_applied
-      
-      if run_with_progress "Test ${test_name}" 18 bash -c 'apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=8 >/dev/null 2>&1'; then
-        ok "Mirror connection successful: ${test_name}"
-        fallback_attempted=true
-        break
-      else
-        warn "${test_name} also failed"
-      fi
-      
-      attempt=$((attempt + 1))
-    done
-    
-    # If all mirrors failed, inform user but continue
-    if [ "$fallback_attempted" = false ]; then
-      warn "All tested mirrors failed, continuing with best effort"
-      # Force update attempt with selected mirror enforced
-      ensure_mirror_applied
-      run_with_progress "Force apt index update" 25 bash -c 'apt-get clean && apt-get update --fix-missing >/dev/null 2>&1 || true'
-    fi
+    warn "Mirror may have issues, but continuing..."
   fi
   
   mark_step_status "success"

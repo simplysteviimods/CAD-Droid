@@ -233,8 +233,13 @@ run_with_progress(){
       display_width=40
     fi
     
-    printf "\r\033[38;2;175;238;238m%s\033[0m \033[38;2;175;238;238m%-*.*s\033[0m \033[38;2;173;216;230m(%3d%%)\033[0m" \
+    # Clear the entire line more aggressively to prevent ghosting
+    printf "\r\033[2K\033[0G"  # Clear line and move to beginning
+    printf "\033[38;2;175;238;238m%s\033[0m \033[38;2;175;238;238m%-*.*s\033[0m \033[38;2;173;216;230m(%3d%%)\033[0m" \
       "$sym" "$display_width" "$display_width" "$desc" "$pct"
+    
+    # Flush output to ensure immediate display
+    printf "" > /dev/tty 2>/dev/null || true
     
     # Safe frame increment
     if [ "$frame" -lt 10000 ] 2>/dev/null; then
@@ -256,7 +261,7 @@ run_with_progress(){
   local dur=$((end_time - start_time))
   
   # Clear progress line and show final result
-  printf "\r%*s\r" 80 ""
+  printf "\r\033[2K\033[0G"  # Clear line completely and move to beginning
   
   local message
   if [ $rc -eq 0 ]; then
