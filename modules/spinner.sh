@@ -276,8 +276,8 @@ countdown_prompt() {
 
 # === Summary and Reporting ===
 
-# Show completion summary with step statistics
-show_completion_summary() {
+# Calculate and display basic step statistics
+show_step_statistics() {
   local total_duration=0 success_count=0 warning_count=0 error_count=0
   
   # Calculate statistics
@@ -302,29 +302,9 @@ show_completion_summary() {
     i=$((i + 1))
   done
   
-  # Display summary card
-  draw_card "Installation Complete!" "Setup finished in $(format_duration $total_duration)"
-  
-  # Show statistics
-  info "Summary:"
-  info "  ✓ Successful steps: $success_count"
-  if [ "$warning_count" -gt 0 ]; then
-    warn "  ⚠ Steps with warnings: $warning_count"
-  fi
-  if [ "$error_count" -gt 0 ]; then
-    err "  ✗ Failed steps: $error_count"
-  fi
-  
-  # Overall status
-  if [ "$error_count" -eq 0 ]; then
-    if [ "$warning_count" -eq 0 ]; then
-      ok "All steps completed successfully!"
-    else
-      warn "Setup completed with some warnings. Check logs for details."
-    fi
-  else
-    err "Setup completed with errors. Some functionality may not work correctly."
-  fi
+  # Simple completion message
+  info "Setup completed in $(format_duration $total_duration)"
+  info "Steps: $success_count successful, $warning_count warnings, $error_count errors"
 }
 
 # === Step Execution Engine ===
@@ -400,7 +380,7 @@ execute_all_steps() {
     debug "Progress: $progress% ($i/$step_count steps)"
   done
   
-  # Show completion summary
-  show_completion_summary
+  # Show basic statistics - detailed completion handled by completion module
+  show_step_statistics
   return 0
 }

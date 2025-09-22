@@ -400,8 +400,9 @@ upgrade_packages(){
 step_mirror(){
   pecho "$PASTEL_PURPLE" "Choose Termux mirror:"
   
-  # Available mirrors with geographic distribution
-  local urls=(
+  # Use static reliable mirror list (no auto-detection)
+  local -a urls names
+  urls=(
     "https://packages.termux.dev/apt/termux-main"
     "https://packages-cf.termux.dev/apt/termux-main"
     "https://fau.mirror.termux.dev/apt/termux-main"
@@ -410,43 +411,98 @@ step_mirror(){
     "https://grimler.se/termux/termux-main"
     "https://termux.mentality.rip/termux/apt/termux-main"
   )
-  
-  local names=(
-    "Default"
-    "Cloudflare (US Anycast)"
-    "FAU (DE)"
-    "BFSU (CN)"
-    "Tsinghua (CN)"
-    "Grimler (SE)"
-    "Mentality (UK)"
+  names=(
+    "Official Termux (Global CDN) ★"
+    "Official Termux (Cloudflare CDN) ★"
+    "FAU (Germany)"
+    "BFSU (China)"
+    "Tsinghua (China)"
+    "Grimler (Sweden)"
+    "Mentality (North America)"
   )
+
+  # Ensure we have at least one mirror
+  if [ ${#urls[@]} -eq 0 ] || [ ${#names[@]} -eq 0 ]; then
+    err "No mirrors available"
+    return 1
+  fi
+
+  # Show recommendation
+  echo ""
+  pecho "$PASTEL_GREEN" "Recommended: Official mirrors (marked with ★) are usually fastest and most reliable"
+  echo ""
   
-  # Display mirror options with colors
+  # Display mirror options with colors  
   local i
   for i in "${!names[@]}"; do 
     local seq
     seq=$(color_for_index "$i")
+    # Display mirrors with consistent formatting (★ already in name)
     printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
   done
   
+  # Auto-select option
+  echo ""
+  pecho "$PASTEL_CYAN" "Selection Options:"
+  info "  • Press Enter for auto-selection (tests speed and selects fastest)"
+  local max_idx=$((${#names[@]} - 1))
+  if [ "$max_idx" -gt 0 ]; then
+    info "  • Type a number (0 to $max_idx) for manual selection"
+  fi
+  
   local idx=""
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    idx=0
+    # Auto-select in non-interactive mode
+    idx="auto"
   else
-    local max_index
-    max_index=$(sub_int "${#names[@]}" 1)
-    printf "%bMirror (0-%s default 0): %b" "$PASTEL_PINK" "$max_index" '\033[0m'
+    printf "%bMirror selection (0-$max_idx or Enter for auto): %b" "$PASTEL_PINK" '\033[0m'
     read -r idx
   fi
   
-  # Validate selection
-  case "$idx" in
-    *[!0-9]*) idx=0 ;;
-    *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
-  esac
+  # Handle auto-selection
+  if [ -z "$idx" ] || [ "$idx" = "auto" ]; then
+    info "Auto-selecting fastest mirror..."
+    if command -v select_fastest_mirror >/dev/null 2>&1; then
+      local best_mirror
+      if best_mirror=$(select_fastest_mirror "main"); then
+        SELECTED_MIRROR_URL="$best_mirror"
+        # Find the corresponding name
+        local j
+        for j in "${!urls[@]}"; do
+          if [ "${urls[$j]}" = "$best_mirror" ]; then
+            SELECTED_MIRROR_NAME="${names[$j]}"
+            break
+          fi
+        done
+        [ -z "$SELECTED_MIRROR_NAME" ] && SELECTED_MIRROR_NAME="Auto-selected"
+      else
+        warn "Auto-selection failed, using default mirror"
+        idx=0
+      fi
+    else
+      warn "Auto-selection not available, using default mirror"
+      idx=0
+    fi
+  fi
   
-  SELECTED_MIRROR_NAME="${names[$idx]}"
-  SELECTED_MIRROR_URL="${urls[$idx]}"
+  # Manual selection fallback
+  if [ -n "$idx" ] && [ "$idx" != "auto" ]; then
+    # Validate selection
+    case "$idx" in
+      *[!0-9]*) idx=0 ;;
+      *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
+    esac
+    
+    # Ensure we have valid arrays and index
+    if [ ${#names[@]} -gt 0 ] && [ ${#urls[@]} -gt 0 ] && [ "$idx" -lt "${#names[@]}" ]; then
+      SELECTED_MIRROR_NAME="${names[$idx]}"
+      SELECTED_MIRROR_URL="${urls[$idx]}"
+    else
+      warn "Invalid selection, using first available mirror"
+      SELECTED_MIRROR_NAME="${names[0]}"
+      SELECTED_MIRROR_URL="${urls[0]}"
+    fi
+  fi
   
   # Write mirror configuration
   run_with_progress "Write mirror config" 5 bash -c "echo 'deb ${SELECTED_MIRROR_URL} stable main' > '$PREFIX/etc/apt/sources.list'"

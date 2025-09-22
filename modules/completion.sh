@@ -14,11 +14,8 @@ readonly _CAD_COMPLETION_LOADED=1
 show_completion_summary(){
   info "CAD-Droid setup completed successfully!"
   
-  printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
-  printf "${PASTEL_CYAN}                     SETUP COMPLETE!                      ${RESET}\n"
-  printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
-  
-  printf "${PASTEL_LAVENDER}Your Android device is now a powerful development workstation!${RESET}\n\n"
+  # Use the styled card function instead of ASCII art
+  draw_card "CAD-Droid Setup Complete!" "Your Android device is now a powerful development workstation"
   
   printf "${PASTEL_CYAN}What's been installed:${RESET}\n"
   printf "${PASTEL_GREEN}✓${RESET} Core system packages and development tools\n"
@@ -34,7 +31,28 @@ show_completion_summary(){
   printf "${PASTEL_LAVENDER}Configuration:${RESET} ~/.cad/config/\n"
   printf "${PASTEL_LAVENDER}Scripts:${RESET} ~/.cad/scripts/\n\n"
   
-  printf "${PASTEL_YELLOW}Note:${RESET} A Termux restart is recommended to apply all changes\n\n"
+  printf "${PASTEL_YELLOW}IMPORTANT: Termux restart required to apply all changes${RESET}\n\n"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    pecho "$PASTEL_CYAN" "Press Enter to logout and exit Termux to complete setup..."
+    read -r || true
+    
+    # Force logout and exit to complete installation
+    info "Logging out and exiting Termux to apply all changes..."
+    info "Please manually restart Termux after it exits to complete setup."
+    sleep 3
+    
+    # Kill current session to force logout
+    if command -v am >/dev/null 2>&1; then
+      # First try graceful exit
+      am force-stop com.termux >/dev/null 2>&1 || true
+    fi
+    
+    # Force exit of current shell
+    exec exit 0
+  else
+    printf "${PASTEL_PINK}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
+  fi
 }
 
 # Configure bash with pastel colors for the final restart

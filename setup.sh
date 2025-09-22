@@ -204,6 +204,45 @@ initialize_steps(){
 # These step functions were not yet modularized - add minimal implementations
 
 step_storage(){
+  pecho "$PASTEL_PURPLE" "Setting up storage access..."
+  
+  # Run termux-setup-storage first
+  if command -v termux-setup-storage >/dev/null 2>&1; then
+    # Check if storage is already available
+    if [ -d "$HOME/storage" ]; then
+      ok "Storage permission already granted"
+    else
+      if [ "$NON_INTERACTIVE" != "1" ]; then
+        echo ""
+        pecho "$PASTEL_CYAN" "Storage Permission Required:"
+        info "• Termux needs access to device storage for APK downloads"
+        info "• Grant 'Files and media' permission when prompted"
+        info "• This enables saving files to Downloads folder"
+        echo ""
+        pecho "$PASTEL_YELLOW" "Press Enter to request storage permission..."
+        read -r || true
+      fi
+      
+      run_with_progress "Request storage permission" 10 termux-setup-storage
+      
+      # Wait for storage to be available
+      local attempts=0
+      while [ ! -d "$HOME/storage" ] && [ "$attempts" -lt 10 ]; do
+        sleep 1
+        attempts=$((attempts + 1))
+      done
+      
+      if [ -d "$HOME/storage" ]; then
+        ok "Storage access granted successfully"
+      else
+        warn "Storage access may not be fully available yet"
+      fi
+    fi
+  else
+    warn "termux-setup-storage not available"
+  fi
+  
+  # Then initialize directories
   initialize_directories
   mark_step_status "success"
 }
@@ -291,6 +330,7 @@ step_usercfg(){
   detect_phone
   configure_termux_properties || true
   configure_bash_prompt || true
+  configure_nano_colors || true
   mark_step_status "success"
 }
 

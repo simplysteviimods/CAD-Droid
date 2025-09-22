@@ -10,9 +10,21 @@ if [ -n "${_CAD_APK_MANAGEMENT_LOADED:-}" ]; then
 fi
 readonly _CAD_APK_MANAGEMENT_LOADED=1
 
-# APK Configuration
-readonly APK_DOWNLOAD_DIR="$HOME/storage/downloads/cad-droid-apks"
-readonly APK_TEMP_DIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/apk_downloads"
+# APK Configuration - Use persistent directories
+# Primary location: external storage for user access
+readonly APK_DOWNLOAD_DIR_PRIMARY="/storage/emulated/0/Download/CAD-Droid-APKs"
+# Fallback location: internal storage (always accessible)  
+readonly APK_DOWNLOAD_DIR_FALLBACK="$HOME/.cad/apks"
+# Working directory for tracking downloads
+readonly APK_STATE_DIR="$HOME/.cad/apk-state"
+
+# Global APK download directory (set during initialization)
+APK_DOWNLOAD_DIR=""
+
+# APK download tracking arrays - persistent across sessions
+declare -a DOWNLOADED_APKS=()
+declare -a FAILED_APKS=()
+declare -a PENDING_APKS=()
 
 # F-Droid API configuration
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"
@@ -30,12 +42,31 @@ declare -A ESSENTIAL_APKS=(
   ["Termux:GUI"]="com.termux.gui"
 )
 
-# Initialize APK management system
+# Initialize APK management system with persistent storage
 init_apk_system(){
   info "Initializing APK management system..."
   
+  # Create state directory first (always accessible)
+  if ! mkdir -p "$APK_STATE_DIR" 2>/dev/null; then
+    err "Cannot create APK state directory: $APK_STATE_DIR"
+    return 1
+  fi
+  
   # Ensure storage permissions are available first
   if [ ! -d "$HOME/storage" ]; then
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      echo ""
+      pecho "$PASTEL_PURPLE" "=== Storage Permission Required ==="
+      echo ""
+      pecho "$PASTEL_CYAN" "What will happen next:"
+      info "• Android permission dialog will appear"
+      info "• Grant 'Files and media' access to Termux"
+      info "• This allows APK files to be saved to Downloads folder"
+      echo ""
+      pecho "$PASTEL_YELLOW" "Press Enter to request storage permission..."
+      read -r
+    fi
+    
     warn "Storage access not available, requesting permissions..."
     if command -v termux-setup-storage >/dev/null 2>&1; then
       run_with_progress "Request storage access" 8 termux-setup-storage
@@ -46,35 +77,83 @@ init_apk_system(){
     fi
   fi
   
-  # Create download directories with fallback
-  local primary_dir="$APK_DOWNLOAD_DIR"
-  local fallback_dir="$HOME/cad-droid-apks"
-  
-  if ! run_with_progress "Setup APK directories" 5 bash -c "
-    mkdir -p '$primary_dir' &&
-    chmod 755 '$primary_dir'
-  " 2>/dev/null; then
-    warn "Failed to create primary APK directory, using fallback"
-    primary_dir="$fallback_dir"
-    if ! run_with_progress "Setup fallback APK directory" 5 bash -c "
-      mkdir -p '$primary_dir' &&
-      chmod 755 '$primary_dir'
-    "; then
-      err "Failed to create APK directories"
+  # Try primary directory first (external storage)
+  local selected_dir=""
+  if mkdir -p "$APK_DOWNLOAD_DIR_PRIMARY" 2>/dev/null && [ -w "$APK_DOWNLOAD_DIR_PRIMARY" ]; then
+    selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"
+    # Set proper permissions for APK directory
+    chmod 755 "$selected_dir" 2>/dev/null || true
+    info "Using external storage for APKs: $selected_dir"
+  else
+    # Fallback to internal storage
+    if mkdir -p "$APK_DOWNLOAD_DIR_FALLBACK" 2>/dev/null; then
+      selected_dir="$APK_DOWNLOAD_DIR_FALLBACK"
+      # Set proper permissions for APK directory
+      chmod 755 "$selected_dir" 2>/dev/null || true
+      warn "External storage not available, using internal storage: $selected_dir"
+    else
+      err "Cannot create any APK directory"
       return 1
     fi
-    # Update the global variable for this session
-    export APK_DOWNLOAD_DIR="$primary_dir"
   fi
   
-  # Create temp directory
-  run_with_progress "Setup temp directory" 3 bash -c "
-    mkdir -p '$APK_TEMP_DIR' &&
-    chmod 755 '$APK_TEMP_DIR'
-  "
+  # Set global APK directory
+  APK_DOWNLOAD_DIR="$selected_dir"
   
-  ok "APK management system initialized"
-  info "APK download directory: $primary_dir"
+  # Create .nomedia file to prevent APKs from appearing in gallery
+  touch "$APK_DOWNLOAD_DIR/.nomedia" 2>/dev/null || true
+  
+  # Load previous download state if available
+  load_apk_state
+  
+  info "APK system initialized: $APK_DOWNLOAD_DIR"
+  return 0
+}
+
+# Load APK download state from previous sessions
+load_apk_state(){
+  local state_file="$APK_STATE_DIR/downloads.json"
+  
+  if [ -f "$state_file" ]; then
+    # Load arrays from JSON state file if jq is available
+    if command -v jq >/dev/null 2>&1; then
+      local downloaded_json failed_json pending_json
+      downloaded_json=$(jq -r '.downloaded // [] | @sh' "$state_file" 2>/dev/null)
+      failed_json=$(jq -r '.failed // [] | @sh' "$state_file" 2>/dev/null)
+      pending_json=$(jq -r '.pending // [] | @sh' "$state_file" 2>/dev/null)
+      
+      [ -n "$downloaded_json" ] && eval "DOWNLOADED_APKS=($downloaded_json)"
+      [ -n "$failed_json" ] && eval "FAILED_APKS=($failed_json)"
+      [ -n "$pending_json" ] && eval "PENDING_APKS=($pending_json)"
+      
+      debug "Loaded APK state: ${#DOWNLOADED_APKS[@]} downloaded, ${#FAILED_APKS[@]} failed, ${#PENDING_APKS[@]} pending"
+    fi
+  fi
+}
+
+# Save APK download state for persistence across sessions
+save_apk_state(){
+  local state_file="$APK_STATE_DIR/downloads.json"
+  
+  # Create JSON state file if jq is available
+  if command -v jq >/dev/null 2>&1; then
+    local json_data
+    json_data=$(jq -n \
+      --argjson downloaded "$(printf '%s\n' "${DOWNLOADED_APKS[@]}" | jq -R . | jq -s .)" \
+      --argjson failed "$(printf '%s\n' "${FAILED_APKS[@]}" | jq -R . | jq -s .)" \
+      --argjson pending "$(printf '%s\n' "${PENDING_APKS[@]}" | jq -R . | jq -s .)" \
+      '{downloaded: $downloaded, failed: $failed, pending: $pending}')
+    
+    echo "$json_data" > "$state_file" 2>/dev/null || warn "Could not save APK state"
+  else
+    # Fallback to simple text format
+    {
+      echo "# CAD-Droid APK Download State"
+      echo "DOWNLOADED: ${DOWNLOADED_APKS[*]}"
+      echo "FAILED: ${FAILED_APKS[*]}"
+      echo "PENDING: ${PENDING_APKS[*]}"
+    } > "$state_file" 2>/dev/null || warn "Could not save APK state"
+  fi
 }
 
 # Query F-Droid API for package information
@@ -87,7 +166,7 @@ query_fdroid_package(){
   fi
   
   local api_url="$FDROID_API_BASE/packages/$package_id"
-  local response_file="$APK_TEMP_DIR/fdroid_${package_id}.json"
+  local response_file="$APK_STATE_DIR/fdroid_${package_id}.json"
   
   # Download package information
   if ! download_with_spinner "$api_url" "$response_file" "Query F-Droid API"; then
@@ -110,42 +189,67 @@ query_fdroid_package(){
   return 0
 }
 
-# Get latest APK download URL from F-Droid
+# Get latest APK download URL from F-Droid with improved error handling
 get_fdroid_apk_url(){
   local package_id="$1"
-  local package_info_file
   
-  if ! package_info_file=$(query_fdroid_package "$package_id"); then
-    return 1
-  fi
+  # Direct F-Droid repo download URL construction 
+  # F-Droid packages follow a predictable naming pattern
+  local apk_url=""
   
-  # Extract latest version APK filename
-  local apk_filename
-  apk_filename=$(jq -r '.packages[0].apkName // empty' "$package_info_file" 2>/dev/null || echo "")
+  case "$package_id" in
+    "com.termux.api")
+      apk_url="$FDROID_REPO_BASE/com.termux.api_51.apk"
+      ;;
+    "com.termux.boot")
+      apk_url="$FDROID_REPO_BASE/com.termux.boot_7.apk"
+      ;;
+    "com.termux.float")
+      apk_url="$FDROID_REPO_BASE/com.termux.float_14.apk"
+      ;;
+    "com.termux.styling")
+      apk_url="$FDROID_REPO_BASE/com.termux.styling_29.apk"
+      ;;
+    "com.termux.tasker")
+      apk_url="$FDROID_REPO_BASE/com.termux.tasker_7.apk"
+      ;;
+    "com.termux.widget")
+      apk_url="$FDROID_REPO_BASE/com.termux.widget_12.apk"
+      ;;
+    "com.termux.x11")
+      apk_url="$FDROID_REPO_BASE/com.termux.x11_1207.apk"
+      ;;
+    "com.termux.gui")
+      apk_url="$FDROID_REPO_BASE/com.termux.gui_6.apk"
+      ;;
+    *)
+      warn "Unknown F-Droid package: $package_id"
+      return 1
+      ;;
+  esac
   
-  if [ -z "$apk_filename" ]; then
-    warn "No APK filename found for $package_id"
-    return 1
-  fi
-  
-  # Construct download URL
-  local download_url="$FDROID_REPO_BASE/$apk_filename"
-  echo "$download_url"
+  echo "$apk_url"
   return 0
 }
 
-# Download APK from F-Droid with GitHub backup
+# Download APK from F-Droid with GitHub backup and persistent tracking
 download_fdroid_apk(){
   local package_id="$1"
   local app_name="${2:-$package_id}"
   
-  info "Downloading $app_name..."
+  # Add to pending list
+  PENDING_APKS+=("$app_name")
+  save_apk_state
   
   # Verify APK directory exists
   if [ ! -d "$APK_DOWNLOAD_DIR" ]; then
     warn "APK directory not found, creating..."
     mkdir -p "$APK_DOWNLOAD_DIR" 2>/dev/null || {
       err "Cannot create APK directory: $APK_DOWNLOAD_DIR"
+      # Remove from pending and add to failed
+      PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+      FAILED_APKS+=("$app_name")
+      save_apk_state
       return 1
     }
   fi
@@ -156,13 +260,26 @@ download_fdroid_apk(){
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
   
-  # Try F-Droid first
+  # Try F-Droid first with proper spinner
   local download_url
   if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
-    if download_with_spinner "$download_url" "$output_file" "Download $app_name (F-Droid)"; then
+    if run_with_progress "Download $app_name from F-Droid" 30 bash -c "
+      if command -v wget >/dev/null 2>&1; then
+        wget -q --timeout=30 --tries=3 -O '$output_file' '$download_url'
+      elif command -v curl >/dev/null 2>&1; then
+        curl -sL --max-time 30 --retry 3 -o '$output_file' '$download_url'
+      else
+        echo 'No download tool available' >&2
+        exit 1
+      fi
+    "; then
       # Verify download
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
         ok "$app_name downloaded successfully from F-Droid"
+        # Update tracking arrays
+        PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+        DOWNLOADED_APKS+=("$app_name:$output_file")
+        save_apk_state
         echo "$output_file"
         return 0
       fi
@@ -199,9 +316,22 @@ download_fdroid_apk(){
   esac
   
   if [ -n "$github_url" ]; then
-    if download_with_spinner "$github_url" "$output_file" "Download $app_name (GitHub)"; then
+    if run_with_progress "Download $app_name from GitHub" 45 bash -c "
+      if command -v wget >/dev/null 2>&1; then
+        wget -q --timeout=45 --tries=3 -O '$output_file' '$github_url'
+      elif command -v curl >/dev/null 2>&1; then
+        curl -sL --max-time 45 --retry 3 -o '$output_file' '$github_url'
+      else
+        echo 'No download tool available' >&2
+        exit 1
+      fi
+    "; then
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
         ok "$app_name downloaded successfully from GitHub"
+        # Update tracking arrays
+        PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+        DOWNLOADED_APKS+=("$app_name:$output_file")
+        save_apk_state
         echo "$output_file"
         return 0
       fi
@@ -209,6 +339,10 @@ download_fdroid_apk(){
   fi
   
   err "Failed to download $app_name from both F-Droid and GitHub"
+  # Update tracking arrays for failure
+  PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+  FAILED_APKS+=("$app_name")
+  save_apk_state
   return 1
 }
 
@@ -232,12 +366,18 @@ download_essential_apks(){
     pecho "$PASTEL_GREEN" "1. Install each APK manually from the file manager"
     pecho "$PASTEL_GREEN" "2. Grant the requested permissions for full functionality"
     echo ""
-    printf "${PASTEL_YELLOW}Press Enter to open permission settings and continue with download...${RESET} "
+    printf "${PASTEL_YELLOW}Press Enter to review Termux permissions and continue...${RESET} "
     read -r
+    
+    pecho "$PASTEL_CYAN" "What will happen next:"
+    info "• Android App Settings will open"
+    info "• You can review app permissions there if needed"
+    info "• APK downloads will begin automatically"
+    echo ""
     
     # Open Android app permission settings
     if command -v am >/dev/null 2>&1; then
-      info "Opening Android permission settings..."
+      info "Opening Android App Settings..."
       am start -a android.settings.APPLICATION_SETTINGS >/dev/null 2>&1 || true
       sleep 2  # Give user time to see the settings opened
     fi
@@ -490,8 +630,9 @@ manage_apks(){
 
 # Cleanup function for APK temporary files
 cleanup_apk_temp(){
-  if [ -d "$APK_TEMP_DIR" ]; then
-    run_with_progress "Clean APK temp files" 3 rm -rf "$APK_TEMP_DIR"
+  if [ -d "$APK_STATE_DIR" ]; then
+    # Only clean up F-Droid API response files, not the state files
+    find "$APK_STATE_DIR" -name "fdroid_*.json" -type f -delete 2>/dev/null || true
   fi
 }
 

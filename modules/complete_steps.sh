@@ -440,20 +440,38 @@ step_prefetch(){
     cat > "$prefetch_script" << PREFETCH_EOF
 #!/bin/bash
 
-echo "Prefetching packages..."
+echo "Prefetching development packages..."
 
 # Force refresh of package archives each run
 if command -v apt-get >/dev/null 2>&1; then
-  apt-get clean || true
+  echo "Cleaning package cache..."
+  apt-get clean >/dev/null 2>&1 || true
   rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
-  apt-get update
-  # Download packages without installing; force no-cache behavior
-  echo "Downloading package archives (fresh)..."
-  apt-get -o Acquire::http::No-Cache=true \\
-          -o Acquire::https::No-Cache=true \\
-          --download-only -y install ${prefetch_packages[*]} 2>/dev/null || {
-      echo "Some packages may not be available in this distribution"
-  }
+  
+  echo "Updating package lists..."
+  apt-get update >/dev/null 2>&1
+  
+  # Download packages in batches with clear progress  
+  local batch_size=5
+  local batch_num=1
+  local total_batches=\$(( (${#prefetch_packages[@]} + batch_size - 1) / batch_size ))
+  
+  echo "Processing \$total_batches batches of development packages..."
+  
+  for ((i=0; i<${#prefetch_packages[@]}; i+=batch_size)); do
+    local batch=("\${prefetch_packages[@]:i:batch_size}")
+    echo "Batch \$batch_num/\$total_batches: \${batch[*]}"
+    apt-get -o Acquire::http::No-Cache=true \\
+            -o Acquire::https::No-Cache=true \\
+            --download-only -y install "\${batch[@]}" >/dev/null 2>&1 || {
+        echo "Some packages in batch \$batch_num may not be available"
+    }
+    batch_num=\$((batch_num + 1))
+  done
+  
+  echo "Package download completed"
+else
+  echo "Package manager not available"
 fi
 
 # Show cache status
@@ -471,7 +489,7 @@ PREFETCH_EOF
     chmod +x "$prefetch_script" 2>/dev/null || true
     
     # Run prefetch in container
-    run_with_progress "Download common packages" 180 \
+    run_with_progress "Download development packages for offline use" 180 \
         proot-distro login "$container_name" -- bash < "$prefetch_script"
     
     # Clean up

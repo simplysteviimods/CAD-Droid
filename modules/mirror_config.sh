@@ -10,44 +10,224 @@ if [ -n "${_CAD_MIRROR_CONFIG_LOADED:-}" ]; then
 fi
 readonly _CAD_MIRROR_CONFIG_LOADED=1
 
-# Mirror Configuration Arrays
-declare -a TERMUX_MIRRORS=(
+# Regional Mirror Configuration - Following Termux best practices
+# Groups mirrors by region for better user experience and auto-detection
+
+# Official mirrors (always preferred and tested first)
+declare -a OFFICIAL_MIRRORS=(
   "https://packages.termux.dev/apt/termux-main"
-  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"  
-  "https://grimler.se/termux/apt/termux-main"
-  "https://mirror.sahilister.in/termux/apt/termux-main"
-  "https://termux.librehat.com/apt/termux-main"
+  "https://packages-cf.termux.dev/apt/termux-main"
 )
 
-declare -a X11_MIRRORS=(
+declare -a OFFICIAL_MIRROR_NAMES=(
+  "Official Termux (Global CDN)"
+  "Official Termux (Cloudflare CDN)"
+)
+
+# Regional mirror groups based on Termux community recommendations
+declare -A REGIONAL_MIRRORS=(
+  # Asia-Pacific region
+  ["asia-pacific-urls"]="https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|https://mirror.bfsu.edu.cn/termux/apt/termux-main|https://mirror.sahilister.in/termux/apt/termux-main"
+  ["asia-pacific-names"]="Tsinghua University (China)|BFSU Mirror (China)|Sahilister (India)"
+  
+  # Europe region  
+  ["europe-urls"]="https://grimler.se/termux/apt/termux-main|https://fau.mirror.termux.dev/apt/termux-main"
+  ["europe-names"]="Grimler (Sweden)|FAU (Germany)"
+  
+  # Americas region
+  ["americas-urls"]="https://termux.mentality.rip/termux/apt/termux-main"
+  ["americas-names"]="Mentality (North America)"
+)
+
+# X11 repository mirrors (parallel structure)
+declare -a OFFICIAL_X11_MIRRORS=(
   "https://packages.termux.dev/apt/termux-x11"
-  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-x11"
-  "https://grimler.se/termux/apt/termux-x11"
-  "https://mirror.sahilister.in/termux/apt/termux-x11"
-  "https://termux.librehat.com/apt/termux-x11"
+  "https://packages-cf.termux.dev/apt/termux-x11"
 )
 
-# Mirror names corresponding to URLs for user-friendly display
-declare -a TERMUX_MIRROR_NAMES=(
-  "Official Termux (Global)"
-  "Tsinghua University (China)"  
-  "Grimler (Europe)"
-  "Sahilister (India)"
-  "LibreHat (Asia-Pacific)"
+declare -A REGIONAL_X11_MIRRORS=(
+  ["asia-pacific-urls"]="https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-x11|https://mirror.bfsu.edu.cn/termux/apt/termux-x11|https://mirror.sahilister.in/termux/apt/termux-x11"
+  ["europe-urls"]="https://grimler.se/termux/apt/termux-x11|https://fau.mirror.termux.dev/apt/termux-x11"
+  ["americas-urls"]="https://termux.mentality.rip/termux/apt/termux-x11"
 )
 
-declare -a X11_MIRROR_NAMES=(
-  "Official Termux X11 (Global)"
-  "Tsinghua University X11 (China)"
-  "Grimler X11 (Europe)"  
-  "Sahilister X11 (India)"
-  "LibreHat X11 (Asia-Pacific)"
-)
+# Simple region detection based on timezone and locale
+detect_user_region(){
+  local detected_region="global"
+  
+  # Try timezone-based detection first
+  if [ -n "${TZ:-}" ]; then
+    case "$TZ" in
+      Asia/*|*/Shanghai|*/Beijing|*/Tokyo|*/Mumbai|*/Kolkata|*/Singapore)
+        detected_region="asia-pacific" ;;
+      Europe/*|*/London|*/Berlin|*/Stockholm|*/Amsterdam)
+        detected_region="europe" ;;
+      America/*|US/*|Canada/*)
+        detected_region="americas" ;;
+    esac
+  fi
+  
+  # Fallback to locale detection if timezone didn't help
+  if [ "$detected_region" = "global" ] && [ -n "${LANG:-}" ]; then
+    case "$LANG" in
+      zh_*|ja_*|ko_*|hi_*|*_CN|*_JP|*_KR|*_IN)
+        detected_region="asia-pacific" ;;
+      *_DE|*_SE|*_GB|*_FR|*_ES|*_IT|*_NL|*_FI|*_NO|*_DK)
+        detected_region="europe" ;;
+      en_US|en_CA|es_*|pt_BR|fr_CA)
+        detected_region="americas" ;;
+    esac
+  fi
+  
+  echo "$detected_region"
+}
 
-# Mirror test function with spinner integration
+# Get suggested mirrors for a region
+get_regional_mirrors(){
+  local region="$1"
+  local repo_type="${2:-main}"
+  local -a suggested_urls=()
+  local -a suggested_names=()
+  
+  # Always include official mirrors first
+  if [ "$repo_type" = "x11" ]; then
+    suggested_urls+=("${OFFICIAL_X11_MIRRORS[@]}")
+  else
+    suggested_urls+=("${OFFICIAL_MIRRORS[@]}")
+    suggested_names+=("${OFFICIAL_MIRROR_NAMES[@]}")
+  fi
+  
+  # Add regional mirrors if available - only for valid regions
+  if [ "$region" != "global" ]; then
+    local urls_key="${region}-urls"
+    local names_key="${region}-names"
+    
+    if [ "$repo_type" = "x11" ]; then
+      if [ -n "${REGIONAL_X11_MIRRORS[$urls_key]:-}" ]; then
+        IFS='|' read -ra regional_urls <<< "${REGIONAL_X11_MIRRORS[$urls_key]}"
+        suggested_urls+=("${regional_urls[@]}")
+      fi
+    else
+      if [ -n "${REGIONAL_MIRRORS[$urls_key]:-}" ] && [ -n "${REGIONAL_MIRRORS[$names_key]:-}" ]; then
+        IFS='|' read -ra regional_urls <<< "${REGIONAL_MIRRORS[$urls_key]}"
+        IFS='|' read -ra regional_names <<< "${REGIONAL_MIRRORS[$names_key]}"
+        suggested_urls+=("${regional_urls[@]}")
+        suggested_names+=("${regional_names[@]}")
+      fi
+    fi
+  fi
+  
+  # Return as space-separated values for easy parsing
+  printf "%s\n" "${suggested_urls[@]}"
+}
+
+# Get mirror names for display
+get_regional_mirror_names(){
+  local region="$1" 
+  local repo_type="${2:-main}"
+  local -a suggested_names=()
+  
+  # Always include official mirror names first
+  suggested_names+=("${OFFICIAL_MIRROR_NAMES[@]}")
+  
+  # Add regional mirror names if available (only for main repo and valid regions)
+  if [ "$repo_type" != "x11" ] && [ "$region" != "global" ]; then
+    local names_key="${region}-names"
+    if [ -n "${REGIONAL_MIRRORS[$names_key]:-}" ]; then
+      IFS='|' read -ra regional_names <<< "${REGIONAL_MIRRORS[$names_key]}"
+      suggested_names+=("${regional_names[@]}")
+    fi
+  fi
+  
+  printf "%s\n" "${suggested_names[@]}"
+}
+
+# Mirror test function with spinner integration  
 test_mirror_speed(){
   local mirror_url="$1"
   local test_timeout="${2:-8}"
+  
+  # Test reachability and response time
+  local start_time end_time response_time
+  start_time=$(date +%s%3N)
+  
+  if curl --max-time "$test_timeout" --connect-timeout 3 --fail --silent --head "$mirror_url" >/dev/null 2>&1; then
+    end_time=$(date +%s%3N)
+    response_time=$((end_time - start_time))
+    echo "$response_time"
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Select fastest working mirror with regional preference
+select_fastest_mirror(){
+  local mirror_type="${1:-main}"
+  local user_region
+  user_region=$(detect_user_region)
+  
+  info "Detected region: $user_region"
+  info "Selecting optimal $mirror_type repository mirror..."
+  
+  # Get suggested mirrors for the user's region
+  local -a suggested_mirrors
+  mapfile -t suggested_mirrors < <(get_regional_mirrors "$user_region" "$mirror_type")
+  
+  if [ ${#suggested_mirrors[@]} -eq 0 ]; then
+    warn "No mirrors available for region $user_region, using global defaults"
+    if [ "$mirror_type" = "x11" ]; then
+      suggested_mirrors=("${OFFICIAL_X11_MIRRORS[@]}")
+    else
+      suggested_mirrors=("${OFFICIAL_MIRRORS[@]}")
+    fi
+  fi
+  
+  local best_mirror=""
+  local best_time=999999
+  local working_mirrors=0
+  
+  for mirror in "${suggested_mirrors[@]}"; do
+    local hostname
+    hostname=$(echo "$mirror" | sed 's|https\?://||' | cut -d'/' -f1)
+    
+    # Show progress with spinner
+    run_with_progress "Test $hostname" 12 bash -c "
+      if response_time=\$(test_mirror_speed '$mirror' 8); then
+        echo \"RESULT:\$response_time\" >&2
+        exit 0
+      else
+        echo \"FAILED\" >&2
+        exit 1
+      fi
+    " 2>&1 | {
+      while IFS= read -r line; do
+        if [[ "$line" == RESULT:* ]]; then
+          local response_time="${line#RESULT:}"
+          if [ "$response_time" -lt "$best_time" ] 2>/dev/null; then
+            best_time="$response_time"
+            best_mirror="$mirror"
+          fi
+          working_mirrors=$((working_mirrors + 1))
+          ok "$hostname: ${response_time}ms"
+        elif [[ "$line" == "FAILED" ]]; then
+          warn "$hostname: Connection failed"
+        fi
+      done
+    }
+  done
+  
+  if [ -z "$best_mirror" ]; then
+    err "No working mirrors found for $mirror_type"
+    return 1
+  fi
+  
+  local best_hostname
+  best_hostname=$(echo "$best_mirror" | sed 's|https\?://||' | cut -d'/' -f1)
+  ok "Selected optimal mirror: $best_hostname (${best_time}ms)"
+  
+  echo "$best_mirror"
+  return 0
   
   if [ -z "$mirror_url" ]; then
     return 1

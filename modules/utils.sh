@@ -424,6 +424,10 @@ read_nonempty() {
       GIT_USERNAME) GIT_USERNAME="${default_val:-user}" ;;
       GIT_EMAIL) GIT_EMAIL="${default_val:-user@example.com}" ;;
       UBUNTU_USERNAME) UBUNTU_USERNAME="${default_val:-user}" ;;
+      ip) ip="${default_val:-192.168.1.100}" ;;
+      pairing_port) pairing_port="${default_val:-37831}" ;;
+      pairing_code) pairing_code="${default_val:-123456}" ;;
+      debug_port) debug_port="${default_val:-37832}" ;;
       *) warn "Unknown variable for read_nonempty: $var_name" ;;
     esac
     return 0
@@ -448,6 +452,10 @@ read_nonempty() {
         GIT_USERNAME) GIT_USERNAME="$input" ;;
         GIT_EMAIL) GIT_EMAIL="$input" ;;
         UBUNTU_USERNAME) UBUNTU_USERNAME="$input" ;;
+        ip) ip="$input" ;;
+        pairing_port) pairing_port="$input" ;;
+        pairing_code) pairing_code="$input" ;;
+        debug_port) debug_port="$input" ;;
         *) warn "Unknown variable for read_nonempty: $var_name" ;;
       esac
       return 0
@@ -463,6 +471,10 @@ read_nonempty() {
     GIT_USERNAME) GIT_USERNAME="${default_val:-user}" ;;
     GIT_EMAIL) GIT_EMAIL="${default_val:-user@example.com}" ;;
     UBUNTU_USERNAME) UBUNTU_USERNAME="${default_val:-user}" ;;
+    ip) ip="${default_val:-192.168.1.100}" ;;
+    pairing_port) pairing_port="${default_val:-37831}" ;;
+    pairing_code) pairing_code="${default_val:-123456}" ;;
+    debug_port) debug_port="${default_val:-37832}" ;;
     *) warn "Using default for $var_name: ${default_val}" ;;
   esac
   return 1

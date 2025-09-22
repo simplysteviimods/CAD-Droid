@@ -125,6 +125,31 @@ wait_for_termux_api(){
     return 0
   fi
   
+  # Ask user if they want Termux:API (make it optional)
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "Termux:API Installation (Optional)"
+    echo ""
+    pecho "$PASTEL_CYAN" "Termux:API provides useful functions to access:"
+    info "• GPS location and sensors"
+    info "• Camera and flashlight control"
+    info "• WiFi info and network details"
+    info "• Phone calls and SMS features"
+    info "• System notifications and clipboard"
+    info "• Battery status and device info"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Termux:API is useful for development tasks but not required for basic setup."
+    echo ""
+    
+    if ask_yes_no "Do you want to install Termux:API?" "y"; then
+      info "Checking for Termux:API installation..."
+    else
+      info "Skipping Termux:API installation"
+      TERMUX_API_VERIFIED="skipped_by_user"
+      return 0
+    fi
+  fi
+  
   local max_attempts="${TERMUX_API_WAIT_MAX:-4}" 
   local delay_seconds="${TERMUX_API_WAIT_DELAY:-3}"
   local current_attempt=1  # Initialize counter safely
@@ -163,6 +188,17 @@ wait_for_termux_api(){
     fi
   done
   
+  # Final check - if still not found, offer to skip
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    warn "Termux:API not detected after $max_attempts attempts"
+    if ask_yes_no "Continue without Termux:API?" "y"; then
+      info "Continuing setup without Termux:API"
+      TERMUX_API_VERIFIED="skipped_after_attempts"
+      return 0
+    fi
+  fi
+  
   TERMUX_API_VERIFIED="no"
   debug "Termux:API unavailable after ${max_attempts} attempts"
   return 1
@@ -192,12 +228,12 @@ configure_bash_prompt(){
   cat >> "$bashrc" << 'BASH_PROMPT_EOF'
 
 # CAD-Droid prompt theme
-# Pink username, purple typed text
+# Pastel pink username, pastel purple typed text
 # Username uses TERMUX_USERNAME if set, otherwise \u@\h
 cad_reset='\[\e[0m\]'
-cad_pink='\[\e[38;5;205m\]'
-cad_sky='\[\e[38;5;117m\]'
-cad_purple_input='\[\e[38;5;141m\]'
+cad_pastel_pink='\[\e[38;5;217m\]'    # Pastel pink for username
+cad_pastel_cyan='\[\e[38;5;159m\]'    # Pastel cyan for path
+cad_pastel_purple='\[\e[38;5;183m\]'  # Pastel purple for input text
 
 # Compose display name from TERMUX_USERNAME or fallback to \u@\h
 if [ -n "${TERMUX_USERNAME:-}" ]; then
@@ -206,8 +242,8 @@ else
   cad_name='\u@\h'
 fi
 
-# Prompt: <pink>name</pink>:<sky>cwd</sky> and leave purple color active for typed text
-PS1="${cad_pink}\${cad_name}${cad_reset}:${cad_sky}\w${cad_reset} ${cad_purple_input}"
+# Prompt: <pastel_pink>name</pastel_pink>:<pastel_cyan>cwd</pastel_cyan> and leave pastel purple color active for typed text
+PS1="${cad_pastel_pink}\${cad_name}${cad_reset}:${cad_pastel_cyan}\w${cad_reset} ${cad_pastel_purple}"
 
 # Reset color after each command so output returns to normal
 PROMPT_COMMAND="echo -ne '\033[0m'"
@@ -217,6 +253,49 @@ BASH_PROMPT_EOF
   chmod 644 "$bashrc" 2>/dev/null || true
   
   ok "Bash prompt theme configured in ~/.bashrc"
+}
+
+# Configure nano editor with pastel colors
+configure_nano_colors(){
+  local nanorc="$HOME/.nanorc"
+  
+  # Check if nano color configuration is already present
+  if grep -q "# CAD-Droid nano theme" "$nanorc" 2>/dev/null; then
+    debug "Nano color theme already configured"
+    return 0
+  fi
+  
+  info "Configuring nano editor with pastel colors..."
+  
+  # Add nano color configuration
+  cat >> "$nanorc" << 'NANO_CONFIG_EOF'
+
+# CAD-Droid nano theme
+# Pastel colors for better readability
+set titlecolor brightwhite,lightmagenta
+set statuscolor brightwhite,lightcyan
+set selectedcolor brightwhite,lightblue
+set stripecolor yellow
+set numbercolor lightcyan
+set keycolor lightcyan
+set functioncolor lightgreen
+
+# Syntax highlighting with pastel colors
+include "/data/data/com.termux/files/usr/share/nano/*.nanorc"
+
+# Enhanced editor behavior
+set tabsize 2
+set autoindent
+set smooth
+set mouse
+set linenumbers
+set constantshow
+NANO_CONFIG_EOF
+  
+  # Set proper permissions
+  chmod 644 "$nanorc" 2>/dev/null || true
+  
+  ok "Nano editor configured with pastel colors"
 }
 
 # === Termux Configuration ===
@@ -382,10 +461,16 @@ validate_termux_environment(){
 
 # Read user credentials with proper validation and timeout handling
 read_credential() {
-  local prompt="$1"
-  local var_name="$2"
+  local prompt="${1:-}"
+  local var_name="${2:-}"
   local validation_type="${3:-nonempty}"
   local is_password="${4:-false}"
+  
+  # Validate required parameters
+  if [ -z "$prompt" ] || [ -z "$var_name" ]; then
+    err "read_credential requires prompt and variable name parameters"
+    return 1
+  fi
   
   if [ "$is_password" = "true" ]; then
     secure_password_input "$prompt" "$var_name"
@@ -440,9 +525,10 @@ secure_password_input() {
 
 # === Termux-specific File Operations ===
 
-# Open file manager to display directory
+# Open file manager to display directory with user guidance
 open_file_manager(){
   local target="${1:-/storage/emulated/0/Download}"
+  local show_prompt="${2:-true}"
   
   # Validate directory exists
   if [ ! -d "$target" ]; then
@@ -450,6 +536,22 @@ open_file_manager(){
       warn "Cannot create directory: $target"
       return 1
     fi
+  fi
+  
+  # Show user guidance unless suppressed
+  if [ "$show_prompt" = "true" ] && [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_PURPLE" "=== Opening File Manager ==="
+    echo ""
+    pecho "$PASTEL_CYAN" "What will happen next:"
+    info "• Android file manager will open"
+    info "• Navigate to the displayed folder location"
+    info "• You can browse and manage files there"
+    echo ""
+    info "Target folder: $target"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Press Enter to open file manager..."
+    read -r
   fi
   
   local opened=0
@@ -522,6 +624,34 @@ step_usercfg(){
 configure_git_with_timeout() {
   pecho "$PASTEL_PURPLE" "Configuring Git for version control..."
   
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    if ask_yes_no "Do you want to configure Git and GitHub?" "y"; then
+      configure_git_interactive
+      
+      # Ask about SSH key generation
+      echo ""
+      if ask_yes_no "Generate SSH key for GitHub?" "y"; then
+        generate_github_ssh_key
+      fi
+    else
+      info "Skipping Git configuration"
+      # Set minimal git config
+      if command -v git >/dev/null 2>&1; then
+        git config --global user.name "user" 2>/dev/null || true
+        git config --global user.email "user@example.com" 2>/dev/null || true
+        git config --global init.defaultBranch main 2>/dev/null || true
+        git config --global pull.rebase false 2>/dev/null || true
+      fi
+      return 0
+    fi
+  else
+    configure_git_interactive
+  fi
+}
+
+# Interactive Git configuration
+configure_git_interactive() {
   while true; do
     # Get git username
     read_nonempty "Enter Git username" GIT_USERNAME "${TERMUX_USERNAME%%@*}"
@@ -557,5 +687,74 @@ configure_git_with_timeout() {
     ok "Git configured: $GIT_USERNAME <$GIT_EMAIL>"
   else
     warn "Git not available for configuration"
+  fi
+}
+
+# Generate SSH key for GitHub
+generate_github_ssh_key() {
+  pecho "$PASTEL_PURPLE" "Generating SSH key for GitHub..."
+  
+  local ssh_dir="$HOME/.ssh"
+  local key_file="$ssh_dir/id_rsa"
+  
+  # Create SSH directory
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir"
+  
+  # Check if key already exists
+  if [ -f "$key_file" ]; then
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      if ask_yes_no "SSH key already exists. Overwrite?" "n"; then
+        rm -f "$key_file" "$key_file.pub"
+      else
+        info "Using existing SSH key"
+        cat "$key_file.pub" 2>/dev/null || warn "Could not read existing key"
+        return 0
+      fi
+    else
+      info "SSH key already exists"
+      return 0
+    fi
+  fi
+  
+  # Generate SSH key with GitHub email
+  info "Generating SSH key with email: $GIT_EMAIL"
+  ssh-keygen -t rsa -b 4096 -C "$GIT_EMAIL" -f "$key_file" -N "" >/dev/null 2>&1
+  
+  if [ -f "$key_file.pub" ]; then
+    ok "SSH key generated successfully"
+    
+    # Display the public key
+    echo ""
+    pecho "$PASTEL_CYAN" "Your SSH public key (copy this to GitHub):"
+    echo ""
+    cat "$key_file.pub"
+    echo ""
+    
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      pecho "$PASTEL_YELLOW" "Instructions:"
+      info "1. Copy the SSH key above"
+      info "2. Press Enter to open GitHub SSH settings"
+      info "3. Click 'New SSH key' and paste the key"
+      info "4. Give it a title (e.g., 'Termux Key')"
+      info "5. Click 'Add SSH key'"
+      echo ""
+      pecho "$PASTEL_GREEN" "Press Enter to open GitHub SSH settings..."
+      read -r || true
+      
+      # Open GitHub SSH settings
+      if command -v termux-open-url >/dev/null 2>&1; then
+        termux-open-url "https://github.com/settings/ssh/new"
+      elif command -v am >/dev/null 2>&1; then
+        am start -a android.intent.action.VIEW -d "https://github.com/settings/ssh/new" >/dev/null 2>&1 || true
+      fi
+      
+      echo ""
+      pecho "$PASTEL_CYAN" "Press Enter when you've added the SSH key to GitHub..."
+      read -r || true
+    fi
+  else
+    err "Failed to generate SSH key"
+    return 1
   fi
 }
