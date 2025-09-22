@@ -28,6 +28,16 @@ declare -A ESSENTIAL_APKS=(
   ["Termux:Tasker"]="com.termux.tasker"
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
+  ["Termux:GUI"]="com.termux.gui"
+  ["Material Files"]="me.zhanghai.android.files"
+  ["F-Droid"]="org.fdroid.fdroid"
+  ["Obtainium"]="dev.imranr.obtainium"
+  ["AnySoftKeyboard"]="com.menny.android.anysoftkeyboard"
+  ["VLC"]="org.videolan.vlc"
+  ["Firefox"]="org.mozilla.firefox"
+  ["Signal"]="org.thoughtcrime.securesms"
+  ["KeePassDX"]="com.kunzisoft.keepass.libre"
+  ["Syncthing"]="com.nutomic.syncthingandroid"
 )
 
 # Initialize APK management system
@@ -188,8 +198,12 @@ download_fdroid_apk(){
     "com.termux.x11")
       github_url="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
       ;;
+    "com.termux.gui")
+      github_url="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
+      ;;
+    # Non-Termux APKs don't have GitHub fallbacks, rely on F-Droid
     *)
-      err "No GitHub backup available for $app_name"
+      err "No GitHub backup available for $app_name (F-Droid only)"
       return 1
       ;;
   esac
@@ -311,7 +325,7 @@ check_apk_permissions(){
   for i in "${!install_order[@]}"; do
     local app="${install_order[$i]}"
     local num=$((i + 1))
-    printf "${PASTEL_CYAN}%d.${RESET} ${PASTEL_LAVENDER}%s${RESET}\n" "$num" "$app"
+    printf "${PASTEL_CYAN}%d.${RESET} ${PASTEL_PURPLE}%s${RESET}\n" "$num" "$app"
     
     # Add specific permission requirements
     case "$app" in
