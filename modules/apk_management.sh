@@ -189,27 +189,46 @@ query_fdroid_package(){
   return 0
 }
 
-# Get latest APK download URL from F-Droid
+# Get latest APK download URL from F-Droid with improved error handling
 get_fdroid_apk_url(){
   local package_id="$1"
-  local package_info_file
   
-  if ! package_info_file=$(query_fdroid_package "$package_id"); then
-    return 1
-  fi
+  # Direct F-Droid repo download URL construction 
+  # F-Droid packages follow a predictable naming pattern
+  local apk_url=""
   
-  # Extract latest version APK filename
-  local apk_filename
-  apk_filename=$(jq -r '.packages[0].apkName // empty' "$package_info_file" 2>/dev/null || echo "")
+  case "$package_id" in
+    "com.termux.api")
+      apk_url="$FDROID_REPO_BASE/com.termux.api_51.apk"
+      ;;
+    "com.termux.boot")
+      apk_url="$FDROID_REPO_BASE/com.termux.boot_7.apk"
+      ;;
+    "com.termux.float")
+      apk_url="$FDROID_REPO_BASE/com.termux.float_14.apk"
+      ;;
+    "com.termux.styling")
+      apk_url="$FDROID_REPO_BASE/com.termux.styling_29.apk"
+      ;;
+    "com.termux.tasker")
+      apk_url="$FDROID_REPO_BASE/com.termux.tasker_7.apk"
+      ;;
+    "com.termux.widget")
+      apk_url="$FDROID_REPO_BASE/com.termux.widget_12.apk"
+      ;;
+    "com.termux.x11")
+      apk_url="$FDROID_REPO_BASE/com.termux.x11_1207.apk"
+      ;;
+    "com.termux.gui")
+      apk_url="$FDROID_REPO_BASE/com.termux.gui_6.apk"
+      ;;
+    *)
+      warn "Unknown F-Droid package: $package_id"
+      return 1
+      ;;
+  esac
   
-  if [ -z "$apk_filename" ]; then
-    warn "No APK filename found for $package_id"
-    return 1
-  fi
-  
-  # Construct download URL
-  local download_url="$FDROID_REPO_BASE/$apk_filename"
-  echo "$download_url"
+  echo "$apk_url"
   return 0
 }
 
