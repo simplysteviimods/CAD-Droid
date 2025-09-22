@@ -156,6 +156,38 @@ save_apk_state(){
   fi
 }
 
+# Download file with progress spinner
+# Parameters: url, output_file, description
+download_with_spinner(){
+  local url="$1"
+  local output_file="$2"
+  local description="${3:-Downloading file}"
+  
+  if [ -z "$url" ] || [ -z "$output_file" ]; then
+    return 1
+  fi
+  
+  # Ensure output directory exists
+  mkdir -p "$(dirname "$output_file")" 2>/dev/null || true
+  
+  # Use run_with_progress to show spinner during download
+  if run_with_progress "$description" 20 bash -c "
+    if command -v wget >/dev/null 2>&1; then
+      wget -q --timeout=30 --tries=3 --progress=bar:force -O '$output_file' '$url' 2>&1 | sed 's/^/  /'
+    elif command -v curl >/dev/null 2>&1; then
+      curl -sL --max-time 30 --retry 3 --progress-bar -o '$output_file' '$url' 2>&1 | sed 's/^/  /'
+    else
+      echo 'No download tool available' >&2
+      exit 1
+    fi
+  "; then
+    return 0
+  else
+    rm -f "$output_file" 2>/dev/null
+    return 1
+  fi
+}
+
 # Query F-Droid API for package information
 query_fdroid_package(){
   local package_id="$1"
@@ -169,7 +201,7 @@ query_fdroid_package(){
   local response_file="$APK_STATE_DIR/fdroid_${package_id}.json"
   
   # Download package information
-  if ! download_with_spinner "$api_url" "$response_file" "Query F-Droid API"; then
+  if ! download_with_spinner "$api_url" "$response_file" "Query F-Droid API for $package_id"; then
     warn "Failed to query F-Droid for package: $package_id"
     return 1
   fi
@@ -260,22 +292,14 @@ download_fdroid_apk(){
   # Always overwrite existing APKs to ensure latest version
   [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
   
-  # Try F-Droid first with proper spinner
+  # Try F-Droid first with enhanced progress display
   local download_url
   if download_url=$(get_fdroid_apk_url "$package_id" 2>/dev/null); then
-    if run_with_progress "Download $app_name from F-Droid" 30 bash -c "
-      if command -v wget >/dev/null 2>&1; then
-        wget -q --timeout=30 --tries=3 -O '$output_file' '$download_url'
-      elif command -v curl >/dev/null 2>&1; then
-        curl -sL --max-time 30 --retry 3 -o '$output_file' '$download_url'
-      else
-        echo 'No download tool available' >&2
-        exit 1
-      fi
-    "; then
+    info "📦 Downloading $app_name from F-Droid..."
+    if download_with_spinner "$download_url" "$output_file" "Downloading $app_name"; then
       # Verify download
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "$app_name downloaded successfully from F-Droid"
+        ok "✅ $app_name downloaded successfully from F-Droid"
         # Update tracking arrays
         PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
         DOWNLOADED_APKS+=("$app_name:$output_file")
@@ -316,18 +340,10 @@ download_fdroid_apk(){
   esac
   
   if [ -n "$github_url" ]; then
-    if run_with_progress "Download $app_name from GitHub" 45 bash -c "
-      if command -v wget >/dev/null 2>&1; then
-        wget -q --timeout=45 --tries=3 -O '$output_file' '$github_url'
-      elif command -v curl >/dev/null 2>&1; then
-        curl -sL --max-time 45 --retry 3 -o '$output_file' '$github_url'
-      else
-        echo 'No download tool available' >&2
-        exit 1
-      fi
-    "; then
+    info "📦 Downloading $app_name from GitHub..."
+    if download_with_spinner "$github_url" "$output_file" "Downloading $app_name from GitHub"; then
       if [ -f "$output_file" ] && [ -s "$output_file" ]; then
-        ok "$app_name downloaded successfully from GitHub"
+        ok "✅ $app_name downloaded successfully from GitHub"
         # Update tracking arrays
         PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
         DOWNLOADED_APKS+=("$app_name:$output_file")
@@ -628,12 +644,87 @@ manage_apks(){
   return 0
 }
 
-# Cleanup function for APK temporary files
+# Cleanup function for APK temporary files and cache
 cleanup_apk_temp(){
+  local cleaned_count=0
+  
+  # Clean temporary JSON files
   if [ -d "$APK_STATE_DIR" ]; then
-    # Only clean up F-Droid API response files, not the state files
-    find "$APK_STATE_DIR" -name "fdroid_*.json" -type f -delete 2>/dev/null || true
+    find "$APK_STATE_DIR" -name "fdroid_*.json" -type f -delete 2>/dev/null && cleaned_count=$((cleaned_count + 1)) || true
   fi
+  
+  if [ "$cleaned_count" -gt 0 ]; then
+    debug "Cleaned $cleaned_count APK temporary files"
+  fi
+}
+
+# Comprehensive APK installer cleanup - removes all installer-created files
+cleanup_apk_installer_files(){
+  info "🧹 Cleaning up APK installer files and cache..."
+  
+  local cleanup_items=(
+    # APK directories (both primary and fallback)
+    "$APK_DOWNLOAD_DIR_PRIMARY"
+    "$APK_DOWNLOAD_DIR_FALLBACK"
+    # APK state and cache directories
+    "$APK_STATE_DIR"
+    # Temporary download files
+    "$TMPDIR/fdroid_*.json"
+    "$TMPDIR/*apk*"
+  )
+  
+  local cleaned_count=0
+  local total_size=0
+  
+  for item in "${cleanup_items[@]}"; do
+    if [[ "$item" == *"*"* ]]; then
+      # Handle glob patterns
+      for file in $item; do
+        if [ -e "$file" ] 2>/dev/null; then
+          local size
+          size=$(du -sb "$file" 2>/dev/null | cut -f1) || size=0
+          total_size=$((total_size + size))
+          if rm -rf "$file" 2>/dev/null; then
+            cleaned_count=$((cleaned_count + 1))
+            debug "Removed: $file ($size bytes)"
+          else
+            warn "Failed to remove: $file"
+          fi
+        fi
+      done
+    else
+      # Handle regular paths
+      if [ -e "$item" ]; then
+        local size
+        size=$(du -sb "$item" 2>/dev/null | cut -f1) || size=0
+        total_size=$((total_size + size))
+        if rm -rf "$item" 2>/dev/null; then
+          cleaned_count=$((cleaned_count + 1))
+          debug "Removed: $item ($size bytes)"
+        else
+          warn "Failed to remove: $item"
+        fi
+      fi
+    fi
+  done
+  
+  # Format size for display
+  local size_display
+  if [ "$total_size" -gt 1048576 ]; then
+    size_display="$(( total_size / 1048576 )) MB"
+  elif [ "$total_size" -gt 1024 ]; then
+    size_display="$(( total_size / 1024 )) KB"
+  else
+    size_display="${total_size} bytes"
+  fi
+  
+  if [ "$cleaned_count" -gt 0 ]; then
+    ok "✅ APK cleanup completed - removed $cleaned_count items ($size_display)"
+  else
+    info "No APK installer files found to clean"
+  fi
+  
+  return 0
 }
 
 # Set up cleanup on script exit
@@ -646,3 +737,4 @@ export -f download_essential_apks
 export -f open_apk_directory
 export -f manage_apks
 export -f cleanup_apk_temp
+export -f cleanup_apk_installer_files

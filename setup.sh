@@ -113,7 +113,6 @@ load_all_modules() {
 
   # 3. Specialized modules (can be loaded in any order)
   load_module "termux_props"
-  load_module "apk"
   load_module "apk_management"
   load_module "adb"
   load_module "core_packages"
@@ -260,69 +259,41 @@ step_apk(){
     return 0
   fi
   
-  # Follow original setup approach - setup directory first, then download
-  select_apk_directory || {
-    warn "APK directory setup failed, using fallback"
-    USER_SELECTED_APK_DIR="/storage/emulated/0/Download/CAD-Droid-APKs"
-    mkdir -p "$USER_SELECTED_APK_DIR" 2>/dev/null || true
-  }
-  
-  # Start F-Droid APK downloads like original
-  info "Starting F-Droid APK downloads..."
-  local failed=0
-  APK_MISSING=()
-  
-  # Download essential Termux APKs using original approach
-  if ! fetch_termux_addon "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:API")
-    failed=$((failed + 1))
+  # Initialize APK management system
+  if ! init_apk_system; then
+    warn "APK system initialization failed, but continuing..."
   fi
   
-  if ! fetch_termux_addon "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:X11")
-    failed=$((failed + 1))
-  fi
-  
-  if ! fetch_termux_addon "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:GUI")
-    failed=$((failed + 1))
-  fi
-  
-  if ! fetch_termux_addon "Termux:Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$USER_SELECTED_APK_DIR"; then
-    APK_MISSING+=("Termux:Widget")
-    failed=$((failed + 1))
-  fi
-  
-  # Show download results
-  if [ "$failed" -eq 0 ]; then
-    ok "All APKs downloaded successfully to: $USER_SELECTED_APK_DIR"
+  # Download essential APKs using the new APK management system
+  if download_essential_apks; then
+    ok "APK downloads completed successfully"
+    
+    # Open APK directory for installation
+    open_apk_directory || warn "Could not open APK directory"
+    
+    # Provide permission instructions after downloads
+    echo ""
+    pecho "$PASTEL_YELLOW" "PERMISSION SETUP REQUIRED:"
+    info "After installing each APK, configure permissions:"
+    info "• Termux:API - Phone, SMS, Location, Camera, Microphone"
+    info "• Termux:X11 - Display over other apps, Battery optimization disabled"
+    info "• Other APKs - Standard app permissions as requested"
+    echo ""
+    
+    # Pause for manual installation
+    if [ "$NON_INTERACTIVE" != "1" ]; then
+      info "Install APK files by tapping them, configure permissions, then press Enter..."
+      read -r || true
+    else
+      info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
+      sleep "${APK_PAUSE_TIMEOUT:-45}"
+    fi
+    
+    mark_step_status "success"
   else
-    warn "$failed APK(s) failed to download"
+    warn "Some APK downloads may have failed - check manually"
+    mark_step_status "partial"
   fi
-  
-  # Open APK directory and provide permission guidance AFTER downloads
-  info "Opening APK directory for installation..."
-  open_file_manager "$USER_SELECTED_APK_DIR" || warn "Could not open APK directory"
-  
-  # Provide permission instructions after downloads
-  echo ""
-  pecho "$PASTEL_YELLOW" "PERMISSION SETUP REQUIRED:"
-  info "After installing each APK, configure permissions:"
-  info "• Termux:API - Phone, SMS, Location, Camera, Microphone"
-  info "• Termux:X11 - Display over other apps, Battery optimization disabled"
-  info "• Other APKs - Standard app permissions as requested"
-  echo ""
-  
-  # Pause for manual installation like original
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    info "Install APK files by tapping them, configure permissions, then press Enter..."
-    read -r || true
-  else
-    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
-    sleep "${APK_PAUSE_TIMEOUT:-45}"
-  fi
-  
-  mark_step_status "success"
 }
 
 step_usercfg(){
