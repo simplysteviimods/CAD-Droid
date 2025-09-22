@@ -403,10 +403,6 @@ assist_apk_permissions(){
     esac
   fi
 }
-  done
-  
-  printf "\n${PASTEL_YELLOW}Important:${RESET} Grant all requested permissions during installation\n\n"
-}
 
 # Main APK management function
 manage_apks(){
@@ -474,4 +470,5 @@ export -f init_apk_system
 export -f download_fdroid_apk
 export -f download_essential_apks
 export -f open_apk_directory
-export -f manage_
+export -f manage_apks
+export -f cleanup_apk_temp

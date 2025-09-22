@@ -360,26 +360,43 @@ upgrade_packages(){
   # Ensure selected mirror is applied before upgrading
   ensure_mirror_applied
   
-  # Try pkg upgrade first (preferred Termux command), then fallback to apt upgrade
+  # Always update package lists immediately before upgrading
+  # This ensures package indexes are current before upgrades
   if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Upgrade packages (pkg)" 60 bash -c '
-      pkg upgrade -y >/dev/null 2>&1
+    # Update first, then upgrade with pkg
+    if run_with_progress "Update package lists (pkg)" 30 bash -c '
+      pkg update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
     '; then
-      ok "Packages upgraded successfully via pkg"
-      return 0
+      if run_with_progress "Upgrade packages (pkg)" 60 bash -c '
+        pkg upgrade -y >/dev/null 2>&1
+      '; then
+        ok "Packages upgraded successfully via pkg"
+        export PACKAGES_UPDATED=1
+        return 0
+      else
+        warn "pkg upgrade failed, trying apt upgrade..."
+      fi
     else
-      warn "pkg upgrade failed, trying apt upgrade..."
+      warn "pkg update failed before upgrade, trying apt..."
     fi
   fi
   
-  # Fallback to apt upgrade
-  if run_with_progress "Upgrade packages (apt)" 60 bash -c '
-    apt upgrade -y >/dev/null 2>&1
+  # Fallback: update first, then upgrade with apt
+  if run_with_progress "Update package lists (apt)" 30 bash -c '
+    apt update -o Acquire::Retries=3 -o Acquire::http::Timeout=10 >/dev/null 2>&1
   '; then
-    ok "Packages upgraded successfully via apt"
-    return 0
+    if run_with_progress "Upgrade packages (apt)" 60 bash -c '
+      apt upgrade -y >/dev/null 2>&1
+    '; then
+      ok "Packages upgraded successfully via apt"
+      export PACKAGES_UPDATED=1
+      return 0
+    else
+      warn "Package upgrade had issues"
+      return 1
+    fi
   else
-    warn "Package upgrade had issues"
+    warn "Package list update failed before upgrade"
     return 1
   fi
 }
