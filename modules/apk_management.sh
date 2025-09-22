@@ -30,6 +30,9 @@ declare -ga PENDING_APKS=()
 readonly FDROID_API_BASE="https://f-droid.org/api/v1"
 readonly FDROID_REPO_BASE="https://f-droid.org/repo"
 
+# Minimum APK size check (12KB)
+readonly MIN_APK_SIZE=12288
+
 # Essential APKs from F-Droid with their package IDs - Complete Termux plugin suite
 declare -gA ESSENTIAL_APKS 2>/dev/null || true
 ESSENTIAL_APKS=(
@@ -177,7 +180,255 @@ save_apk_state(){
   fi
 }
 
-# Download file with progress spinner using wget
+# Ensure minimum APK file size and validity
+ensure_min_size(){
+  local f="$1"
+  
+  if [ ! -f "$f" ]; then
+    return 1
+  fi
+  
+  # Get file size using stat or wc as fallback
+  local sz
+  if sz=$(stat -c%s "$f" 2>/dev/null); then
+    :  # stat worked
+  elif sz=$(wc -c < "$f" 2>/dev/null); then
+    :  # wc worked
+  else
+    sz=0
+  fi
+  
+  # Check if file meets minimum size requirement
+  if [ "$sz" -lt "$MIN_APK_SIZE" ]; then
+    warn "APK file too small: $sz bytes (minimum $MIN_APK_SIZE)"
+    rm -f "$f" 2>/dev/null || true
+    return 1
+  fi
+  
+  return 0
+}
+
+# Enhanced HTTP fetch function with wget-only approach
+http_fetch(){
+  local url="$1" output="$2"
+  local timeout="${CURL_MAX_TIME:-40}"
+  local connect_timeout="${CURL_CONNECT:-5}"
+  
+  if [ -z "$url" ] || [ -z "$output" ]; then
+    return 1
+  fi
+  
+  # Use wget with proper timeouts and error handling
+  if wget \
+    --timeout="$timeout" \
+    --connect-timeout="$connect_timeout" \
+    --tries=3 \
+    --user-agent="CAD-Droid-Setup/1.0" \
+    --no-check-certificate \
+    --quiet \
+    --output-document="$output" \
+    "$url"; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Fetch APK from F-Droid using their API  
+fetch_fdroid_api(){
+  local pkg="$1"
+  local out="$2" 
+  local api="https://f-droid.org/api/v1/packages/$pkg"
+  
+  if [ -z "$pkg" ] || [ -z "$out" ]; then
+    return 1
+  fi
+  
+  local tmp="$TMPDIR/fdroid_${pkg}.json"
+  
+  # Download package metadata from F-Droid API
+  if ! http_fetch "$api" "$tmp"; then
+    return 1
+  fi
+  
+  # Extract APK filename from JSON response
+  local apk
+  if command -v jq >/dev/null 2>&1; then
+    apk=$(jq -r '.packages[0].apkName // empty' "$tmp" 2>/dev/null)
+  else
+    apk=$(grep -m1 '"apkName"' "$tmp" 2>/dev/null | awk -F'"' '{print $4}')
+  fi
+  
+  if [ -z "$apk" ]; then
+    rm -f "$tmp" 2>/dev/null
+    return 1
+  fi
+  
+  # Download the APK file
+  if http_fetch "https://f-droid.org/repo/$apk" "$out"; then
+    rm -f "$tmp" 2>/dev/null
+    ensure_min_size "$out"
+  else
+    rm -f "$tmp" 2>/dev/null
+    return 1
+  fi
+}
+
+# Fetch APK from F-Droid by scraping their web page
+fetch_fdroid_page(){
+  local pkg="$1"
+  local out="$2"
+  local html_file="$TMPDIR/fdroid_page_${pkg}.html"
+  
+  if [ -z "$pkg" ] || [ -z "$out" ]; then
+    return 1
+  fi
+  
+  # Download the F-Droid package page
+  if ! http_fetch "https://f-droid.org/packages/$pkg" "$html_file"; then
+    return 1
+  fi
+  
+  # Extract APK download URL from HTML
+  local rel
+  rel=$(grep -Eo "/repo/${pkg//./\\.}_[A-Za-z0-9+.-]*\.apk" "$html_file" 2>/dev/null | grep -v '\.apk\.asc' | head -1)
+  
+  rm -f "$html_file" 2>/dev/null
+  
+  if [ -z "$rel" ]; then
+    return 1
+  fi
+  
+  # Download the APK file
+  if http_fetch "https://f-droid.org${rel}" "$out"; then
+    ensure_min_size "$out"
+  else
+    return 1
+  fi
+}
+
+# Enhanced GitHub release fetch that preserves original filenames
+fetch_github_release(){
+  local repo="$1"
+  local pattern="$2"
+  local outdir="$3"
+  local app_name="${4:-app}"
+  local api="https://api.github.com/repos/$repo/releases/latest"
+  
+  if [ -z "$repo" ] || [ -z "$pattern" ] || [ -z "$outdir" ]; then
+    return 1
+  fi
+  
+  # Get latest release information from GitHub API
+  local data_file="$TMPDIR/github_${repo//\//_}.json"
+  if ! http_fetch "$api" "$data_file"; then
+    return 1
+  fi
+  
+  local url="" original_filename=""
+  
+  # Parse JSON to find download URL matching the pattern
+  if command -v jq >/dev/null 2>&1; then
+    # Use jq for reliable JSON parsing if available
+    local asset_info
+    asset_info=$(jq -r --arg p "$pattern" '.assets[]? | select(.browser_download_url | test($p)) | "\(.browser_download_url)|\(.name)"' "$data_file" 2>/dev/null | head -1)
+    if [ -n "$asset_info" ]; then
+      url="${asset_info%|*}"
+      original_filename="${asset_info#*|}"
+    fi
+  else
+    # Fallback to grep-based parsing
+    local line
+    line=$(grep -Eo '"browser_download_url":[^"]*"[^"]+","name":[^"]*"[^"]+' "$data_file" 2>/dev/null | grep "$pattern" | head -1)
+    if [ -n "$line" ]; then
+      url=$(echo "$line" | grep -Eo '"browser_download_url":[^"]*"[^"]+' | cut -d'"' -f4)
+      original_filename=$(echo "$line" | grep -Eo '"name":[^"]*"[^"]+' | cut -d'"' -f4)
+    fi
+  fi
+  
+  # Special case for termux-x11 with known URL and filename
+  if [ -z "$url" ] && [ "$repo" = "termux/termux-x11" ]; then
+    url="https://github.com/termux/termux-x11/releases/latest/download/app-universal-debug.apk"
+    original_filename="app-universal-debug.apk"
+  fi
+  
+  rm -f "$data_file" 2>/dev/null
+  
+  if [ -z "$url" ]; then
+    return 1
+  fi
+  
+  # Use original filename if available, otherwise use app name
+  local final_filename="${original_filename:-${app_name}.apk}"
+  local out="$outdir/$final_filename"
+  
+  # Download the APK file with original name
+  if http_fetch "$url" "$out"; then
+    ensure_min_size "$out"
+  else
+    return 1
+  fi
+}
+
+# Enhanced Termux add-on fetch that preserves original APK names and prioritizes GitHub
+fetch_termux_addon(){
+  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5"
+  local prefer="${PREFER_FDROID:-0}" success=0
+  
+  if [ -z "$name" ] || [ -z "$pkg" ] || [ -z "$outdir" ]; then
+    return 1
+  fi
+  
+  # Ensure output directory exists
+  if ! mkdir -p "$outdir" 2>/dev/null; then
+    return 1
+  fi
+  
+  # Enhanced conflict resolution - check for existing conflicting packages
+  if command -v pm >/dev/null 2>&1; then
+    local existing_pkg
+    existing_pkg=$(pm list packages 2>/dev/null | grep -E "$pkg" | cut -d: -f2 | head -1)
+    if [ -n "$existing_pkg" ]; then
+      info "Found existing package: $existing_pkg - will attempt conflict resolution during installation"
+    fi
+  fi
+  
+  # Always prioritize GitHub unless F-Droid is explicitly preferred
+  if [ "$prefer" = "1" ]; then
+    # Try F-Droid first if preferred
+    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      success=1
+    fi
+  else
+    # Try GitHub first by default (preserves original names)
+    if [ -n "$repo" ] && [ -n "$patt" ]; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+        success=1
+      fi
+    fi
+  fi
+  
+  # Fall back to the other source if the first failed
+  if [ $success -eq 0 ]; then
+    if [ "$prefer" = "1" ]; then
+      # F-Droid was preferred but failed, try GitHub
+      if [ -n "$repo" ] && [ -n "$patt" ]; then
+        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+          success=1
+        fi
+      fi
+    else
+      # GitHub was preferred but failed, try F-Droid
+      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+        success=1
+      fi
+    fi
+  fi
+  
+  return $((1 - success))  
+}
+
+# Download file with progress spinner using the complete system
 # Parameters: url, output_file, description
 download_with_spinner(){
   local url="$1"
@@ -194,16 +445,9 @@ download_with_spinner(){
   # Remove any existing file
   rm -f "$output_file" 2>/dev/null || true
   
-  # Use run_with_progress to show spinner during download
-  if run_with_progress "$description" 25 wget \
-    --quiet \
-    --timeout=30 \
-    --tries=3 \
-    --user-agent="CAD-Droid-APK-Downloader/1.0" \
-    --no-check-certificate \
-    --output-document="$output_file" \
-    "$url"; then
-    # Less strict verification - just check if file exists and has some content
+  # Use http_fetch with progress display
+  if http_fetch "$url" "$output_file"; then
+    # Check file size and set permissions
     if [ -f "$output_file" ]; then
       local file_size
       file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
@@ -214,18 +458,13 @@ download_with_spinner(){
         return 0
       else
         warn "Downloaded file too small ($file_size bytes), may be incomplete"
-        # Set permissions even for small files and keep them
         chmod 644 "$output_file" 2>/dev/null || true
         return 0
       fi
-    else
-      rm -f "$output_file" 2>/dev/null
-      return 1
     fi
-  else
-    rm -f "$output_file" 2>/dev/null
-    return 1
   fi
+  
+  return 1
 }
 
 # Query F-Droid API for package information
@@ -398,7 +637,7 @@ download_fdroid_apk(){
   return 1
 }
 
-# Download all essential APKs after user confirms permissions
+# Download all essential APKs using the fetch_termux_addon function
 download_essential_apks(){
   info "Downloading essential Termux plugin APKs..."
   
@@ -408,51 +647,102 @@ download_essential_apks(){
     return 1
   fi
   
-  # Get APK count with error handling
-  local apk_count=0
-  if [ "${#ESSENTIAL_APKS[@]}" -gt 0 ]; then
-    apk_count=${#ESSENTIAL_APKS[@]}
-  else
-    err "No APKs defined in ESSENTIAL_APKS"
+  # Ensure APK download directory exists
+  mkdir -p "$APK_DOWNLOAD_DIR" 2>/dev/null || {
+    err "Cannot create APK directory: $APK_DOWNLOAD_DIR"
     return 1
-  fi
+  }
   
-  # Brief status message during downloads (no user interaction)
-  pecho "$PASTEL_CYAN" "Downloading $apk_count essential APKs..."
+  # Set proper permissions for directory
+  chmod 755 "$APK_DOWNLOAD_DIR" 2>/dev/null || true
+  chmod 755 "$(dirname "$APK_DOWNLOAD_DIR")" 2>/dev/null || true
   
-  local download_count=0
-  local success_count=0
-  local failed_apks=()
+  # Track download results
+  local success=0 total=0
   
-  # Download all APKs automatically without user prompts
+  # Download each essential APK using fetch_termux_addon
   for app_name in "${!ESSENTIAL_APKS[@]}"; do
     local package_id="${ESSENTIAL_APKS[$app_name]}"
-    download_count=$((download_count + 1))
+    local repo_path="" github_pattern=""
     
-    info "Downloading ($download_count/$apk_count): $app_name"
+    total=$((total + 1))
     
-    if download_fdroid_apk "$package_id" "$app_name"; then
-      success_count=$((success_count + 1))
+    # Map each APK to its GitHub repository and filename pattern
+    case "$package_id" in
+      "com.termux.api")
+        repo_path="termux/termux-api"
+        github_pattern=".*api.*\.apk"
+        ;;
+      "com.termux.boot")
+        repo_path="termux/termux-boot" 
+        github_pattern=".*boot.*\.apk"
+        ;;
+      "com.termux.float")
+        repo_path="termux/termux-float"
+        github_pattern=".*float.*\.apk"
+        ;;
+      "com.termux.styling")
+        repo_path="termux/termux-styling"
+        github_pattern=".*styling.*\.apk"
+        ;;
+      "com.termux.tasker")
+        repo_path="termux/termux-tasker"
+        github_pattern=".*tasker.*\.apk"
+        ;;
+      "com.termux.widget")
+        repo_path="termux/termux-widget" 
+        github_pattern=".*widget.*\.apk"
+        ;;
+      "com.termux.x11")
+        repo_path="termux/termux-x11"
+        github_pattern=".*x11.*\.apk"
+        ;;
+      "com.termux.gui")
+        repo_path="termux/termux-gui"
+        github_pattern=".*gui.*\.apk"
+        ;;
+      *)
+        warn "Unknown package: $package_id - using generic pattern"
+        repo_path=""
+        github_pattern=""
+        ;;
+    esac
+    
+    info "($total/8) Downloading $app_name..."
+    
+    # Use fetch_termux_addon function from the reference
+    if fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
+      success=$((success + 1))
+      ok "Downloaded: $app_name"
+      DOWNLOADED_APKS+=("$app_name")
     else
-      failed_apks+=("$app_name")
       warn "Failed to download: $app_name"
+      FAILED_APKS+=("$app_name")
     fi
   done
   
-  # Report download results
-  if [ "$success_count" -eq "$download_count" ]; then
-    ok "All $download_count essential APKs downloaded successfully"
-  else
-    local failed_count=$((download_count - success_count))
-    warn "$success_count/$download_count APKs downloaded successfully"
-    if [ ${#failed_apks[@]} -gt 0 ]; then
-      warn "Failed downloads: ${failed_apks[*]}"
+  # Set proper permissions for all downloaded APK files
+  find "$APK_DOWNLOAD_DIR" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+  
+  # Report results
+  info "APK download complete: $success/$total successful"
+  
+  if [ "$success" -gt 0 ]; then
+    ok "Successfully downloaded $success APK(s) to $APK_DOWNLOAD_DIR"
+  fi
+  
+  if [ "$success" -lt "$total" ]; then
+    local failed=$((total - success))
+    warn "$failed APK(s) failed to download"
+    if [ ${#FAILED_APKS[@]} -gt 0 ]; then
+      warn "Failed APKs: ${FAILED_APKS[*]}"
     fi
   fi
   
+  # Always save state
+  save_apk_state
+  
   return 0
-}
-
 # Open Android security settings to enable "Install unknown apps" for Termux
 open_security_settings() {
   info "Opening Android security settings..."
