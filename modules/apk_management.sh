@@ -417,14 +417,8 @@ download_essential_apks(){
     return 1
   fi
   
-  # Brief informational message only - no user interaction during downloads
-  if [ "$NON_INTERACTIVE" != "1" ]; then
-    echo ""
-    pecho "$PASTEL_CYAN" "Downloading Termux plugins automatically..."
-    pecho "$PASTEL_YELLOW" "• $apk_count APK files will be downloaded"
-    pecho "$PASTEL_YELLOW" "• Permission setup will follow after all downloads complete"
-    echo ""
-  fi
+  # Brief status message during downloads (no user interaction)
+  pecho "$PASTEL_CYAN" "Downloading $apk_count essential APKs..."
   
   local download_count=0
   local success_count=0
