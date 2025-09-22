@@ -295,11 +295,12 @@ step_prefetch(){
     warn "Failed to update package lists, proceeding with prefetch anyway"
   }
   
-  # Download core packages for offline installation
+  # Download core packages for offline installation - using simple progress without complex spinners
+  info "Downloading core packages for offline use..."
   if command -v pkg >/dev/null 2>&1; then
-    run_with_progress "Download core packages (pkg)" 30 bash -c 'pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+    pkg install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 && ok "Core packages downloaded (pkg)" || warn "Some packages may have failed to download (pkg)"
   else
-    run_with_progress "Download core packages (apt)" 30 bash -c 'apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1' || true
+    apt install --download-only -y "${CORE_PACKAGES[@]}" >/dev/null 2>&1 && ok "Core packages downloaded (apt)" || warn "Some packages may have failed to download (apt)"
   fi
   
   mark_step_status "success"  

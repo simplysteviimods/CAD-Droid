@@ -83,7 +83,8 @@ init_apk_system(){
     
     warn "Storage access not available, requesting permissions..."
     if command -v termux-setup-storage >/dev/null 2>&1; then
-      run_with_progress "Request storage access" 8 termux-setup-storage
+      info "Requesting storage access..."
+      termux-setup-storage && ok "Storage access granted" || warn "Storage access may have failed"
       # Wait a moment for storage to be available
       sleep 2
     else
@@ -95,15 +96,21 @@ init_apk_system(){
   local selected_dir=""
   if mkdir -p "$APK_DOWNLOAD_DIR_PRIMARY" 2>/dev/null && [ -w "$APK_DOWNLOAD_DIR_PRIMARY" ]; then
     selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"
-    # Set proper permissions for APK directory
+    # Set proper permissions for APK directory and all parent directories
     chmod 755 "$selected_dir" 2>/dev/null || true
+    chmod 755 "$(dirname "$selected_dir")" 2>/dev/null || true
+    # Make sure APKs will be readable and executable
+    find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
     info "Using external storage for APKs: $selected_dir"
   else
     # Fallback to internal storage
     if mkdir -p "$APK_DOWNLOAD_DIR_FALLBACK" 2>/dev/null; then
       selected_dir="$APK_DOWNLOAD_DIR_FALLBACK"
-      # Set proper permissions for APK directory
+      # Set proper permissions for APK directory and all parent directories
       chmod 755 "$selected_dir" 2>/dev/null || true
+      chmod 755 "$(dirname "$selected_dir")" 2>/dev/null || true
+      # Make sure APKs will be readable and executable
+      find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
       warn "External storage not available, using internal storage: $selected_dir"
     else
       err "Cannot create any APK directory"
@@ -202,10 +209,13 @@ download_with_spinner(){
       file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
       # Accept files larger than 1KB (most APKs are much larger)
       if [ "$file_size" -gt 1024 ]; then
+        # Set proper permissions for downloaded APK
+        chmod 644 "$output_file" 2>/dev/null || true
         return 0
       else
         warn "Downloaded file too small ($file_size bytes), may be incomplete"
-        # Don't fail completely - keep the file in case it's usable
+        # Set permissions even for small files and keep them
+        chmod 644 "$output_file" 2>/dev/null || true
         return 0
       fi
     else
@@ -506,6 +516,10 @@ open_apk_directory(){
     return 1
   fi
   
+  # Ensure proper permissions before opening
+  chmod 755 "$APK_DOWNLOAD_DIR" 2>/dev/null || true
+  find "$APK_DOWNLOAD_DIR" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+  
   # Count downloaded APKs
   local apk_count
   apk_count=$(find "$APK_DOWNLOAD_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
@@ -516,13 +530,26 @@ open_apk_directory(){
     ok "Found $apk_count APK files ready for installation"
   fi
   
-  # Use termux-open to open the directory
+  # Use termux-open to open the directory (simple method without complex spinner)
   if command -v termux-open >/dev/null 2>&1; then
-    run_with_progress "Open APK directory" 3 termux-open "$APK_DOWNLOAD_DIR"
+    info "Opening APK directory in file manager..."
+    termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || {
+      warn "Failed to open with termux-open, trying alternative methods"
+      # Try alternative methods to open file manager
+      if command -v am >/dev/null 2>&1; then
+        am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+      fi
+    }
     ok "APK directory opened in file manager"
   else
     warn "termux-open not available, please manually navigate to:"
     printf "${PASTEL_CYAN}%s${RESET}\n" "$APK_DOWNLOAD_DIR"
+    
+    # Try opening with alternative methods
+    if command -v am >/dev/null 2>&1; then
+      info "Attempting to open directory with system file manager..."
+      am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+    fi
   fi
   
   return 0
