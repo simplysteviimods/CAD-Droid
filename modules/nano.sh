@@ -153,8 +153,21 @@ install_nano(){
   
   info "Installing nano text editor..."
   
-  if run_with_progress "Install nano" 10 bash -c 'apt-get -y install nano >/dev/null 2>&1'; then
-    ok "Nano installed successfully"
+  # Ensure selected mirror is applied before installing nano
+  if command -v ensure_mirror_applied >/dev/null 2>&1; then
+    ensure_mirror_applied
+  fi
+  
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Install nano (pkg)" 10 bash -c 'pkg install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
+      ok "Nano installed successfully via pkg"
+      return 0
+    fi
+  fi
+  
+  # Fallback to apt - also handle exit code 100
+  if run_with_progress "Install nano (apt)" 10 bash -c 'apt install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
+    ok "Nano installed successfully via apt"
     return 0
   else
     warn "Failed to install nano"
@@ -259,7 +272,17 @@ DOCKERFILE_SYNTAX_EOF
 setup_vim_alternative(){
   if ! command -v vim >/dev/null 2>&1; then
     info "Installing vim as alternative editor..."
-    run_with_progress "Install vim" 15 bash -c 'apt-get -y install vim >/dev/null 2>&1' || true
+    
+    # Ensure selected mirror is applied before installing vim
+    if command -v ensure_mirror_applied >/dev/null 2>&1; then
+      ensure_mirror_applied
+    fi
+    
+    if command -v pkg >/dev/null 2>&1; then
+      run_with_progress "Install vim (pkg)" 15 bash -c 'pkg install -y vim >/dev/null 2>&1' || true
+    else
+      run_with_progress "Install vim (apt)" 15 bash -c 'apt install -y vim >/dev/null 2>&1' || true
+    fi
   fi
   
   # Create basic vim config

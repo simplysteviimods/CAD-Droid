@@ -547,7 +547,16 @@ case "\$1" in
         ;;
     "update"|"u")
         echo "Updating system packages..."
-        apt update && apt upgrade
+        # Ensure selected mirror is applied before updating system packages
+        if command -v ensure_mirror_applied >/dev/null 2>&1; then
+            ensure_mirror_applied
+        fi
+        # Use appropriate Termux package manager
+        if command -v pkg >/dev/null 2>&1; then
+            pkg update -y && pkg upgrade -y
+        else
+            apt update && apt upgrade -y
+        fi
         ;;
     "info"|"i")
         echo "CAD-Droid Mobile Development Environment"
