@@ -1056,10 +1056,6 @@ manage_apks(){
     # Show detailed permissions guide
     check_apk_permissions
     echo ""
-    
-    # All instructions shown, now prompt to begin
-    printf "${PASTEL_PINK}Press Enter to open file manager and begin APK installation...${RESET} "
-    read -r || true
   else
     info "Non-interactive mode: beginning APK installation process automatically"
   fi
