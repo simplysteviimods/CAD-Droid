@@ -675,8 +675,20 @@ configure_linux_env() {
     # Store SSH port for later use by shortcuts
     store_credential "ssh_port" "$ssh_port"
     
-    # Get user configuration
-    read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    # Get user configuration with confirmation loop
+    while true; do
+        read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+        
+        if [ "$NON_INTERACTIVE" = "1" ]; then
+            break
+        fi
+        
+        if ask_yes_no "Confirm Linux username: $UBUNTU_USERNAME" "y"; then
+            break
+        fi
+        
+        info "Please enter the username again"
+    done
     
     # Store SSH username for later use by shortcuts
     store_credential "ssh_username" "$UBUNTU_USERNAME"

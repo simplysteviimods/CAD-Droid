@@ -218,10 +218,14 @@ fetch_termux_addon(){
     return 1
   fi
   
-  # Ensure output directory exists
+  # Ensure output directory exists with proper permissions
   if ! mkdir -p "$outdir" 2>/dev/null; then
     return 1
   fi
+  
+  # Set proper permissions for the directory and parent directories
+  chmod 755 "$outdir" 2>/dev/null || true
+  chmod 755 "$(dirname "$outdir")" 2>/dev/null || true
   
   # Always prioritize GitHub unless F-Droid is explicitly preferred
   if [ "$prefer" = "1" ]; then
@@ -253,6 +257,11 @@ fetch_termux_addon(){
         success=1
       fi
     fi
+  fi
+  
+  # Ensure downloaded APK has proper permissions
+  if [ $success -eq 1 ]; then
+    find "$outdir" -name "*.apk" -newer /tmp -exec chmod 644 {} \; 2>/dev/null || true
   fi
   
   return $((1 - success))
@@ -456,7 +465,15 @@ open_apk_directory(){
   # Try multiple methods to open file manager
   local opened=0
   
-  # Method 1: Direct file manager intent with directory
+  # Method 1: Use recommended Android intent for external storage (primary method)
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
+    if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary" >/dev/null 2>&1; then
+      opened=1
+      ok "File manager opened to external storage"
+    fi
+  fi
+  
+  # Method 2: Direct file manager intent with directory
   if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
     if am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
       opened=1
@@ -464,7 +481,7 @@ open_apk_directory(){
     fi
   fi
   
-  # Method 2: Use content provider for external storage
+  # Method 3: Use content provider for specific CAD-Droid directory
   if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
     if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary/Download/CAD-Droid-APKs" >/dev/null 2>&1; then
       opened=1
@@ -472,7 +489,7 @@ open_apk_directory(){
     fi
   fi
   
-  # Method 3: Fallback to termux-open
+  # Method 4: Fallback to termux-open
   if [ $opened -eq 0 ] && command -v termux-open >/dev/null 2>&1; then
     if termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
       opened=1
