@@ -410,7 +410,21 @@ read_option(){
 # Returns: 0 if installed, 1 if not installed
 is_distro_installed(){ 
   local distro="$1"
-  [ -n "$distro" ] && [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro" ]
+  
+  # Check if distro name is provided
+  [ -n "$distro" ] || return 1
+  
+  # Check if the rootfs directory exists
+  [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro" ] || return 1
+  
+  # Check if proot-distro recognizes it as installed
+  if command -v proot-distro >/dev/null 2>&1; then
+    proot-distro list --installed 2>/dev/null | grep -q "^$distro$"
+  else
+    # Fallback: check for essential directories in the rootfs
+    [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro/bin" ] && \
+    [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro/usr" ]
+  fi
 }
 
 # Read non-empty input with validation (nounset-safe 3-arg variant)

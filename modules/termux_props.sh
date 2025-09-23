@@ -248,27 +248,31 @@ if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
   echo ""
   
   # Create a gradient-style title card using pastel colors
-  local card_width=55
-  local title="Welcome to CAD-Droid"
-  local subtitle="Your Android development environment"
+  card_width=55
+  title="Welcome to CAD-Droid"
+  subtitle="Your Android development environment"
+  
+  # Create border string (more portable than seq)
+  border_chars=""
+  i=0
+  while [ $i -lt $card_width ]; do
+    border_chars="${border_chars}═"
+    i=$((i + 1))
+  done
   
   # Top border with gradient-like color
-  printf "\033[38;2;175;238;238m"
-  printf "═%.0s" $(seq 1 $card_width)
-  printf "\033[0m\n"
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
   
   # Title - centered with lavender color
-  local title_padding=$(( (card_width - ${#title}) / 2 ))
+  title_padding=$(( (card_width - ${#title}) / 2 ))
   printf "%*s\033[38;2;230;220;255m%s\033[0m\n" $title_padding "" "$title"
   
   # Subtitle - centered with cyan color  
-  local subtitle_padding=$(( (card_width - ${#subtitle}) / 2 ))
+  subtitle_padding=$(( (card_width - ${#subtitle}) / 2 ))
   printf "%*s\033[38;2;175;238;238m%s\033[0m\n" $subtitle_padding "" "$subtitle"
   
   # Bottom border
-  printf "\033[38;2;175;238;238m"
-  printf "═%.0s" $(seq 1 $card_width)
-  printf "\033[0m\n"
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
   
   echo ""
   if [ -f "$HOME/.cad/cad_droid_installed" ]; then
