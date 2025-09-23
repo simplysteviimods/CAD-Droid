@@ -1101,13 +1101,12 @@ set_install_flag(){
   export CAD_DROID_INSTALLING=1
 }
 
-# Clear installation flag on successful completion
+# Mark installation as complete but keep flag for future detection
 clear_install_flag(){
-  if [ -f "$INSTALL_FLAG_FILE" ]; then
-    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null || true
-  fi
+  # Don't remove the install flag - keep it for future detection
+  # Just mark completion with a separate completion flag
   echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_COMPLETE_FLAG"
-  unset CAD_DROID_INSTALLING
+  # Keep CAD_DROID_INSTALLING for current session but don't unset globally
 }
 
 # Check for previous CAD-Droid installation
@@ -1238,6 +1237,11 @@ cleanup_previous_install(){
     "$HOME/.termux/boot/disable-phantom-killer.sh"
     "$HOME/.termux/boot/phantom-killer.log"
     "$PREFIX/etc/motd"
+    "$HOME/.bashrc_cad_completion"
+    "$HOME/.local/bin/cad-droid"
+    "/storage/emulated/0/Download/CAD-Droid-APKs"
+    "$HOME/.config/xfce4"
+    "$HOME/.proot-distro"
   )
   
   local cleaned_count=0

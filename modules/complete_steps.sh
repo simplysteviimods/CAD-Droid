@@ -347,69 +347,46 @@ step_prefetch(){
         return 0
     fi
     
-    # Create prefetch script (robust temp path)
-    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
-    mkdir -p "$tmp_base" 2>/dev/null || true
-    local prefetch_script
-    prefetch_script="$(mktemp "$tmp_base/prefetch_packages.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/prefetch_packages.sh")"
-
-    cat > "$prefetch_script" << PREFETCH_EOF
-#!/bin/bash
-
-echo "Prefetching development packages..."
-
-# Force refresh of package archives each run
-if command -v apt-get >/dev/null 2>&1; then
-  echo "Cleaning package cache..."
-  apt-get clean >/dev/null 2>&1 || true
-  rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
-  
-  echo "Updating package lists..."
-  apt-get update >/dev/null 2>&1
-  
-  # Download packages in batches with clear progress  
-  local batch_size=5
-  local batch_num=1
-  local total_batches=\$(( (${#prefetch_packages[@]} + batch_size - 1) / batch_size ))
-  
-  echo "Processing \$total_batches batches of development packages..."
-  
-  for ((i=0; i<${#prefetch_packages[@]}; i+=batch_size)); do
-    local batch=("\${prefetch_packages[@]:i:batch_size}")
-    echo "Batch \$batch_num/\$total_batches: \${batch[*]}"
-    apt-get -o Acquire::http::No-Cache=true \\
-            -o Acquire::https::No-Cache=true \\
-            --download-only -y install "\${batch[@]}" >/dev/null 2>&1 || {
-        echo "Some packages in batch \$batch_num may not be available"
-    }
-    batch_num=\$((batch_num + 1))
-  done
-  
-  echo "Package download completed"
-else
-  echo "Package manager not available"
-fi
-
-# Show cache status
-echo ""
-echo "Package cache status:"
-du -sh /var/cache/apt/archives/ 2>/dev/null || echo "Cache information not available"
-
-# Count cached packages
-CACHED_COUNT=\$(ls -1 /var/cache/apt/archives/*.deb 2>/dev/null | wc -l || echo 0)
-echo "Cached packages: \$CACHED_COUNT"
-
-echo "Package prefetch complete"
-PREFETCH_EOF
+    # Step 1: Clean package cache
+    run_with_progress "Clean package cache in container" 15 \
+        proot-distro login "$container_name" -- bash -c "
+            apt-get clean >/dev/null 2>&1 || true
+            rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
+        "
     
-    chmod +x "$prefetch_script" 2>/dev/null || true
+    # Step 2: Update package lists
+    run_with_progress "Update package lists" 30 \
+        proot-distro login "$container_name" -- bash -c "
+            apt-get update >/dev/null 2>&1
+        "
     
-    # Run prefetch in container
-    run_with_progress "Download development packages for offline use" 180 \
-        proot-distro login "$container_name" -- bash < "$prefetch_script"
+    # Step 3: Download packages in batches with individual progress
+    local batch_size=5
+    local batch_num=1
+    local total_batches=$(( (${#prefetch_packages[@]} + batch_size - 1) / batch_size ))
     
-    # Clean up
-    rm -f "$prefetch_script" 2>/dev/null || true
+    info "Downloading $total_batches batches of development packages..."
+    
+    for ((i=0; i<${#prefetch_packages[@]}; i+=batch_size)); do
+        local batch=("${prefetch_packages[@]:i:batch_size}")
+        local batch_list="${batch[*]}"
+        
+        run_with_progress "Download batch $batch_num/$total_batches: ${batch_list// /, }" 25 \
+            proot-distro login "$container_name" -- bash -c "
+                apt-get -o Acquire::http::No-Cache=true \\
+                    --download-only --fix-missing -y \\
+                    install $batch_list >/dev/null 2>&1 || true
+            "
+        
+        batch_num=$((batch_num + 1))
+    done
+    
+    # Step 4: Report final cache status
+    run_with_progress "Check downloaded package cache" 10 \
+        proot-distro login "$container_name" -- bash -c "
+            CACHED_COUNT=\$(ls -1 /var/cache/apt/archives/*.deb 2>/dev/null | wc -l || echo 0)
+            echo \"Cached packages: \$CACHED_COUNT\"
+        "
     
     ok "Package prefetch complete"
     return 0

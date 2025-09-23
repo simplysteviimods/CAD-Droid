@@ -39,8 +39,6 @@ ESSENTIAL_APKS=(
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
   ["Termux:Float"]="com.termux.float"
-  ["Termux:Styling"]="com.termux.styling"
-  ["Termux:Tasker"]="com.termux.tasker"
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
   ["Termux:GUI"]="com.termux.gui"
@@ -52,8 +50,6 @@ TERMUX_GITHUB_URLS=(
   ["com.termux.api"]="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
   ["com.termux.boot"]="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
   ["com.termux.float"]="https://github.com/termux/termux-float/releases/latest/download/termux-float.apk"
-  ["com.termux.styling"]="https://github.com/termux/termux-styling/releases/latest/download/termux-styling.apk"
-  ["com.termux.tasker"]="https://github.com/termux/termux-tasker/releases/latest/download/termux-tasker.apk"
   ["com.termux.widget"]="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
   ["com.termux.x11"]="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
   ["com.termux.gui"]="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
@@ -723,7 +719,7 @@ download_essential_apks(){
     esac
     
     # Use spinner for each APK download with progress indication
-    if run_with_progress "($total/8) Downloading $app_name" 15 \
+    if run_with_progress "($total/6) Downloading $app_name" 15 \
        fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
       success=$((success + 1))
       ok "Downloaded: $app_name"
