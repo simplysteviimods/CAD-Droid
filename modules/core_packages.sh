@@ -229,37 +229,48 @@ verify_mirror(){
     SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
   fi
   
-  # Perform comprehensive mirror verification (connectivity + package update test)
-  info "Testing mirror connectivity and configuration..."
+  # Test mirror functionality with package list update (no curl dependency)
+  info "Verifying mirror configuration..."
   debug "Testing mirror: $SELECTED_MIRROR_URL"
   
-  # First check connectivity
-  if ! curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
-    warn "Mirror connectivity test failed, but proceeding with configuration"
-    debug "Mirror connectivity: FAILED"
-  else
-    debug "Mirror connectivity: SUCCESS"
-  fi
-  
-  # Test mirror functionality with package list update
-  debug "Verifying mirror configuration with package update test"
   local temp_dir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
   mkdir -p "$temp_dir" 2>/dev/null || true
   local update_log="$temp_dir/mirror-test-$$"
   
-  if yes | apt-get update >"$update_log" 2>&1; then
-    ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
-    debug "Mirror verification: SUCCESS"
-    rm -f "$update_log" 2>/dev/null || true
-  else
-    warn "Mirror verification failed, but mirror configuration is saved"
-    debug "Mirror verification: FAILED"
-    if [ -f "$update_log" ]; then
-      debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
+  # Use pkg update as the primary method (official Termux way)
+  if command -v pkg >/dev/null 2>&1; then
+    debug "Using pkg update for mirror verification"
+    if yes | pkg update >"$update_log" 2>&1; then
+      ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
+      debug "Mirror verification: SUCCESS"
+      rm -f "$update_log" 2>/dev/null || true
     else
-      debug "Update log: could not create temporary file"
+      warn "Mirror verification failed, but mirror configuration is saved"
+      debug "Mirror verification: FAILED"
+      if [ -f "$update_log" ]; then
+        debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
+      else
+        debug "Update log: could not create temporary file"
+      fi
+      rm -f "$update_log" 2>/dev/null || true
     fi
-    rm -f "$update_log" 2>/dev/null || true
+  else
+    # Fallback to apt update if pkg is not available
+    debug "Using apt update for mirror verification (pkg not available)"
+    if yes | apt update >"$update_log" 2>&1; then
+      ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
+      debug "Mirror verification: SUCCESS"
+      rm -f "$update_log" 2>/dev/null || true
+    else
+      warn "Mirror verification failed, but mirror configuration is saved"
+      debug "Mirror verification: FAILED"
+      if [ -f "$update_log" ]; then
+        debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
+      else
+        debug "Update log: could not create temporary file"
+      fi
+      rm -f "$update_log" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -410,21 +421,21 @@ update_package_lists(){
     fi
   fi
   
-  # Fallback to apt-get update
+  # Fallback to apt update
   info "Updating with apt..."
-  debug "Running: apt-get update"
+  debug "Running: apt update"
   local apt_log="${TMPDIR:-$PREFIX/tmp}/apt-update-$$.log"
-  if yes | apt-get update 2>&1 | tee "$apt_log" >/dev/null; then
+  if yes | apt update 2>&1 | tee "$apt_log" >/dev/null; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
-    debug "apt-get update: SUCCESS"
+    debug "apt update: SUCCESS"
     rm -f "$apt_log" 2>/dev/null || true
     return 0
   else
     warn "Package list update failed"
-    debug "apt-get update: FAILED"
+    debug "apt update: FAILED"
     if [ -f "$apt_log" ]; then
-      debug "apt-get update error log:"
+      debug "apt update error log:"
       debug "$(cat "$apt_log" 2>/dev/null | tail -10)"
       rm -f "$apt_log" 2>/dev/null || true
     fi
@@ -452,9 +463,9 @@ upgrade_packages(){
   fi
   
   # Also directly install essential packages to ensure availability
-  local essential_libs=("libpcre2-8-0" "pcre2-utils" "openssl" "libssl3")
+  local essential_libs=("libpcre2-8-0" "pcre2-utils" "openssl" "libssl3" "libcrypto3")
   for lib in "${essential_libs[@]}"; do
-    if ! dpkg -l | grep -q "$lib"; then
+    if ! dpkg -l | grep -q "$lib" 2>/dev/null; then
       info "Installing $lib to prevent upgrade errors..."
       run_with_progress "Install $lib (apt)" 15 bash -c "yes | DEBIAN_FRONTEND=noninteractive apt install -y '$lib' >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
     fi
@@ -466,7 +477,7 @@ upgrade_packages(){
       yes | DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" \
-        -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1
+        -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1 || [ $? -eq 100 ]
     '; then
       ok "Packages upgraded successfully via pkg"
       return 0
@@ -477,10 +488,10 @@ upgrade_packages(){
   
   # Fallback to apt upgrade with spinner and non-interactive flags
   if run_with_progress "Upgrading packages with apt" 45 bash -c '
-    yes | DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y \
       -o Dpkg::Options::="--force-confdef" \
       -o Dpkg::Options::="--force-confold" \
-      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1
+      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1 || [ $? -eq 100 ]
   '; then
     ok "Packages upgraded successfully via apt"
     return 0
@@ -727,8 +738,18 @@ step_xfce_termux(){
   
   # Proactively install critical libraries that commonly cause XFCE installation failures
   info "Installing critical runtime libraries..."
-  run_with_progress "Install libpcre2 libraries" 20 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
-  run_with_progress "Install OpenSSL libraries" 20 bash -c 'yes | apt install -y openssl libssl3 >/dev/null 2>&1 || [ $? -eq 100 ]'
+  
+  # Install libpcre2 and related libraries (fixes "cut" command issues)
+  run_with_progress "Install libpcre2 libraries" 20 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils libpcre2-8 >/dev/null 2>&1 || [ $? -eq 100 ]'
+  
+  # Install OpenSSL libraries (fixes libcrypto.so.3 issues)
+  run_with_progress "Install OpenSSL libraries" 20 bash -c 'yes | apt install -y openssl libssl3 libcrypto3 openssl-tool >/dev/null 2>&1 || [ $? -eq 100 ]'
+  
+  # Install essential system libraries
+  run_with_progress "Install core system libraries" 20 bash -c 'yes | apt install -y libandroid-selinux libandroid-support >/dev/null 2>&1 || [ $? -eq 100 ]'
+  
+  # Install development tools that might be missing
+  run_with_progress "Install build essentials" 15 bash -c 'yes | apt install -y coreutils binutils >/dev/null 2>&1 || [ $? -eq 100 ]'
   
   # Detect and install any remaining missing runtime libraries
   if command -v detect_install_missing_libs >/dev/null 2>&1; then

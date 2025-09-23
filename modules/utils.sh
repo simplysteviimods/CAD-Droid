@@ -1546,11 +1546,11 @@ cleanup_previous_install(){
     done
     
     # Clean apt caches and update indexes
-    if apt-get clean 2>/dev/null; then
+    if apt clean 2>/dev/null; then
       debug "Cleaned apt cache"
     fi
     
-    if apt-get update >/dev/null 2>&1; then
+    if apt update >/dev/null 2>&1; then
       debug "Updated package indexes after cleanup"
     fi
     
