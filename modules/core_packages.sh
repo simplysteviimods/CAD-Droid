@@ -624,7 +624,11 @@ step_mirror(){
   
   # Verify the mirror is working by testing package list update
   debug "Verifying mirror configuration with package update test"
-  local update_log="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/mirror-test-$$"
+  
+  # Create temp directory if it doesn't exist and use proper temp file
+  local temp_dir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+  mkdir -p "$temp_dir" 2>/dev/null || true
+  local update_log="$temp_dir/mirror-test-$$"
   
   if apt-get update >"$update_log" 2>&1; then
     ok "Mirror configuration verified successfully: ${SELECTED_MIRROR_NAME}"
@@ -633,7 +637,11 @@ step_mirror(){
   else
     warn "Mirror verification failed, but mirror configuration is saved"
     debug "Mirror verification: FAILED"
-    debug "Update log: $(cat "$update_log" 2>/dev/null | tail -5 || echo 'no log')"
+    if [ -f "$update_log" ]; then
+      debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
+    else
+      debug "Update log: could not create temporary file"
+    fi
     rm -f "$update_log" 2>/dev/null || true
     # Don't return error - the configuration is saved even if verification fails
   fi
