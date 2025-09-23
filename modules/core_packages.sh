@@ -70,7 +70,7 @@ apt_install_if_needed(){
   fi
   
   # Fallback to apt install - also handle exit code 100
-  apt install -y "$pkg" >/dev/null 2>&1
+  yes | apt install -y "$pkg" >/dev/null 2>&1
   local apt_result=$?
   if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
     ok "$pkg installed successfully via apt"
@@ -98,7 +98,7 @@ apt_fix_broken() {
     fi
     
     # Fallback to apt commands
-    apt install -f -y >/dev/null 2>&1 &&
+    yes | apt install -f -y >/dev/null 2>&1 &&
     apt autoremove -y >/dev/null 2>&1
   '
 }
@@ -360,7 +360,7 @@ update_package_lists(){
     info "Updating with pkg..."
     debug "Running: pkg update -y"
     local pkg_log="${TMPDIR:-$PREFIX/tmp}/pkg-update-$$.log"
-    if pkg update -y 2>&1 | tee "$pkg_log" >/dev/null; then
+    if yes | pkg update -y 2>&1 | tee "$pkg_log" >/dev/null; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
       debug "pkg update: SUCCESS"
@@ -381,7 +381,7 @@ update_package_lists(){
   info "Updating with apt..."
   debug "Running: apt-get update"
   local apt_log="${TMPDIR:-$PREFIX/tmp}/apt-update-$$.log"
-  if apt-get update 2>&1 | tee "$apt_log" >/dev/null; then
+  if yes | apt-get update 2>&1 | tee "$apt_log" >/dev/null; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
     debug "apt-get update: SUCCESS"
@@ -423,16 +423,17 @@ upgrade_packages(){
   for lib in "${essential_libs[@]}"; do
     if ! dpkg -l | grep -q "$lib"; then
       info "Installing $lib to prevent upgrade errors..."
-      run_with_progress "Install $lib (apt)" 15 bash -c "DEBIAN_FRONTEND=noninteractive apt install -y '$lib' >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
+      run_with_progress "Install $lib (apt)" 15 bash -c "yes | DEBIAN_FRONTEND=noninteractive apt install -y '$lib' >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
     fi
   done
   
   # Upgrade with spinners and non-interactive flags
   if command -v pkg >/dev/null 2>&1; then
     if run_with_progress "Upgrading packages with pkg" 45 bash -c '
-      DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
+      yes | DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
         -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
+        -o Dpkg::Options::="--force-confold" \
+        -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1
     '; then
       ok "Packages upgraded successfully via pkg"
       return 0
@@ -443,9 +444,10 @@ upgrade_packages(){
   
   # Fallback to apt upgrade with spinner and non-interactive flags
   if run_with_progress "Upgrading packages with apt" 45 bash -c '
-    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    yes | DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
       -o Dpkg::Options::="--force-confdef" \
-      -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
+      -o Dpkg::Options::="--force-confold" \
+      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1
   '; then
     ok "Packages upgraded successfully via apt"
     return 0
@@ -630,7 +632,7 @@ step_mirror(){
   mkdir -p "$temp_dir" 2>/dev/null || true
   local update_log="$temp_dir/mirror-test-$$"
   
-  if apt-get update >"$update_log" 2>&1; then
+  if yes | apt-get update >"$update_log" 2>&1; then
     ok "Mirror configuration verified successfully: ${SELECTED_MIRROR_NAME}"
     debug "Mirror verification: SUCCESS"
     rm -f "$update_log" 2>/dev/null || true
@@ -665,7 +667,7 @@ step_x11repo(){
   fi
   
   # Use apt directly as pkg is not reliable for x11-repo
-  run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || true'
+  run_with_progress "Add X11 repository (apt)" 15 bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1 || true'
   mark_step_status "success"
 }
 
@@ -732,7 +734,7 @@ step_xfce_termux(){
   
   # Install X11 repo if not already installed
   if ! dpkg_is_installed "x11-repo"; then
-    run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+    run_with_progress "Add X11 repository (apt)" 15 bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
     
     # Update indexes after adding X11 repo - don't need ensure_mirror_applied
     debug "Updating package indexes after X11 repo installation"
@@ -741,8 +743,8 @@ step_xfce_termux(){
   
   # Proactively install critical libraries that commonly cause XFCE installation failures
   info "Installing critical runtime libraries..."
-  run_with_progress "Install libpcre2 libraries" 20 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
-  run_with_progress "Install OpenSSL libraries" 20 bash -c 'apt install -y openssl libssl3 >/dev/null 2>&1 || [ $? -eq 100 ]'
+  run_with_progress "Install libpcre2 libraries" 20 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
+  run_with_progress "Install OpenSSL libraries" 20 bash -c 'yes | apt install -y openssl libssl3 >/dev/null 2>&1 || [ $? -eq 100 ]'
   
   # Detect and install any remaining missing runtime libraries
   if command -v detect_install_missing_libs >/dev/null 2>&1; then

@@ -23,7 +23,7 @@ setup_proot_containers(){
   
   # Install proot-distro using apt (more reliable than pkg)
   if ! command -v proot-distro >/dev/null 2>&1; then
-    run_with_progress "Install proot-distro (apt)" 30 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
+    run_with_progress "Install proot-distro (apt)" 30 bash -c 'yes | DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
   fi
   
   if ! command -v proot-distro >/dev/null 2>&1; then
@@ -72,7 +72,7 @@ install_ubuntu_container(){
     run_with_progress "Configure Ubuntu container" 45 bash -c '
       proot-distro login ubuntu -- bash -c "
         apt update >/dev/null 2>&1 &&
-        apt install -y sudo openssh-server wget curl jq nano dbus-x11 ca-certificates >/dev/null 2>&1
+        yes | apt install -y sudo openssh-server wget curl jq nano dbus-x11 ca-certificates >/dev/null 2>&1
       "
     '
     

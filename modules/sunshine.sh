@@ -143,7 +143,7 @@ set -e
 apt update
 
 # Install dependencies
-apt install -y \
+yes | apt install -y \
     libavcodec-dev \
     libavformat-dev \
     libswscale-dev \
@@ -159,7 +159,7 @@ apt install -y \
 
 # Install the .deb package
 DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/sunshine_*.deb || true
-DEBIAN_FRONTEND=noninteractive apt install -f -y
+yes | DEBIAN_FRONTEND=noninteractive apt install -f -y
 
 # Create systemd user directory
 mkdir -p ~/.config/systemd/user

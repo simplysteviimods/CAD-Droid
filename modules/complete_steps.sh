@@ -24,7 +24,7 @@ step_container(){
     # Ensure proot-distro is available
     if ! dpkg_is_installed "proot-distro"; then
         info "Installing proot-distro for container support..."
-        run_with_progress "Install proot-distro (apt)" 30 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
+        run_with_progress "Install proot-distro (apt)" 30 bash -c 'yes | DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
     fi
     
     # Distribution selection
@@ -308,7 +308,7 @@ step_xfce(){
     # Install packages with progress
     for pkg in "${xfce_packages[@]}"; do
         run_with_progress "Install $pkg" 35 bash -c "
-            pkg install -y $pkg >/dev/null 2>&1 || apt install -y $pkg >/dev/null 2>&1
+            pkg install -y $pkg >/dev/null 2>&1 || yes | apt install -y $pkg >/dev/null 2>&1
         "
     done
     
@@ -790,7 +790,7 @@ configure_linux_env() {
             if command -v apt-get >/dev/null 2>&1; then
                 export DEBIAN_FRONTEND=noninteractive
                 apt-get update >/dev/null 2>&1 || true
-                apt-get install -y sudo openssh-server >/dev/null 2>&1 || true
+                yes | apt-get install -y sudo openssh-server >/dev/null 2>&1 || true
             elif command -v pacman >/dev/null 2>&1; then
                 pacman -Sy --noconfirm sudo openssh >/dev/null 2>&1 || true
             elif command -v apk >/dev/null 2>&1; then

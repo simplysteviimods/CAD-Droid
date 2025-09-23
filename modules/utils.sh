@@ -252,7 +252,7 @@ validate_spinner_delay() {
       if command -v pkg >/dev/null 2>&1; then
         run_with_progress "Install openssl (pkg)" 15 bash -c 'pkg install -y openssl >/dev/null 2>&1 || [ $? -eq 100 ]'
       else
-        run_with_progress "Install openssl (apt)" 15 bash -c 'apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
+        run_with_progress "Install openssl (apt)" 15 bash -c 'yes | apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
       fi
       ;;
     *)
@@ -820,13 +820,13 @@ install_runtime_library() {
   
   case "$lib" in
     "pcre2")
-      run_with_progress "Install libpcre2 (apt)" 15 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
+      run_with_progress "Install libpcre2 (apt)" 15 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     "libgmp")
-      run_with_progress "Install libgmp (apt)" 15 bash -c 'apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      run_with_progress "Install libgmp (apt)" 15 bash -c 'yes | apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     "openssl")
-      run_with_progress "Install openssl (apt)" 15 bash -c 'apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
+      run_with_progress "Install openssl (apt)" 15 bash -c 'yes | apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     *)
       warn "Unknown library: $lib"
