@@ -505,6 +505,14 @@ show_final_completion(){
   info "  • Restart Termux to see new prompt colors"
   info "  • Use 'nano filename' to edit files"
   info "  • Check ~/.bashrc for environment settings"
+  
+  # Call the completion module for full completion handling
+  if declare -f complete_setup >/dev/null 2>&1; then
+    echo ""
+    complete_setup
+  else
+    warn "Completion module not available - restart Termux manually"
+  fi
 }
 
 run_diagnostics(){
@@ -549,6 +557,9 @@ run_diagnostics(){
 main_execution(){
   # Load all modules first
   load_all_modules
+  
+  # Check for previous installations before setting new flag
+  check_previous_install
   
   # Set installation flag at the very beginning
   set_install_flag

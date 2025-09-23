@@ -1113,47 +1113,97 @@ clear_install_flag(){
 check_previous_install(){
   info "Checking for previous CAD-Droid installation..."
   
-  # Check for active installation flag first
+  # Check for permanent installation flag
   if [ -f "$INSTALL_FLAG_FILE" ]; then
-    local flag_date
-    flag_date=$(cat "$INSTALL_FLAG_FILE" 2>/dev/null || echo "unknown")
-    warn "Previous installation attempt detected (started: $flag_date)"
+    local flag_content
+    flag_content=$(cat "$INSTALL_FLAG_FILE" 2>/dev/null || echo "")
     
-    if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
-      printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
-      printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
-      local response
-      read -r response || response="n"
-      case "${response,,}" in
-        y|yes)
-          # Add confirmation prompt
-          printf "\n${PASTEL_YELLOW}This will delete ALL CAD-Droid files, configurations, and downloads.${RESET}\n"
-          printf "${PASTEL_PINK}Are you sure you want to continue? (y/N):${RESET} "
-          local confirm
-          read -r confirm || confirm="n"
-          case "${confirm,,}" in
-            y|yes)
-              cleanup_previous_install
-              set_install_flag  # Set new flag for this attempt
-              return 0
-              ;;
-            *)
-              info "Cleanup cancelled - continuing with existing installation state"
-              set_install_flag  # Still set flag for this attempt
-              return 0
-              ;;
-          esac
-          ;;
-        *)
-          info "Continuing with existing installation state"
-          set_install_flag  # Still set flag for this attempt
-          return 0
-          ;;
-      esac
+    # Check if this is a completed installation (contains "Installation completed")
+    if echo "$flag_content" | grep -q "Installation completed"; then
+      local install_date completion_date
+      install_date=$(echo "$flag_content" | head -1)
+      completion_date=$(echo "$flag_content" | grep "Installation completed" | head -1 | cut -d':' -f2- | sed 's/^ *//')
+      
+      warn "Previous CAD-Droid installation detected (completed: $completion_date)"
+      
+      if [ "$NON_INTERACTIVE" != "1" ]; then
+        printf "\n${PASTEL_YELLOW}Previous CAD-Droid installation found!${RESET}\n"
+        printf "${PASTEL_CYAN}Installation was completed on: $completion_date${RESET}\n\n"
+        printf "${PASTEL_PINK}Remove all previous installation files and start fresh? (y/N):${RESET} "
+        local response
+        read -r response || response="n"
+        case "${response,,}" in
+          y|yes)
+            # Add confirmation prompt
+            printf "\n${PASTEL_YELLOW}⚠️  This will permanently delete:${RESET}\n"
+            printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
+            printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
+            printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
+            printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
+            printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
+            local final_confirm
+            read -r final_confirm || final_confirm="n"
+            case "${final_confirm,,}" in
+              y|yes)
+                cleanup_previous_install
+                return 0
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with fresh installation alongside existing files"
+                return 0
+                ;;
+            esac
+            ;;
+          *)
+            info "Continuing with fresh installation alongside existing files"
+            return 0
+            ;;
+        esac
+      else
+        warn "Previous installation found - continuing anyway (non-interactive mode)"
+      fi
+    else
+      # This is an incomplete installation (no completion marker)
+      local flag_date
+      flag_date=$(echo "$flag_content" | head -1)
+      warn "Incomplete installation attempt detected (started: $flag_date)"
+      
+      if [ "$NON_INTERACTIVE" != "1" ]; then
+        printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
+        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+        printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
+        local response
+        read -r response || response="n"
+        case "${response,,}" in
+          y|yes)
+            # Add confirmation prompt
+            printf "\n${PASTEL_YELLOW}This will delete ALL CAD-Droid files, configurations, and downloads.${RESET}\n"
+            printf "${PASTEL_PINK}Are you sure you want to continue? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install
+                return 0
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing installation state"
+                return 0
+                ;;
+            esac
+            ;;
+          *)
+            info "Continuing with existing installation state"
+            return 0
+            ;;
+        esac
+      else
+        warn "Incomplete installation found - continuing anyway (non-interactive mode)"
+      fi
     fi
   fi
   
+  # If no install flag found, check for other markers
   # Enhanced detection of installation markers
   local install_markers=(
     "$HOME/.cad"
@@ -1262,9 +1312,6 @@ check_previous_install(){
   else
     ok "No previous installation detected"
   fi
-  
-  # Set installation flag for this attempt
-  set_install_flag
 }
 
 # Clean up previous CAD-Droid installation files
