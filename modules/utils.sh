@@ -711,8 +711,14 @@ detect_install_missing_libs() {
   local libs_needed=()
   local test_output
   
-  # Test a common binary to detect missing libraries
-  test_output=$( (date >/dev/null) 2>&1 || true )
+  # Test multiple common binaries to detect missing libraries
+  local test_commands=("date" "cut" "grep" "ls")
+  for cmd in "${test_commands[@]}"; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      test_output=$( ($cmd --help >/dev/null) 2>&1 || true )
+      break
+    fi
+  done
   
   # Check for libpcre2-8.so issues
   if echo "$test_output" | grep -qi 'libpcre2-8.so'; then
@@ -739,6 +745,29 @@ detect_install_missing_libs() {
     libs_needed+=("openssl")
     warn "Detected missing libcrypto.so.3 library"
   fi
+  
+  # Proactive installation for known problematic libraries during XFCE installation
+  # These libraries are commonly missing and cause XFCE installation failures
+  local critical_libs=("pcre2" "openssl")
+  for lib in "${critical_libs[@]}"; do
+    if ! [[ " ${libs_needed[*]} " =~ " $lib " ]]; then
+      # Check if the library packages are actually installed
+      case "$lib" in
+        "pcre2")
+          if ! dpkg_is_installed "libpcre2-8-0" && ! dpkg_is_installed "pcre2-utils"; then
+            libs_needed+=("pcre2")
+            warn "Proactively installing libpcre2 (commonly missing during XFCE installation)"
+          fi
+          ;;
+        "openssl")
+          if ! dpkg_is_installed "openssl" && ! dpkg_is_installed "libssl3"; then
+            libs_needed+=("openssl")
+            warn "Proactively installing OpenSSL libraries (commonly missing during XFCE installation)"
+          fi
+          ;;
+      esac
+    fi
+  done
   
   # Proactive detection using ldd if available
   if command -v ldd >/dev/null 2>&1; then

@@ -739,7 +739,12 @@ step_xfce_termux(){
     update_package_lists || true
   fi
   
-  # Detect and install missing runtime libraries before XFCE installation
+  # Proactively install critical libraries that commonly cause XFCE installation failures
+  info "Installing critical runtime libraries..."
+  run_with_progress "Install libpcre2 libraries" 20 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
+  run_with_progress "Install OpenSSL libraries" 20 bash -c 'apt install -y openssl libssl3 >/dev/null 2>&1 || [ $? -eq 100 ]'
+  
+  # Detect and install any remaining missing runtime libraries
   if command -v detect_install_missing_libs >/dev/null 2>&1; then
     detect_install_missing_libs || true
   fi
