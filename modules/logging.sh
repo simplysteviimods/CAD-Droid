@@ -277,11 +277,11 @@ run_with_progress(){
   
   local message
   if [ $rc -eq 0 ]; then
-    message="✓ $desc"
+    message="OK $desc"
     pecho '\033[38;2;152;251;152m' "$message"
     log_event cmd_done "${CURRENT_STEP_INDEX:-unknown}" success "$desc" "$dur"
   else
-    message="✗ $desc (failed)"
+    message="FAILED $desc (failed)"
     pecho '\033[38;2;255;192;203m' "$message"
     log_event cmd_done "${CURRENT_STEP_INDEX:-unknown}" fail "$message" "$dur"
   fi

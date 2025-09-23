@@ -18,12 +18,12 @@ show_completion_summary(){
   draw_card "CAD-Droid Setup Complete!" "Your Android device is now a powerful development workstation"
   
   printf "${PASTEL_CYAN}What's been installed:${RESET}\n"
-  printf "${PASTEL_GREEN}✓${RESET} Core system packages and development tools\n"
-  printf "${PASTEL_GREEN}✓${RESET} Optimized repository mirrors for your region\n"
-  printf "${PASTEL_GREEN}✓${RESET} XFCE desktop environment (Termux + Container)\n"
-  printf "${PASTEL_GREEN}✓${RESET} Essential Termux APKs downloaded and ready\n"
-  printf "${PASTEL_GREEN}✓${RESET} SSH access and security configurations\n"
-  printf "${PASTEL_GREEN}✓${RESET} Pastel-themed configurations throughout\n\n"
+  printf "${PASTEL_GREEN}OK${RESET} Core system packages and development tools\n"
+  printf "${PASTEL_GREEN}OK${RESET} Optimized repository mirrors for your region\n"
+  printf "${PASTEL_GREEN}OK${RESET} XFCE desktop environment (Termux + Container)\n"
+  printf "${PASTEL_GREEN}OK${RESET} Essential Termux APKs downloaded and ready\n"
+  printf "${PASTEL_GREEN}OK${RESET} SSH access and security configurations\n"
+  printf "${PASTEL_GREEN}OK${RESET} Pastel-themed configurations throughout\n\n"
   
   printf "${PASTEL_CYAN}Quick Start Commands:${RESET}\n"
   printf "${PASTEL_LAVENDER}Start XFCE Desktop:${RESET} ~/.cad/scripts/start-xfce-termux.sh\n"

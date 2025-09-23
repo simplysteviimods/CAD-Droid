@@ -154,15 +154,9 @@ safe_apt_operation(){
       return $result
     fi
     
-    # If it's a lock error, try again
-    if [ $result -eq 100 ]; then
-      debug "Lock error detected, retrying..."
-      attempt=$((attempt + 1))
-      continue
-    fi
-    
-    # For other errors, return immediately
+    # For non-success/non-already-done errors, return immediately
     debug "$operation failed with exit code: $result"
+    return $result
     return $result
   done
   
@@ -651,10 +645,10 @@ upgrade_packages(){
   # Ensure selected mirror is applied and sources file is written before upgrading
   ensure_mirror_applied
   
-  # Always update package lists first
+  # Try to update package lists first, but continue with upgrade even if it fails
   update_package_lists || {
-    warn "Failed to update package lists before upgrade"
-    return 1
+    warn "Failed to update package lists before upgrade, but continuing with upgrade attempt"
+    debug "Package list update: FAILED (exit code: $?)"
   }
   
   # Proactively install essential libraries before upgrading to prevent CANNOT LINK EXECUTABLE errors
@@ -678,7 +672,7 @@ upgrade_packages(){
       ok "Packages upgraded successfully via pkg"
       return 0
     else
-      warn "pkg upgrade failed, trying apt..."
+      warn "pkg upgrade failed, trying apt upgrade..."
     fi
   fi
   
@@ -710,8 +704,8 @@ step_mirror(){
     "https://termux.mentality.rip/termux/apt/termux-main"
   )
   names=(
-    "Official Termux (Global CDN) ★"
-    "Official Termux (Cloudflare CDN) ★"
+    "Official Termux (Global CDN)"
+    "Official Termux (Cloudflare CDN)"
     "FAU (Germany)"
     "BFSU (China)"
     "Tsinghua (China)"
@@ -727,7 +721,7 @@ step_mirror(){
 
   # Show recommendation
   echo ""
-  pecho "$PASTEL_GREEN" "Recommended: Official mirrors (marked with ★) are usually fastest and most reliable"
+  pecho "$PASTEL_GREEN" "Recommended: Official mirrors (first two options) are usually fastest and most reliable"
   echo ""
   
   # Display mirror options with colors  
@@ -735,7 +729,7 @@ step_mirror(){
   for i in "${!names[@]}"; do 
     local seq
     seq=$(color_for_index "$i")
-    # Display mirrors with consistent formatting (★ already in name)
+    # Display mirrors with consistent formatting
     printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
   done
   
@@ -862,14 +856,16 @@ step_systemup(){
   
   if update_package_lists; then
     debug "Package list update: SUCCESS"
-    upgrade_packages || {
-      warn "Package upgrade failed but continuing"
-      debug "Package upgrade: FAILED (exit code: $?)"
-    }
   else
-    warn "Package list update failed"
+    warn "Package list update failed, but continuing with upgrade"
     debug "Package list update: FAILED (exit code: $?)"
   fi
+  
+  # Always attempt upgrade regardless of update success/failure
+  upgrade_packages || {
+    warn "Package upgrade failed but continuing"
+    debug "Package upgrade: FAILED (exit code: $?)"
+  }
   
   debug "System update step completed"
   mark_step_status "success"
