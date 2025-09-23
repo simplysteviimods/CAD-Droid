@@ -72,16 +72,34 @@ step_container(){
         local install_log="${TMPDIR:-$PREFIX/tmp}/proot-install-$$.log"
         if run_with_progress "Install $distro_name container" 120 \
             bash -c "DEBIAN_FRONTEND=noninteractive proot-distro install '$distro_name' 2>&1 | tee '$install_log'"; then
-            ok "$distro_name container installed successfully"
-            debug "Container installation completed without errors"
-            rm -f "$install_log" 2>/dev/null || true
-        else
-            warn "$distro_name container installation may have had issues"
-            debug "Container installation exit code: $?"
-            if [ -f "$install_log" ]; then
-                debug "Installation log contents:"
-                debug "$(cat "$install_log" 2>/dev/null || echo 'Could not read log')"
+            local exit_code=$?
+            if [ $exit_code -eq 0 ] || [ $exit_code -eq 100 ]; then
+                ok "$distro_name container installed successfully"
+                debug "Container installation completed (exit code: $exit_code)"
                 rm -f "$install_log" 2>/dev/null || true
+            else
+                warn "$distro_name container installation may have had issues"
+                debug "Container installation exit code: $exit_code"
+                if [ -f "$install_log" ]; then
+                    debug "Installation log contents:"
+                    debug "$(cat "$install_log" 2>/dev/null | tail -20)"
+                    rm -f "$install_log" 2>/dev/null || true
+                fi
+            fi
+        else
+            local exit_code=$?
+            if [ $exit_code -eq 100 ]; then
+                ok "$distro_name container installed successfully (already installed)"
+                debug "Container installation completed (exit code: 100 - already installed)"
+                rm -f "$install_log" 2>/dev/null || true
+            else
+                warn "$distro_name container installation may have had issues"
+                debug "Container installation exit code: $exit_code"
+                if [ -f "$install_log" ]; then
+                    debug "Installation log contents:"
+                    debug "$(cat "$install_log" 2>/dev/null | tail -20)"
+                    rm -f "$install_log" 2>/dev/null || true
+                fi
             fi
         fi
     else

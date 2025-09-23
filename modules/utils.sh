@@ -1187,8 +1187,7 @@ check_previous_install(){
       
       if [ "$NON_INTERACTIVE" != "1" ]; then
         # Single confirmation prompt for incomplete installation cleanup
-        printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
-        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
+        printf "\n${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
         printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
         local response
         read -r response || response="n"
