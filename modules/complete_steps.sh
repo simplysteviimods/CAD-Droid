@@ -69,16 +69,19 @@ step_container(){
     if ! is_distro_installed "$distro_name"; then
         info "Installing $distro_name container (this may take several minutes)..."
         debug "Running: proot-distro install $distro_name"
+        local install_log="${TMPDIR:-$PREFIX/tmp}/proot-install-$$.log"
         if run_with_progress "Install $distro_name container" 120 \
-            bash -c "DEBIAN_FRONTEND=noninteractive proot-distro install '$distro_name' 2>&1 | tee /tmp/proot-install.log"; then
+            bash -c "DEBIAN_FRONTEND=noninteractive proot-distro install '$distro_name' 2>&1 | tee '$install_log'"; then
             ok "$distro_name container installed successfully"
             debug "Container installation completed without errors"
+            rm -f "$install_log" 2>/dev/null || true
         else
             warn "$distro_name container installation may have had issues"
             debug "Container installation exit code: $?"
-            if [ -f /tmp/proot-install.log ]; then
+            if [ -f "$install_log" ]; then
                 debug "Installation log contents:"
-                debug "$(cat /tmp/proot-install.log 2>/dev/null || echo 'Could not read log')"
+                debug "$(cat "$install_log" 2>/dev/null || echo 'Could not read log')"
+                rm -f "$install_log" 2>/dev/null || true
             fi
         fi
     else

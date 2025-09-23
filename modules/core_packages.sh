@@ -359,17 +359,20 @@ update_package_lists(){
   if command -v pkg >/dev/null 2>&1; then
     info "Updating with pkg..."
     debug "Running: pkg update -y"
-    if pkg update -y 2>&1 | tee /tmp/pkg-update.log >/dev/null; then
+    local pkg_log="${TMPDIR:-$PREFIX/tmp}/pkg-update-$$.log"
+    if pkg update -y 2>&1 | tee "$pkg_log" >/dev/null; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
       debug "pkg update: SUCCESS"
+      rm -f "$pkg_log" 2>/dev/null || true
       return 0
     else
       warn "pkg update failed, trying apt..."
       debug "pkg update: FAILED"
-      if [ -f /tmp/pkg-update.log ]; then
+      if [ -f "$pkg_log" ]; then
         debug "pkg update error log:"
-        debug "$(cat /tmp/pkg-update.log 2>/dev/null | tail -10)"
+        debug "$(cat "$pkg_log" 2>/dev/null | tail -10)"
+        rm -f "$pkg_log" 2>/dev/null || true
       fi
     fi
   fi
@@ -377,17 +380,20 @@ update_package_lists(){
   # Fallback to apt-get update
   info "Updating with apt..."
   debug "Running: apt-get update"
-  if apt-get update 2>&1 | tee /tmp/apt-update.log >/dev/null; then
+  local apt_log="${TMPDIR:-$PREFIX/tmp}/apt-update-$$.log"
+  if apt-get update 2>&1 | tee "$apt_log" >/dev/null; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
     debug "apt-get update: SUCCESS"
+    rm -f "$apt_log" 2>/dev/null || true
     return 0
   else
     warn "Package list update failed"
     debug "apt-get update: FAILED"
-    if [ -f /tmp/apt-update.log ]; then
+    if [ -f "$apt_log" ]; then
       debug "apt-get update error log:"
-      debug "$(cat /tmp/apt-update.log 2>/dev/null | tail -10)"
+      debug "$(cat "$apt_log" 2>/dev/null | tail -10)"
+      rm -f "$apt_log" 2>/dev/null || true
     fi
     return 1
   fi
@@ -646,27 +652,6 @@ step_systemup(){
   
   # Ensure mirror is valid and available before proceeding
   ensure_mirror_applied
-  
-  # Test current mirror connectivity before attempting updates
-  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
-    debug "Testing mirror connectivity: $SELECTED_MIRROR_URL"
-    if ! curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
-      warn "Current mirror appears unreachable, attempting to select a new one"
-      # Try to reselect a working mirror
-      if command -v select_fastest_mirror >/dev/null 2>&1; then
-        local new_mirror
-        if new_mirror=$(select_fastest_mirror "main"); then
-          info "Selected new working mirror: $new_mirror"
-          SELECTED_MIRROR_URL="$new_mirror"
-          ensure_mirror_applied
-        else
-          warn "Could not find working mirror, will attempt update anyway"
-        fi
-      fi
-    else
-      debug "Mirror connectivity test: PASSED"
-    fi
-  fi
   
   if update_package_lists; then
     debug "Package list update: SUCCESS"

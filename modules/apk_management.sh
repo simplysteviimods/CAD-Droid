@@ -458,13 +458,36 @@ download_apk_with_spinner(){
 rename_apk_with_priority(){
   local plugin_name="$1" outdir="$2" priority="$3"
   
-  # Find the downloaded APK file (may have various names) - avoid using /tmp
+  # Find the downloaded APK file more specifically to avoid cross-contamination
   local apk_file
-  apk_file=$(find "$outdir" -name "*.apk" -type f -mmin -5 | head -1)
+  
+  # First try to find files based on the plugin name pattern
+  case "$plugin_name" in
+    "Termux:API"|"Termux-API")
+      # Look for API-related APK files
+      apk_file=$(find "$outdir" -name "*api*.apk" -o -name "*API*.apk" -type f -mmin -5 | head -1)
+      ;;
+    "Termux:X11"|"Termux-X11")
+      # Look for X11-related APK files (including the special case filename)
+      apk_file=$(find "$outdir" -name "*x11*.apk" -o -name "*X11*.apk" -o -name "app-universal-debug.apk" -type f -mmin -5 | head -1)
+      ;;
+    "Termux:GUI"|"Termux-GUI")
+      # Look for GUI-related APK files
+      apk_file=$(find "$outdir" -name "*gui*.apk" -o -name "*GUI*.apk" -type f -mmin -5 | head -1)
+      ;;
+    "Termux:Widget"|"Termux-Widget")
+      # Look for Widget-related APK files
+      apk_file=$(find "$outdir" -name "*widget*.apk" -o -name "*Widget*.apk" -type f -mmin -5 | head -1)
+      ;;
+    *)
+      # Generic fallback
+      apk_file=$(find "$outdir" -name "*.apk" -type f -mmin -5 | head -1)
+      ;;
+  esac
   
   if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then
-    # Fallback: find any APK file in the directory
-    apk_file=$(find "$outdir" -name "*.apk" -type f | head -1)
+    # Fallback: find any APK file in the directory, but prefer the most recent
+    apk_file=$(find "$outdir" -name "*.apk" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)
   fi
   
   if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then
