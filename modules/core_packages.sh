@@ -539,15 +539,7 @@ step_x11repo(){
   # Ensure selected mirror is applied before installing X11 repo
   ensure_mirror_applied
   
-  # Try pkg first, then apt as fallback
-  if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Add X11 repository (pkg)" 15 bash -c 'pkg install -y x11-repo >/dev/null 2>&1'; then
-      mark_step_status "success"
-      return 0
-    fi
-  fi
-  
-  # Fallback to apt
+  # Use apt directly as pkg is not reliable for x11-repo
   run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || true'
   mark_step_status "success"
 }
@@ -591,14 +583,15 @@ step_xfce_termux(){
   
   # Install X11 repo if not already installed
   if ! dpkg_is_installed "x11-repo"; then
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Add X11 repository (pkg)" 15 bash -c 'pkg install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
-    else
-      run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
-    fi
+    run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
     
     # Update indexes after adding X11 repo
     ensure_mirror_applied
+  fi
+  
+  # Detect and install missing runtime libraries before XFCE installation
+  if command -v detect_install_missing_libs >/dev/null 2>&1; then
+    detect_install_missing_libs || true
   fi
   
   # XFCE desktop components for Termux

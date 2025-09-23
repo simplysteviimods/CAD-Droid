@@ -445,7 +445,10 @@ download_apk_with_spinner(){
   
   # Rename downloaded APK with priority and proper name if download succeeded
   if [ $result -eq 0 ]; then
-    rename_apk_with_priority "$name" "$outdir" "$priority"
+    if ! rename_apk_with_priority "$name" "$outdir" "$priority"; then
+      warn "Download succeeded but renaming failed for $name"
+      # Still return success since the APK was downloaded successfully
+    fi
   fi
   
   return $result

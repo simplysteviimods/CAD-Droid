@@ -699,6 +699,14 @@ detect_install_missing_libs() {
     warn "Detected missing libpcre2-8.so library"
   fi
   
+  # Check for libandroid-selinux.so dependency on libpcre2-8.so (specific xfce4 error)
+  if echo "$test_output" | grep -qi 'libandroid-selinux.so.*libpcre2-8.so'; then
+    if ! [[ " ${libs_needed[*]} " =~ " pcre2 " ]]; then
+      libs_needed+=("pcre2")
+      warn "Detected libpcre2-8.so dependency issue for libandroid-selinux.so"
+    fi
+  fi
+  
   # Check for libgmp.so issues
   if echo "$test_output" | grep -qi 'libgmp.so'; then
     libs_needed+=("libgmp")
@@ -748,18 +756,10 @@ install_runtime_library() {
   
   case "$lib" in
     "pcre2")
-      if command -v pkg >/dev/null 2>&1; then
-        run_with_progress "Install libpcre2 (pkg)" 15 bash -c 'pkg install -y pcre2 >/dev/null 2>&1 || [ $? -eq 100 ]'
-      else
-        run_with_progress "Install libpcre2 (apt)" 15 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
-      fi
+      run_with_progress "Install libpcre2 (apt)" 15 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     "libgmp")
-      if command -v pkg >/dev/null 2>&1; then
-        run_with_progress "Install libgmp (pkg)" 15 bash -c 'pkg install -y libgmp >/dev/null 2>&1 || [ $? -eq 100 ]'
-      else
-        run_with_progress "Install libgmp (apt)" 15 bash -c 'apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
-      fi
+      run_with_progress "Install libgmp (apt)" 15 bash -c 'apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     *)
       warn "Unknown library: $lib"

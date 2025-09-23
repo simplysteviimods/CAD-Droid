@@ -407,7 +407,7 @@ configure_x11_repository(){
   
   # Add X11 repository key
   if ! run_with_progress "Install X11 repository key" 15 bash -c '
-    pkg install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]
+    apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]
   '; then
     warn "Failed to install X11 repository key"
     rm -f "$x11_sources_file" 2>/dev/null || true
