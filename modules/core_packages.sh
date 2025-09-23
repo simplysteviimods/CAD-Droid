@@ -598,9 +598,21 @@ step_mirror(){
     fi
   fi
   
-  # Write mirror configuration
-  # Simple mirror configuration
-  echo "deb ${SELECTED_MIRROR_URL} stable main" > "$PREFIX/etc/apt/sources.list"
+  # Write mirror configuration with better error handling
+  debug "Writing mirror configuration to sources.list"
+  local sources_file="$PREFIX/etc/apt/sources.list"
+  
+  # Ensure directory exists
+  mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+  
+  # Write the new mirror configuration
+  if echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"; then
+    debug "Mirror configuration written successfully"
+    debug "Sources file content: $(cat "$sources_file" 2>/dev/null || echo 'failed to read')"
+  else
+    warn "Failed to write mirror configuration"
+    return 1
+  fi
   
   # Reload settings and clean up sources
   if command -v termux-reload-settings >/dev/null 2>&1; then
@@ -610,12 +622,20 @@ step_mirror(){
   sanitize_sources_main_only
   verify_mirror
   
-  # Simple mirror test
-  info "Testing mirror connection..."
-  if apt-get update >/dev/null 2>&1; then
-    ok "Mirror connection successful: ${SELECTED_MIRROR_NAME}"
+  # Verify the mirror is working by testing package list update
+  debug "Verifying mirror configuration with package update test"
+  local update_log="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/mirror-test-$$"
+  
+  if apt-get update >"$update_log" 2>&1; then
+    ok "Mirror configuration verified successfully: ${SELECTED_MIRROR_NAME}"
+    debug "Mirror verification: SUCCESS"
+    rm -f "$update_log" 2>/dev/null || true
   else
-    warn "Mirror may have issues, but continuing..."
+    warn "Mirror verification failed, but mirror configuration is saved"
+    debug "Mirror verification: FAILED"
+    debug "Update log: $(cat "$update_log" 2>/dev/null | tail -5 || echo 'no log')"
+    rm -f "$update_log" 2>/dev/null || true
+    # Don't return error - the configuration is saved even if verification fails
   fi
   
   mark_step_status "success"
@@ -630,8 +650,11 @@ step_bootstrap(){
 
 # Step: Add X11 repository
 step_x11repo(){
-  # Ensure selected mirror is applied before installing X11 repo
-  ensure_mirror_applied
+  # Mirror should already be configured in step_mirror, only ensure if not available
+  if [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
+    debug "Sources file missing, applying mirror configuration"
+    ensure_mirror_applied
+  fi
   
   # Use apt directly as pkg is not reliable for x11-repo
   run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || true'
@@ -653,8 +676,13 @@ step_systemup(){
   debug "Current mirror: ${SELECTED_MIRROR_URL:-not set}"
   debug "Packages updated flag: ${PACKAGES_UPDATED:-0}"
   
-  # Ensure mirror is valid and available before proceeding
-  ensure_mirror_applied
+  # Mirror should already be configured in step_mirror, only ensure if not set
+  if [ -z "${SELECTED_MIRROR_URL:-}" ] || [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
+    debug "Mirror not configured, applying mirror configuration"
+    ensure_mirror_applied
+  else
+    debug "Using existing mirror configuration: ${SELECTED_MIRROR_NAME:-unknown}"
+  fi
   
   if update_package_lists; then
     debug "Package list update: SUCCESS"
@@ -688,15 +716,19 @@ step_coreinst(){
 step_xfce_termux(){
   info "Installing XFCE desktop environment for Termux..."
   
-  # Ensure X11 repository is available first
-  ensure_mirror_applied
+  # Mirror should already be configured, only ensure if sources.list doesn't exist
+  if [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
+    debug "Sources file missing, applying mirror configuration"
+    ensure_mirror_applied
+  fi
   
   # Install X11 repo if not already installed
   if ! dpkg_is_installed "x11-repo"; then
     run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
     
-    # Update indexes after adding X11 repo
-    ensure_mirror_applied
+    # Update indexes after adding X11 repo - don't need ensure_mirror_applied
+    debug "Updating package indexes after X11 repo installation"
+    update_package_lists || true
   fi
   
   # Detect and install missing runtime libraries before XFCE installation
