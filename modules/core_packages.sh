@@ -208,7 +208,7 @@ sanitize_sources_main_only(){
   done
 }
 
-# Verify and set package mirror configuration
+# Verify and set package mirror configuration with comprehensive testing
 verify_mirror(){
   local sources_file="$PREFIX/etc/apt/sources.list"
   local url
@@ -227,6 +227,39 @@ verify_mirror(){
     echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$sources_file"
     SELECTED_MIRROR_NAME="Default"
     SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
+  fi
+  
+  # Perform comprehensive mirror verification (connectivity + package update test)
+  info "Testing mirror connectivity and configuration..."
+  debug "Testing mirror: $SELECTED_MIRROR_URL"
+  
+  # First check connectivity
+  if ! curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
+    warn "Mirror connectivity test failed, but proceeding with configuration"
+    debug "Mirror connectivity: FAILED"
+  else
+    debug "Mirror connectivity: SUCCESS"
+  fi
+  
+  # Test mirror functionality with package list update
+  debug "Verifying mirror configuration with package update test"
+  local temp_dir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+  mkdir -p "$temp_dir" 2>/dev/null || true
+  local update_log="$temp_dir/mirror-test-$$"
+  
+  if yes | apt-get update >"$update_log" 2>&1; then
+    ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
+    debug "Mirror verification: SUCCESS"
+    rm -f "$update_log" 2>/dev/null || true
+  else
+    warn "Mirror verification failed, but mirror configuration is saved"
+    debug "Mirror verification: FAILED"
+    if [ -f "$update_log" ]; then
+      debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
+    else
+      debug "Update log: could not create temporary file"
+    fi
+    rm -f "$update_log" 2>/dev/null || true
   fi
 }
 
@@ -567,37 +600,12 @@ step_mirror(){
     fi
   fi
   
-  # Test selected mirror before proceeding
-  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
-    info "Testing selected mirror connectivity..."
-    debug "Testing mirror: $SELECTED_MIRROR_URL"
-    if curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
-      ok "Mirror connectivity test passed: $SELECTED_MIRROR_NAME"
-      debug "Mirror test: SUCCESS"
-    else
-      warn "Selected mirror is not reachable, trying fallback"
-      debug "Mirror test: FAILED"
-      # Try to find a working mirror from the list
-      local working_mirror="" working_name=""
-      for i in "${!urls[@]}"; do
-        debug "Testing fallback mirror: ${urls[$i]}"
-        if curl --max-time 8 --connect-timeout 3 --fail --silent --head "${urls[$i]}" >/dev/null 2>&1; then
-          working_mirror="${urls[$i]}"
-          working_name="${names[$i]}"
-          debug "Found working fallback mirror: $working_mirror"
-          break
-        fi
-      done
-      
-      if [ -n "$working_mirror" ]; then
-        SELECTED_MIRROR_URL="$working_mirror"
-        SELECTED_MIRROR_NAME="$working_name"
-        ok "Using working fallback mirror: $SELECTED_MIRROR_NAME"
-      else
-        warn "No working mirrors found, using original selection anyway"
-        debug "All mirrors failed connectivity test"
-      fi
-    fi
+  # Ensure we have a valid mirror selection
+  if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
+    # Fallback to first mirror if nothing selected
+    SELECTED_MIRROR_NAME="${names[0]}"
+    SELECTED_MIRROR_URL="${urls[0]}"
+    debug "No mirror selected, using first available: $SELECTED_MIRROR_NAME"
   fi
   
   # Write mirror configuration with better error handling
@@ -623,30 +631,6 @@ step_mirror(){
   
   sanitize_sources_main_only
   verify_mirror
-  
-  # Verify the mirror is working by testing package list update
-  debug "Verifying mirror configuration with package update test"
-  
-  # Create temp directory if it doesn't exist and use proper temp file
-  local temp_dir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
-  mkdir -p "$temp_dir" 2>/dev/null || true
-  local update_log="$temp_dir/mirror-test-$$"
-  
-  if yes | apt-get update >"$update_log" 2>&1; then
-    ok "Mirror configuration verified successfully: ${SELECTED_MIRROR_NAME}"
-    debug "Mirror verification: SUCCESS"
-    rm -f "$update_log" 2>/dev/null || true
-  else
-    warn "Mirror verification failed, but mirror configuration is saved"
-    debug "Mirror verification: FAILED"
-    if [ -f "$update_log" ]; then
-      debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
-    else
-      debug "Update log: could not create temporary file"
-    fi
-    rm -f "$update_log" 2>/dev/null || true
-    # Don't return error - the configuration is saved even if verification fails
-  fi
   
   mark_step_status "success"
 }
