@@ -1241,6 +1241,7 @@ check_previous_install(){
             ;;
           3|*)
             info "No cleanup selected - continuing with existing files"
+            return 0  # Exit early to prevent any accidental cleanup
             ;;
         esac
       else
@@ -1299,7 +1300,8 @@ check_previous_install(){
             esac
             ;;
           3|*)
-            info "Continuing with existing installation state"
+            info "No cleanup selected - continuing with existing installation"
+            return 0  # Exit early to prevent any accidental cleanup
             ;;
         esac
       else

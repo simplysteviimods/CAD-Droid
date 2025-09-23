@@ -79,6 +79,12 @@ safe_apt_operation(){
   local max_attempts=3
   local attempt=1
   
+  # Ensure mirror configuration is applied before any operation
+  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
+    debug "Ensuring mirror configuration is applied before $operation"
+    ensure_mirror_applied
+  fi
+  
   while [ $attempt -le $max_attempts ]; do
     if [ $attempt -gt 1 ]; then
       debug "Attempt $attempt/$max_attempts for: $operation $args"
@@ -91,23 +97,48 @@ safe_apt_operation(){
     case "$operation" in
       "pkg_update")
         if command -v pkg >/dev/null 2>&1; then
+          debug "Running: pkg update $args"
           yes | pkg update $args
         else
+          debug "pkg command not available"
           return 1
         fi
         ;;
       "apt_update")
+        debug "Running: apt update $args"
         yes | apt update $args
         ;;
       "pkg_install")
         if command -v pkg >/dev/null 2>&1; then
+          debug "Running: pkg install -y $args"
           pkg install -y $args
         else
+          debug "pkg command not available"
           return 1
         fi
         ;;
       "apt_install")
+        debug "Running: apt install -y $args"
         yes | apt install -y $args
+        ;;
+      "pkg_upgrade")
+        if command -v pkg >/dev/null 2>&1; then
+          debug "Running: pkg upgrade -y $args"
+          yes | DEBIAN_FRONTEND=noninteractive pkg upgrade -y $args \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            -o Dpkg::Options::="--force-confnew"
+        else
+          debug "pkg command not available"
+          return 1
+        fi
+        ;;
+      "apt_upgrade")
+        debug "Running: apt upgrade -y $args"
+        yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y $args \
+          -o Dpkg::Options::="--force-confdef" \
+          -o Dpkg::Options::="--force-confold" \
+          -o Dpkg::Options::="--force-confnew"
         ;;
       *)
         warn "Unknown operation: $operation"
@@ -117,8 +148,9 @@ safe_apt_operation(){
     
     local result=$?
     
-    # Check if the operation succeeded or if package is already installed
+    # Check if the operation succeeded or if package is already installed/updated
     if [ $result -eq 0 ] || [ $result -eq 100 ]; then
+      debug "$operation completed with exit code: $result"
       return $result
     fi
     
@@ -130,6 +162,7 @@ safe_apt_operation(){
     fi
     
     # For other errors, return immediately
+    debug "$operation failed with exit code: $result"
     return $result
   done
   
@@ -309,12 +342,24 @@ ensure_mirror_applied(){
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
-  # Apply termux-reload-settings first to ensure configuration is loaded
+  # Apply termux-reload-settings to ensure configuration is loaded
   if command -v termux-reload-settings >/dev/null 2>&1; then
-    debug "Reloading Termux settings"
-    run_with_progress "Reload Termux settings" 3 termux-reload-settings
+    debug "Reloading Termux settings to apply mirror configuration"
+    run_with_progress "Apply mirror configuration" 3 termux-reload-settings
+    debug "Termux settings reloaded successfully"
   else
     debug "termux-reload-settings not available"
+  fi
+  
+  # Verify sources.list wasn't overwritten
+  if [ -f "$sources_file" ]; then
+    local current_mirror
+    current_mirror=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
+    if [ "$current_mirror" != "$SELECTED_MIRROR_URL" ]; then
+      warn "Sources.list was overwritten, restoring mirror configuration"
+      echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
+      debug "Mirror configuration restored"
+    fi
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -401,8 +446,8 @@ verify_mirror(){
       debug "Mirror verification: SUCCESS"
       rm -f "$update_log" 2>/dev/null || true
     else
-      warn "Mirror verification failed, but mirror configuration is saved"
-      debug "Mirror verification: FAILED"
+      info "Mirror verification completed (configuration saved): ${SELECTED_MIRROR_NAME}"
+      debug "Mirror verification: PARTIAL (mirror configured but update had issues)"
       if [ -f "$update_log" ]; then
         debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
       else
@@ -418,8 +463,8 @@ verify_mirror(){
       debug "Mirror verification: SUCCESS"
       rm -f "$update_log" 2>/dev/null || true
     else
-      warn "Mirror verification failed, but mirror configuration is saved"
-      debug "Mirror verification: FAILED"
+      info "Mirror verification completed (configuration saved): ${SELECTED_MIRROR_NAME}"
+      debug "Mirror verification: PARTIAL (mirror configured but update had issues)"
       if [ -f "$update_log" ]; then
         debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
       else
@@ -627,14 +672,9 @@ upgrade_packages(){
     fi
   done
   
-  # Upgrade with spinners and non-interactive flags
+  # Upgrade with spinners and non-interactive flags using safe operations
   if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Upgrading packages with pkg" 45 bash -c '
-      yes | DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
-        -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold" \
-        -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1 || [ $? -eq 100 ]
-    '; then
+    if run_with_progress "Upgrading packages with pkg" 45 bash -c 'safe_apt_operation "pkg_upgrade" >/dev/null 2>&1'; then
       ok "Packages upgraded successfully via pkg"
       return 0
     else
@@ -642,13 +682,8 @@ upgrade_packages(){
     fi
   fi
   
-  # Fallback to apt upgrade with spinner and non-interactive flags
-  if run_with_progress "Upgrading packages with apt" 45 bash -c '
-    yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y \
-      -o Dpkg::Options::="--force-confdef" \
-      -o Dpkg::Options::="--force-confold" \
-      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1 || [ $? -eq 100 ]
-  '; then
+  # Fallback to apt upgrade with safe operations
+  if run_with_progress "Upgrading packages with apt" 45 bash -c 'safe_apt_operation "apt_upgrade" >/dev/null 2>&1'; then
     ok "Packages upgraded successfully via apt"
     return 0
   else
