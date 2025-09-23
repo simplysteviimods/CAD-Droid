@@ -616,8 +616,45 @@ download_fdroid_apk(){
   friendly_name=$(get_friendly_apk_name "$app_name")
   local output_file="$APK_DOWNLOAD_DIR/${friendly_name}.apk"
   
-  # Always overwrite existing APKs to ensure latest version
-  [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
+  # Check if APK already exists and prompt user
+  if [ -f "$output_file" ]; then
+    local file_size
+    file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+    local size_display
+    if [ "$file_size" -gt 1048576 ]; then
+      size_display="$(( file_size / 1048576 )) MB"
+    elif [ "$file_size" -gt 1024 ]; then
+      size_display="$(( file_size / 1024 )) KB"
+    else
+      size_display="${file_size} bytes"
+    fi
+    
+    if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+      warn "APK already exists: ${friendly_name}.apk ($size_display)"
+      printf "${PASTEL_PINK}Overwrite existing APK file? (y/N):${RESET} "
+      local overwrite_response
+      read -r overwrite_response || overwrite_response="n"
+      case "${overwrite_response,,}" in
+        y|yes)
+          info "Overwriting existing APK file..."
+          rm -f "$output_file" 2>/dev/null || true
+          ;;
+        *)
+          info "Keeping existing APK file - skipping download"
+          # Update tracking arrays to reflect existing file
+          PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+          DOWNLOADED_APKS+=("$app_name:$output_file")
+          save_apk_state
+          echo "$output_file"
+          return 0
+          ;;
+      esac
+    else
+      # In non-interactive mode, always overwrite
+      warn "Non-interactive mode: overwriting existing APK file"
+      rm -f "$output_file" 2>/dev/null || true
+    fi
+  fi
   
   # Try F-Droid first with enhanced progress display
   local download_url

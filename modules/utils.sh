@@ -1146,11 +1146,10 @@ check_previous_install(){
             case "${final_confirm,,}" in
               y|yes)
                 cleanup_previous_install
-                return 0
+                info "Previous installation cleaned up - continuing with fresh installation"
                 ;;
               *)
                 info "Cleanup cancelled - continuing with fresh installation alongside existing files"
-                return 0
                 ;;
             esac
             ;;
@@ -1184,17 +1183,15 @@ check_previous_install(){
             case "${confirm,,}" in
               y|yes)
                 cleanup_previous_install
-                return 0
+                info "Previous installation cleaned up - continuing with fresh installation"
                 ;;
               *)
                 info "Cleanup cancelled - continuing with existing installation state"
-                return 0
                 ;;
             esac
             ;;
           *)
             info "Continuing with existing installation state"
-            return 0
             ;;
         esac
       else
