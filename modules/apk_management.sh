@@ -218,6 +218,10 @@ fetch_termux_addon(){
     return 1
   fi
   
+  # Sanitize filename by replacing problematic characters
+  local safe_name="${name//:/}"  # Remove colons
+  safe_name="${safe_name// /_}"   # Replace spaces with underscores
+  
   # Ensure output directory exists with proper permissions
   if ! mkdir -p "$outdir" 2>/dev/null; then
     return 1
@@ -230,13 +234,13 @@ fetch_termux_addon(){
   # Always prioritize GitHub unless F-Droid is explicitly preferred
   if [ "$prefer" = "1" ]; then
     # Try F-Droid first if preferred
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if fetch_fdroid_api "$pkg" "$outdir/${safe_name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${safe_name}.apk"; then
       success=1
     fi
   else
     # Try GitHub first by default (preserves original names)
     if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+      if fetch_github_release "$repo" "$patt" "$outdir" "$safe_name"; then
         success=1
       fi
     fi
@@ -247,13 +251,13 @@ fetch_termux_addon(){
     if [ "$prefer" = "1" ]; then
       # F-Droid was preferred but failed, try GitHub
       if [ -n "$repo" ] && [ -n "$patt" ]; then
-        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+        if fetch_github_release "$repo" "$patt" "$outdir" "$safe_name"; then
           success=1
         fi
       fi
     else
       # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      if fetch_fdroid_api "$pkg" "$outdir/${safe_name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${safe_name}.apk"; then
         success=1
       fi
     fi
@@ -261,7 +265,7 @@ fetch_termux_addon(){
   
   # Ensure downloaded APK has proper permissions
   if [ $success -eq 1 ]; then
-    find "$outdir" -name "*.apk" -newer /tmp -exec chmod 644 {} \; 2>/dev/null || true
+    find "$outdir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
   fi
   
   return $((1 - success))
@@ -328,6 +332,9 @@ step_apk(){
   fi
   
   local failed=0
+  
+  # Set preference for F-Droid downloads
+  export PREFER_FDROID=1
   
   # Install Termux:API (required for GitHub setup and other features)
   if download_apk_with_spinner "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$APK_DOWNLOAD_DIR"; then

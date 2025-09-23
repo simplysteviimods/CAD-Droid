@@ -244,6 +244,13 @@ launch_termux_float(){
 open_developer_settings(){
   local settings_opened=false
   
+  # Launch Termux:Float first for easier multi-tasking (if available)
+  if command -v am >/dev/null 2>&1; then
+    am start -n com.termux.float/.MainActivity >/dev/null 2>&1 && \
+      debug "Termux:Float launched for easier setup" || \
+      debug "Termux:Float not available"
+  fi
+  
   info "Opening Android Developer Settings..."
   
   # Method 1: Direct intent to developer settings
@@ -293,15 +300,12 @@ adb_wireless_helper(){
     pecho "$PASTEL_YELLOW" "Otherwise the pairing code and port will change!"
     echo ""
     
-    # Offer to launch Termux:Float for easy access during setup
-    if ask_yes_no "Launch Termux:Float window for easier setup? (Recommended)" "y"; then
-      info "Launching Termux:Float window..."
-      if command -v am >/dev/null 2>&1; then
-        am start -n com.termux.float/.TermuxFloatService 2>/dev/null || {
-          warn "Termux:Float not available - make sure it's installed"
-        }
-      fi
-      sleep 2
+    # Automatically launch Termux:Float for easier setup (no prompt)
+    info "Launching Termux:Float window for easier setup..."
+    if command -v am >/dev/null 2>&1; then
+      am start -n com.termux.float/.TermuxFloatService 2>/dev/null || {
+        debug "Termux:Float not available - continuing with standard setup"
+      }
     fi
     
     # Skip the first prompt - only use the one later in the function
