@@ -34,7 +34,6 @@ install_adb_tools(){
     # Use appropriate package manager for installation
     if command -v pkg >/dev/null 2>&1; then
       if run_with_progress "Install $pkg (pkg)" 15 bash -c "
-        pkg update -y >/dev/null 2>&1 && 
         pkg install -y $pkg >/dev/null 2>&1
       "; then
         if command -v adb >/dev/null 2>&1; then
