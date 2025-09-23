@@ -93,21 +93,31 @@ init_apk_system(){
   
   # Try primary directory first (external storage)
   local selected_dir=""
-  if mkdir -p "$APK_DOWNLOAD_DIR_PRIMARY" 2>/dev/null && [ -w "$APK_DOWNLOAD_DIR_PRIMARY" ]; then
-    selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"
-    # Set proper permissions for APK directory and all parent directories
-    chmod 755 "$selected_dir" 2>/dev/null || true
-    chmod 755 "$(dirname "$selected_dir")" 2>/dev/null || true
-    # Make sure APKs will be readable and executable
-    find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
-    info "Using external storage for APKs: $selected_dir"
-  else
+  
+  # Ensure parent directories exist with proper permissions
+  local primary_parent
+  primary_parent="$(dirname "$APK_DOWNLOAD_DIR_PRIMARY")"
+  if [ -d "$primary_parent" ] || mkdir -p "$primary_parent" 2>/dev/null; then
+    if mkdir -p "$APK_DOWNLOAD_DIR_PRIMARY" 2>/dev/null && [ -w "$APK_DOWNLOAD_DIR_PRIMARY" ]; then
+      selected_dir="$APK_DOWNLOAD_DIR_PRIMARY"
+      # Set proper permissions for APK directory and all parent directories
+      chmod 755 "$selected_dir" 2>/dev/null || true
+      chmod 755 "$primary_parent" 2>/dev/null || true
+      # Make sure APKs will be readable and executable
+      find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+      info "Using external storage for APKs: $selected_dir"
+    fi
+  fi
+  
+  if [ -z "$selected_dir" ]; then
     # Fallback to internal storage
-    if mkdir -p "$APK_DOWNLOAD_DIR_FALLBACK" 2>/dev/null; then
+    local fallback_parent
+    fallback_parent="$(dirname "$APK_DOWNLOAD_DIR_FALLBACK")"
+    if mkdir -p "$fallback_parent" 2>/dev/null && mkdir -p "$APK_DOWNLOAD_DIR_FALLBACK" 2>/dev/null; then
       selected_dir="$APK_DOWNLOAD_DIR_FALLBACK"
       # Set proper permissions for APK directory and all parent directories
       chmod 755 "$selected_dir" 2>/dev/null || true
-      chmod 755 "$(dirname "$selected_dir")" 2>/dev/null || true
+      chmod 755 "$fallback_parent" 2>/dev/null || true
       # Make sure APKs will be readable and executable
       find "$selected_dir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
       warn "External storage not available, using internal storage: $selected_dir"
@@ -211,6 +221,21 @@ http_fetch(){
   local connect_timeout="${CURL_CONNECT:-5}"
   
   if [ -z "$url" ] || [ -z "$output" ]; then
+    return 1
+  fi
+  
+  # Ensure output directory exists and is writable
+  local output_dir
+  output_dir="$(dirname "$output")"
+  if [ ! -d "$output_dir" ]; then
+    if ! mkdir -p "$output_dir" 2>/dev/null; then
+      warn "Cannot create output directory: $output_dir"
+      return 1
+    fi
+  fi
+  
+  if [ ! -w "$output_dir" ]; then
+    warn "Output directory not writable: $output_dir"
     return 1
   fi
   

@@ -170,7 +170,16 @@ run_with_progress(){
     ;;
   esac
   
-  local logf="$TMPDIR/cmd_$$.log"
+  # Ensure TMPDIR is set and exists
+  local tmpdir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+  if [ ! -d "$tmpdir" ]; then
+    mkdir -p "$tmpdir" 2>/dev/null || {
+      tmpdir="/tmp"
+      mkdir -p "$tmpdir" 2>/dev/null || tmpdir="/dev/null"
+    }
+  fi
+  
+  local logf="$tmpdir/cmd_$$.log"
   local start_time=$(date +%s)
   
   # Start background process
