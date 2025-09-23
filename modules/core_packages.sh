@@ -211,22 +211,42 @@ sanitize_sources_main_only(){
 # Verify and set package mirror configuration with comprehensive testing
 verify_mirror(){
   local sources_file="$PREFIX/etc/apt/sources.list"
-  local url
   
-  if [ -f "$sources_file" ]; then
-    url=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
-  fi
-  
-  if [ -n "$url" ]; then 
-    SELECTED_MIRROR_URL="$url"
-    if [ -z "$SELECTED_MIRROR_NAME" ]; then
-      SELECTED_MIRROR_NAME="(current)"
+  # Ensure we have a valid mirror selection (should be set by step_mirror)
+  if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
+    debug "No mirror selected, reading from sources.list or using default"
+    local url
+    if [ -f "$sources_file" ]; then
+      url=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
+    fi
+    
+    if [ -n "$url" ]; then 
+      SELECTED_MIRROR_URL="$url"
+      if [ -z "$SELECTED_MIRROR_NAME" ]; then
+        SELECTED_MIRROR_NAME="(current)"
+      fi
+    else
+      # Set default mirror if none configured
+      mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+      echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$sources_file"
+      SELECTED_MIRROR_NAME="Default"
+      SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
     fi
   else
-    # Set default mirror if none configured
-    echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$sources_file"
-    SELECTED_MIRROR_NAME="Default"
-    SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
+    # Mirror already selected, ensure it's written to sources.list
+    debug "Using already selected mirror: $SELECTED_MIRROR_URL"
+    mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+    if ! echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file" 2>/dev/null; then
+      warn "Failed to write selected mirror to sources file"
+      return 1
+    fi
+    debug "Mirror written to sources.list: $(cat "$sources_file" 2>/dev/null || echo 'failed to read')"
+  fi
+  
+  # Reload settings after writing sources.list
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    termux-reload-settings >/dev/null 2>&1 || true
+    debug "Termux settings reloaded"
   fi
   
   # Test mirror functionality with package list update (no curl dependency)
@@ -619,27 +639,7 @@ step_mirror(){
     debug "No mirror selected, using first available: $SELECTED_MIRROR_NAME"
   fi
   
-  # Write mirror configuration with better error handling
-  debug "Writing mirror configuration to sources.list"
-  local sources_file="$PREFIX/etc/apt/sources.list"
-  
-  # Ensure directory exists
-  mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
-  
-  # Write the new mirror configuration
-  if echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"; then
-    debug "Mirror configuration written successfully"
-    debug "Sources file content: $(cat "$sources_file" 2>/dev/null || echo 'failed to read')"
-  else
-    warn "Failed to write mirror configuration"
-    return 1
-  fi
-  
-  # Reload settings and clean up sources
-  if command -v termux-reload-settings >/dev/null 2>&1; then
-    termux-reload-settings >/dev/null 2>&1 || true
-  fi
-  
+  # Clean up sources and verify mirror (verify_mirror will handle sources.list writing)
   sanitize_sources_main_only
   verify_mirror
   
