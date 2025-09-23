@@ -406,6 +406,18 @@ upgrade_packages(){
     return 1
   }
   
+  # Proactively install libpcre2 before upgrading to prevent CANNOT LINK EXECUTABLE errors
+  debug "Installing libpcre2 libraries before package upgrade"
+  if command -v detect_install_missing_libs >/dev/null 2>&1; then
+    detect_install_missing_libs || true
+  fi
+  
+  # Also directly install pcre2 packages to ensure availability
+  if ! dpkg -l | grep -q "libpcre2-8-0"; then
+    info "Installing libpcre2 to prevent upgrade errors..."
+    run_with_progress "Install libpcre2 (apt)" 15 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]' || true
+  fi
+  
   # Upgrade with spinners and non-interactive flags
   if command -v pkg >/dev/null 2>&1; then
     if run_with_progress "Upgrading packages with pkg" 45 bash -c '
