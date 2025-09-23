@@ -298,20 +298,98 @@ ensure_download_tool(){
 
 # === Mirror Management ===
 
-# Ensure the selected mirror is enforced and indexes are up-to-date before any apt operation
-# This function addresses the core issue where apt commands could fallback to 
-# default or cached mirrors instead of using the user's selected mirror.
-# It provides robust mirror enforcement by:
-# - Rewriting sources.list with the selected mirror before every apt operation
-# - Cleaning up conflicting sources to prevent mirror mixing
-# - Updating package indexes to ensure they're current
-# - Providing user feedback about which mirror is being used
-ensure_mirror_applied(){
-  local sources_file="$PREFIX/etc/apt/sources.list"
-  debug "Ensuring mirror is applied, sources file: $sources_file"
+# Enhanced mirror configuration that ensures both apt and pkg use the selected mirror
+configure_mirror_repositories(){
+  local mirror_url="$1"
+  local mirror_name="${2:-Selected Mirror}"
   
-  # Initialize APT environment first to prevent lock errors
+  if [ -z "$mirror_url" ]; then
+    warn "No mirror URL provided for repository configuration"
+    return 1
+  fi
+  
+  info "Configuring repositories for mirror: $mirror_name"
+  debug "Mirror URL: $mirror_url"
+  
+  # Initialize APT environment
   initialize_apt_environment
+  
+  # Set up directory structure
+  local apt_dir="$PREFIX/etc/apt"
+  local sources_file="$apt_dir/sources.list"
+  local preferences_file="$apt_dir/preferences"
+  local sources_dir="$apt_dir/sources.list.d"
+  
+  mkdir -p "$apt_dir" "$sources_dir" 2>/dev/null || true
+  
+  # 1. Configure main sources.list for apt
+  debug "Writing main sources.list"
+  if ! echo "deb $mirror_url stable main" > "$sources_file" 2>/dev/null; then
+    warn "Failed to write sources.list"
+    return 1
+  fi
+  
+  # 2. Create apt preferences to prioritize our selected mirror
+  debug "Creating apt preferences file"
+  cat > "$preferences_file" << EOF
+# CAD-Droid Mirror Preferences - Force use of selected mirror
+Package: *
+Pin: origin $(echo "$mirror_url" | sed 's|https://||' | sed 's|http://||' | cut -d'/' -f1)
+Pin-Priority: 1000
+
+# Fallback for any Termux packages
+Package: *
+Pin: origin packages.termux.dev
+Pin-Priority: 500
+
+Package: *
+Pin: origin packages-cf.termux.dev  
+Pin-Priority: 500
+EOF
+  
+  # 3. Set up pkg repository configuration by creating termux.list
+  debug "Creating termux repository list for pkg"
+  echo "deb $mirror_url stable main" > "$sources_dir/termux.list"
+  
+  # 4. Clean up any conflicting repository files
+  find "$sources_dir" -name "*.list" -type f ! -name "termux.list" ! -name "x11.list" 2>/dev/null | while read -r file; do
+    debug "Removing conflicting repo file: $(basename "$file")"
+    rm -f "$file" 2>/dev/null || true
+  done
+  
+  # 5. Export mirror configuration for pkg to use
+  export TERMUX_MAIN_REPO="$mirror_url"
+  
+  # 6. Apply configuration with termux-reload-settings
+  debug "Applying mirror configuration"
+  if command -v termux-reload-settings >/dev/null 2>&1; then
+    termux-reload-settings >/dev/null 2>&1 || true
+    debug "Termux settings reloaded"
+  fi
+  
+  # 7. Verify configuration was applied correctly
+  debug "Verifying mirror configuration"
+  if [ -f "$sources_file" ]; then
+    local configured_mirror
+    configured_mirror=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
+    if [ "$configured_mirror" = "$mirror_url" ]; then
+      debug "Mirror configuration verified: $configured_mirror"
+      return 0
+    else
+      warn "Mirror configuration verification failed: expected $mirror_url, got $configured_mirror"
+    fi
+  fi
+  
+  debug "Sources file content: $(cat "$sources_file" 2>/dev/null || echo 'Could not read')"
+  debug "Preferences file exists: $([ -f "$preferences_file" ] && echo "yes" || echo "no")"
+  debug "Termux repo list exists: $([ -f "$sources_dir/termux.list" ] && echo "yes" || echo "no")"
+  
+  return 0
+}
+
+# Ensure the selected mirror is enforced for both apt and pkg
+ensure_mirror_applied(){
+  debug "Ensuring mirror is applied"
   
   # Ensure we have a valid mirror URL - set default if none selected
   if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
@@ -320,40 +398,18 @@ ensure_mirror_applied(){
     SELECTED_MIRROR_NAME="Default"
   fi
   
-  debug "Using mirror URL: $SELECTED_MIRROR_URL"
+  debug "Applying mirror configuration: ${SELECTED_MIRROR_URL}"
   
-  # Always rewrite sources to ensure selected mirror is used
-  debug "Enforcing mirror: ${SELECTED_MIRROR_URL}"
-  if ! echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file" 2>/dev/null; then
-    warn "Failed to write sources file: $sources_file"
-    debug "Sources file write: FAILED"
-    return 1
-  fi
-  
-  debug "Sources file updated successfully"
-  debug "Current sources content: $(cat "$sources_file" 2>/dev/null || echo 'Could not read')"
-  
-  # Clean up any conflicting sources to prevent mirror mixing
-  sanitize_sources_main_only
-  
-  # Apply termux-reload-settings to ensure configuration is loaded
-  if command -v termux-reload-settings >/dev/null 2>&1; then
-    debug "Reloading Termux settings to apply mirror configuration"
-    run_with_progress "Apply mirror configuration" 3 termux-reload-settings
-    debug "Termux settings reloaded successfully"
+  # Use enhanced mirror configuration
+  if configure_mirror_repositories "$SELECTED_MIRROR_URL" "$SELECTED_MIRROR_NAME"; then
+    debug "Mirror configuration applied successfully"
   else
-    debug "termux-reload-settings not available"
-  fi
-  
-  # Verify sources.list wasn't overwritten
-  if [ -f "$sources_file" ]; then
-    local current_mirror
-    current_mirror=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
-    if [ "$current_mirror" != "$SELECTED_MIRROR_URL" ]; then
-      warn "Sources.list was overwritten, restoring mirror configuration"
-      echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
-      debug "Mirror configuration restored"
-    fi
+    warn "Failed to apply mirror configuration, attempting basic setup"
+    # Fallback to basic configuration
+    initialize_apt_environment
+    local sources_file="$PREFIX/etc/apt/sources.list"
+    mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+    echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -364,8 +420,6 @@ ensure_mirror_applied(){
   
   return 0
 }
-
-# Clean up apt sources to prevent conflicts
 sanitize_sources_main_only(){
   local d="$PREFIX/etc/apt/sources.list.d"
   if [ ! -d "$d" ]; then
@@ -402,26 +456,17 @@ verify_mirror(){
       fi
     else
       # Set default mirror if none configured
-      mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
-      echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$sources_file"
       SELECTED_MIRROR_NAME="Default"
       SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
     fi
-  else
-    # Mirror already selected, ensure it's written to sources.list
-    debug "Using already selected mirror: $SELECTED_MIRROR_URL"
-    mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
-    if ! echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file" 2>/dev/null; then
-      warn "Failed to write selected mirror to sources file"
-      return 1
-    fi
-    debug "Mirror written to sources.list: $(cat "$sources_file" 2>/dev/null || echo 'failed to read')"
   fi
   
-  # Reload settings after writing sources.list
-  if command -v termux-reload-settings >/dev/null 2>&1; then
-    termux-reload-settings >/dev/null 2>&1 || true
-    debug "Termux settings reloaded"
+  # Apply comprehensive mirror configuration for both apt and pkg
+  debug "Applying comprehensive mirror configuration"
+  if ! configure_mirror_repositories "$SELECTED_MIRROR_URL" "$SELECTED_MIRROR_NAME"; then
+    warn "Failed to apply comprehensive mirror configuration, using basic setup"
+    mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+    echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
   fi
   
   # Test mirror functionality with package list update (no curl dependency)
