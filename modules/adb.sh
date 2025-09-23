@@ -47,7 +47,6 @@ install_adb_tools(){
     # Fallback to apt
     if [ "$installed" = false ]; then
       if run_with_progress "Install $pkg (apt)" 15 bash -c "
-        apt update >/dev/null 2>&1 && 
         apt install -y $pkg >/dev/null 2>&1
       "; then
         if command -v adb >/dev/null 2>&1; then
@@ -302,17 +301,7 @@ adb_wireless_helper(){
       sleep 2
     fi
     
-    printf "${PASTEL_PINK}Press Enter to open Developer Settings...${RESET} "
-    read -r || true
-    
-    # Open developer settings
-    open_developer_settings
-    
-    echo ""
-    pecho "$PASTEL_YELLOW" "Complete the pairing process in the Developer Settings that just opened."
-    echo ""
-    printf "${PASTEL_PINK}Press Enter after completing the pairing setup...${RESET} "
-    read -r || true
+    # Skip the first prompt - only use the one later in the function
   else
     info "Non-interactive mode: skipping manual ADB setup"
     return 0
