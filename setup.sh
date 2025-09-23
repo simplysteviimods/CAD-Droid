@@ -23,23 +23,24 @@ handle_script_interruption() {
   printf "\n\033[38;2;255;192;203m✗ Script interrupted at line %s (exit code: %d)\033[0m\n" "$line_no" "$exit_code" >&2
   
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
-    printf "\n\033[38;2;255;105;180mTo ensure proper environment setup:\033[0m\n"
-    printf "\033[38;2;175;238;238m• Exit Termux completely (swipe up from bottom, close Termux)\033[0m\n"
-    printf "\033[38;2;175;238;238m• Reopen Termux to reload the environment\033[0m\n"
-    printf "\033[38;2;175;238;238m• Restart the installation if needed\033[0m\n\n"
+    pecho "$PASTEL_PINK" "To ensure proper environment setup:"
+    pecho "$PASTEL_CYAN" "• Exit Termux completely (swipe up from bottom, close Termux)"
+    pecho "$PASTEL_CYAN" "• Reopen Termux to reload the environment"
+    pecho "$PASTEL_CYAN" "• Restart the installation if needed"
+    echo ""
     
-    printf "\033[38;2;255;105;180mExit Termux and reload now? (Y/n):\033[0m "
+    printf "${PASTEL_PINK}Exit Termux and reload now? (Y/n):${RESET} "
     local response
     read -r response || response="y"
     
     case "${response,,}" in
       ""|y|yes)
-        printf "\033[38;2;175;238;238mExiting Termux for environment reload...\033[0m\n"
+        pecho "$PASTEL_CYAN" "Exiting Termux for environment reload..."
         sleep 2
         exit 0
         ;;
       *)
-        printf "\033[38;2;255;255;224mRemember to exit and reload Termux manually to apply changes\033[0m\n"
+        pecho "$PASTEL_YELLOW" "Remember to exit and reload Termux manually to apply changes"
         ;;
     esac
   fi

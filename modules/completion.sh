@@ -137,7 +137,7 @@ prompt_termux_reboot(){
   printf "${PASTEL_GREEN}•${RESET} Activate desktop environment shortcuts\n"
   printf "${PASTEL_GREEN}•${RESET} Ensure all services start correctly\n\n"
   
-  printf "${PASTEL_PINK}Press Enter to reboot Termux...${RESET} "
+  printf "${PASTEL_PINK}Press Enter to restart Termux...${RESET} "
   
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     read -r || true

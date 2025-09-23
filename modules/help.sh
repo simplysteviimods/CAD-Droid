@@ -47,9 +47,9 @@ show_cad_droid_intro(){
 # Show help information with gradient styling
 show_cad_droid_help(){
   printf "\n"
-  gradient_line "#FF69B4" "#00CED1" "="
+  gradient_line "#F080C0" "#00CED1" "="
   printf "${PASTEL_CYAN}%s${RESET}\n" "$(center_text 'CAD-Droid Help & Commands')"
-  gradient_line "#FF69B4" "#00CED1" "="
+  gradient_line "#F080C0" "#00CED1" "="
   printf "\n"
   
   printf "${PASTEL_YELLOW}Quick Start:${RESET}\n"
