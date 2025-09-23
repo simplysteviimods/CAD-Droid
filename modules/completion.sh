@@ -120,7 +120,7 @@ BASHRC_COMPLETION_EOF
   ok "Final bash configuration applied"
 }
 
-# Prompt for Termux restart
+# Prompt for Termux restart with app close/reopen
 prompt_termux_reboot(){
   info "Setup completion process finished"
   
@@ -137,7 +137,7 @@ prompt_termux_reboot(){
   printf "${PASTEL_GREEN}•${RESET} Activate desktop environment shortcuts\n"
   printf "${PASTEL_GREEN}•${RESET} Ensure all services start correctly\n\n"
   
-  printf "${PASTEL_PINK}Press Enter to restart Termux...${RESET} "
+  printf "${PASTEL_PINK}Press Enter to reboot Termux...${RESET} "
   
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     read -r || true
@@ -147,15 +147,27 @@ prompt_termux_reboot(){
   fi
   
   # Show countdown
-  printf "\n${PASTEL_YELLOW}Restarting Termux in...${RESET}\n"
+  printf "\n${PASTEL_YELLOW}Closing Termux in...${RESET}\n"
   for i in 3 2 1; do
     printf "${PASTEL_CYAN}$i${RESET}..."
     sleep 1
   done
   printf "${PASTEL_GREEN}GO!${RESET}\n\n"
   
-  # Execute the restart
-  exec "$PREFIX/bin/bash" -l
+  # Log out and close the app completely, then reopen
+  info "Closing and reopening Termux for clean environment reload..."
+  
+  # Try to close Termux gracefully using Android intents
+  if command -v am >/dev/null 2>&1; then
+    # Close current session
+    am force-stop com.termux 2>/dev/null || true
+    sleep 2
+    # Reopen Termux
+    am start -n com.termux/com.termux.app.TermuxActivity 2>/dev/null || true
+  else
+    # Fallback to bash restart
+    exec "$PREFIX/bin/bash" -l
+  fi
 }
 
 # Main completion function

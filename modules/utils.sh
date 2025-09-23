@@ -1090,22 +1090,22 @@ setup_ssh_keys(){
 # === Installation Management ===
 
 # Installation flag to track CAD-Droid installation attempts
-readonly INSTALL_FLAG_FILE="$HOME/.cad/install_in_progress"
+readonly INSTALL_FLAG_FILE="$HOME/.cad/cad_droid_installed"
 readonly INSTALL_COMPLETE_FLAG="$HOME/.cad/install_complete"
 
 # Set installation flag at the beginning of install
 set_install_flag(){
-  info "Setting installation flag..."
+  info "Setting permanent installation flag..."
   mkdir -p "$(dirname "$INSTALL_FLAG_FILE")" 2>/dev/null || true
   echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_FLAG_FILE"
   export CAD_DROID_INSTALLING=1
 }
 
-# Mark installation as complete but keep flag for future detection
+# Mark installation as complete and update permanent flag
 clear_install_flag(){
-  # Don't remove the install flag - keep it for future detection
-  # Just mark completion with a separate completion flag
+  # Update the permanent install flag with completion date
   echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_COMPLETE_FLAG"
+  echo "Installation completed: $(date '+%Y-%m-%d %H:%M:%S')" >> "$INSTALL_FLAG_FILE"
   # Keep CAD_DROID_INSTALLING for current session but don't unset globally
 }
 
@@ -1287,15 +1287,10 @@ cleanup_previous_install(){
   local cleaned_count=0
   local total_size=0
   
-  # Clean up installation flags first
-  if [ -f "$INSTALL_FLAG_FILE" ]; then
-    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
-  fi
-  if [ -f "$INSTALL_COMPLETE_FLAG" ]; then
-    rm -f "$INSTALL_COMPLETE_FLAG" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
-  fi
-  
-  # Completely wipe previous configurations to prevent conflicts
+  # Clean up temporary files but preserve permanent install flag
+  # Note: We keep the install flag as it's now permanent
+  local cleaned_count=0
+  local total_size=0
   local config_files=(
     "$HOME/.bashrc"
     "$HOME/.termux/termux.properties" 

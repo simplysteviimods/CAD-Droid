@@ -217,6 +217,9 @@ http_fetch(){
   # Start background wget process
   local start_time=$(date +%s)
   
+  # Remove existing file to ensure clean download
+  rm -f "$output" 2>/dev/null || true
+  
   # Use wget with progress tracking
   wget \
     --timeout="$timeout" \
@@ -226,58 +229,24 @@ http_fetch(){
     --no-check-certificate \
     --quiet \
     --output-document="$output" \
+    --no-clobber=false \
     "$url" &
   
   local pid=$!
   
-  # Progress tracking with elapsed vs estimated time
-  local elapsed=0 frame=0 pct=0
-  local delay="${SPINNER_DELAY:-0.08}"
-  local est_time=15  # Estimated download time for APKs
+  # Simple spinner without percentage (we can't detect actual download progress)
+  local frame=0
+  local delay="${SPINNER_DELAY:-0.1}"
   
-  # Show progress while download runs
+  # Show simple spinner while download runs
   while kill -0 "$pid" 2>/dev/null; do
-    # Calculate elapsed time safely
-    local current_time
-    current_time=$(date +%s 2>/dev/null || echo "$start_time")
-    elapsed=$((current_time - start_time))
-    
-    # Calculate percentage with improved accuracy
-    if [ "$elapsed" -le "$est_time" ] 2>/dev/null; then
-      # Linear progress for time within estimate
-      pct=$(( elapsed * 100 / est_time ))
-    else
-      # Beyond estimate - use logarithmic slowdown for more realistic feel
-      local over=$((elapsed - est_time))
-      local extra_time=$((est_time / 4))  # Allow 25% extra time to reach 95%
-      
-      if [ "$over" -le "$extra_time" ] 2>/dev/null; then
-        # Progress from 90% to 95% over the extra time
-        local base_pct=90
-        local extra_pct=$(( over * 5 / extra_time ))
-        pct=$((base_pct + extra_pct))
-      else
-        # After extra time, slowly approach 99% but never reach 100%
-        local remaining_time=$((elapsed - est_time - extra_time))
-        if [ "$remaining_time" -lt 60 ] 2>/dev/null; then
-          pct=95
-        elif [ "$remaining_time" -lt 120 ] 2>/dev/null; then
-          pct=97
-        else
-          pct=98
-        fi
-      fi
-    fi
-    
-    if [ "$pct" -gt 99 ] 2>/dev/null; then pct=99; fi  # Never show 100% while running
-    
     # Get current spinner character
     local spinner_count=${#BRAILLE_CHARS[@]:-8}
     local sym_idx=$((frame % spinner_count))
     local sym="${BRAILLE_CHARS[$sym_idx]:-*}"
     
-    # Display progress line
-    printf "\r\033[2K\033[38;2;175;238;238m%s\033[0m Downloading APK... \033[38;2;173;216;230m(%3d%%)\033[0m" "$sym" "$pct"
+    # Display simple progress line without percentage
+    printf "\r\033[2K\033[38;2;175;238;238m%s\033[0m Downloading APK..." "$sym"
     
     # Safe frame increment
     if [ "$frame" -lt 10000 ] 2>/dev/null; then
