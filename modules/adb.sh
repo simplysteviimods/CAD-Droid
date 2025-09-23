@@ -230,9 +230,14 @@ connect_adb_device(){
 
 # Launch Termux:Float if available
 launch_termux_float(){
-  # Try to launch Termux:Float for split screen convenience
+  # Try to launch Termux:Float for split screen convenience with current session
   if command -v am >/dev/null 2>&1; then
-    if am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+    # Try multiple methods to launch Termux:Float properly
+    if am start -n com.termux.float/.app.TermuxFloatAppStarter >/dev/null 2>&1; then
+      info "Termux:Float launched for split-screen convenience"
+    elif am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+      info "Termux:Float launched for split-screen convenience"
+    elif am start --user 0 -n com.termux.float/.MainActivity >/dev/null 2>&1; then
       info "Termux:Float launched for split-screen convenience"
     else
       debug "Termux:Float not available - that's okay, user knows to use split-screen"
@@ -246,9 +251,16 @@ open_developer_settings(){
   
   # Launch Termux:Float first for easier multi-tasking (if available)
   if command -v am >/dev/null 2>&1; then
-    am start -n com.termux.float/.MainActivity >/dev/null 2>&1 && \
-      debug "Termux:Float launched for easier setup" || \
+    # Try multiple methods to ensure Termux:Float launches properly
+    if am start -n com.termux.float/.app.TermuxFloatAppStarter >/dev/null 2>&1; then
+      debug "Termux:Float launched for easier setup"
+    elif am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+      debug "Termux:Float launched for easier setup"
+    elif am start --user 0 -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+      debug "Termux:Float launched for easier setup"
+    else
       debug "Termux:Float not available"
+    fi
   fi
   
   info "Opening Android Developer Settings..."
@@ -303,9 +315,16 @@ adb_wireless_helper(){
     # Automatically launch Termux:Float for easier setup (no prompt)
     info "Launching Termux:Float window for easier setup..."
     if command -v am >/dev/null 2>&1; then
-      am start -n com.termux.float/.TermuxFloatService 2>/dev/null || {
+      # Try multiple methods to ensure Termux:Float launches properly with current session
+      if am start -n com.termux.float/.app.TermuxFloatAppStarter >/dev/null 2>&1; then
+        debug "Termux:Float launched successfully"
+      elif am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+        debug "Termux:Float launched successfully"
+      elif am start --user 0 -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+        debug "Termux:Float launched successfully"
+      else
         debug "Termux:Float not available - continuing with standard setup"
-      }
+      fi
     fi
     
     # Skip the first prompt - only use the one later in the function

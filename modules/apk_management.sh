@@ -336,32 +336,32 @@ step_apk(){
   # Set preference for F-Droid downloads
   export PREFER_FDROID=1
   
-  # Install Termux:API (required for GitHub setup and other features)
-  if download_apk_with_spinner "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  # Install Termux:API (required for GitHub setup and other features) - Priority 1
+  if download_apk_with_spinner "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$APK_DOWNLOAD_DIR" "1"; then
     ok "Termux:API downloaded successfully"
   else
     failed=$((failed + 1))
     warn "Failed to download Termux:API"
   fi
   
-  # Install Termux:X11 (required for GUI apps)
-  if download_apk_with_spinner "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  # Install Termux:X11 (required for GUI apps) - Priority 2
+  if download_apk_with_spinner "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$APK_DOWNLOAD_DIR" "2"; then
     ok "Termux:X11 downloaded successfully"
   else
     failed=$((failed + 1))
     warn "Failed to download Termux:X11"
   fi
   
-  # Install Termux:GUI (additional GUI support)
-  if download_apk_with_spinner "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  # Install Termux:GUI (additional GUI support) - Priority 3
+  if download_apk_with_spinner "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$APK_DOWNLOAD_DIR" "3"; then
     ok "Termux:GUI downloaded successfully"
   else
     failed=$((failed + 1))
     warn "Failed to download Termux:GUI"
   fi
   
-  # Install Termux:Float (floating window support)
-  if download_apk_with_spinner "Termux:Float" "com.termux.float" "termux/termux-float" ".*float.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  # Install Termux:Float (floating window support) - Priority 4
+  if download_apk_with_spinner "Termux:Float" "com.termux.float" "termux/termux-float" ".*float.*\.apk" "$APK_DOWNLOAD_DIR" "4"; then
     ok "Termux:Float downloaded successfully"
   else
     failed=$((failed + 1))
@@ -383,17 +383,17 @@ step_apk(){
     pecho "$PASTEL_PINK" "=== APK Installation Guide ==="
     echo ""
     pecho "$PASTEL_YELLOW" "What you need to do:"
-    pecho "$PASTEL_CYAN" "+= Open Android Settings → Security → Unknown Sources"
-    pecho "$PASTEL_CYAN" "+= Or: Settings → Apps → File Manager → Install Unknown Apps"  
-    pecho "$PASTEL_CYAN" "+= Enable installation from your file manager"
+    pecho "$PASTEL_CYAN" "• Open Android Settings → Security → Unknown Sources"
+    pecho "$PASTEL_CYAN" "• Or: Settings → Apps → File Manager → Install Unknown Apps"  
+    pecho "$PASTEL_CYAN" "• Enable installation from your file manager"
     echo ""
     pecho "$PASTEL_YELLOW" "APKs are located at:"
-    pecho "$PASTEL_CYAN" "+= $APK_DOWNLOAD_DIR"
+    pecho "$PASTEL_CYAN" "• $APK_DOWNLOAD_DIR"
     echo ""
     pecho "$PASTEL_YELLOW" "Installation steps:"
-    pecho "$PASTEL_CYAN" "+= Allow ALL permissions when prompted"
-    pecho "$PASTEL_CYAN" "+= Enable 'Display over other apps' for widgets"
-    pecho "$PASTEL_CYAN" "+= Enable notification access if requested"
+    pecho "$PASTEL_CYAN" "• Allow ALL permissions when prompted"
+    pecho "$PASTEL_CYAN" "• Enable 'Display over other apps' for widgets"
+    pecho "$PASTEL_CYAN" "• Enable notification access if requested"
     echo ""
     pecho "$PASTEL_YELLOW" "Press Enter to open file manager..."
     read -r || true
@@ -409,9 +409,9 @@ step_apk(){
   return 0
 }
 
-# Download APK with spinner animation
+# Download APK with spinner animation and rename with priority
 download_apk_with_spinner(){
-  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5"
+  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5" priority="$6"
   
   if [ -z "$name" ] || [ -z "$pkg" ] || [ -z "$outdir" ]; then
     return 1
@@ -443,7 +443,48 @@ download_apk_with_spinner(){
   # Clear spinner line
   printf "\r\033[2K"
   
+  # Rename downloaded APK with priority and proper name if download succeeded
+  if [ $result -eq 0 ]; then
+    rename_apk_with_priority "$name" "$outdir" "$priority"
+  fi
+  
   return $result
+}
+
+# Rename APK with priority number and proper plugin name
+rename_apk_with_priority(){
+  local plugin_name="$1" outdir="$2" priority="$3"
+  
+  # Find the downloaded APK file (may have various names)
+  local apk_file
+  apk_file=$(find "$outdir" -name "*.apk" -newer /tmp -type f | head -1)
+  
+  if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then
+    return 1
+  fi
+  
+  # Map plugin names to proper Termux plugin names
+  local proper_name
+  case "$plugin_name" in
+    "Termux:API"|"Termux-API") proper_name="Termux-API" ;;
+    "Termux:X11"|"Termux-X11") proper_name="Termux-X11" ;;
+    "Termux:GUI"|"Termux-GUI") proper_name="Termux-GUI" ;;
+    "Termux:Float"|"Termux-Float") proper_name="Termux-Float" ;;
+    *) proper_name="$plugin_name" ;;
+  esac
+  
+  # Create new filename with priority
+  local new_name="${priority}. ${proper_name}.apk"
+  local new_path="$outdir/$new_name"
+  
+  # Rename the file
+  if mv "$apk_file" "$new_path" 2>/dev/null; then
+    debug "Renamed APK to: $new_name"
+    return 0
+  else
+    warn "Failed to rename APK: $apk_file"
+    return 1
+  fi
 }
 
 # Open file manager to APK download directory (enhanced)
@@ -534,4 +575,4 @@ open_apk_directory(){
 }
 
 # Export functions for use in other modules
-export -f step_apk fetch_termux_addon http_fetch wget_get download_apk_with_spinner open_apk_directory
+export -f step_apk fetch_termux_addon http_fetch wget_get download_apk_with_spinner rename_apk_with_priority open_apk_directory
