@@ -35,11 +35,11 @@ init_pastel_colors() {
   if init_color_support; then
     # Define comprehensive pastel color palette
     export PASTEL_CYAN='\033[38;2;175;238;238m'       # Pale Turquoise #AFEEEE
-    export PASTEL_PINK='\033[38;2;221;160;221m'       # Plum #DDA0DD (same as PASTEL_PURPLE)
-    export PASTEL_GREEN='\033[38;2;144;238;144m'      # Light Green #90EE90
+    export PASTEL_PINK='\033[38;2;221;160;221m'       # Plum #DDA0DD (kept for compatibility)
+    export PASTEL_GREEN='\033[38;2;195;245;195m'      # More pastel green #C3F5C3
     export PASTEL_YELLOW='\033[38;2;255;255;224m'     # Light Yellow #FFFFE0
     export PASTEL_PURPLE='\033[38;2;221;160;221m'     # Plum #DDA0DD
-    export PASTEL_LAVENDER='\033[38;2;230;230;250m'   # Lavender #E6E6FA
+    export PASTEL_LAVENDER='\033[38;2;230;220;255m'   # Lavender with more lilac tone #E6DCFF
     export PASTEL_ORANGE='\033[38;2;255;218;185m'     # Peach Puff #FFDAB9
     export PASTEL_BLUE='\033[38;2;173;216;230m'       # Light Blue #ADD8E6
     export PASTEL_RED='\033[38;2;255;192;203m'        # Light Pink (red variant) #FFC0CB

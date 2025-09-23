@@ -51,7 +51,7 @@ show_completion_summary(){
     # Force exit of current shell
     exit 0
   else
-    printf "${PASTEL_PINK}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
+    printf "${PASTEL_LAVENDER}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
   fi
 }
 
@@ -69,7 +69,7 @@ configure_completion_bashrc(){
 export PASTEL_CYAN='\033[38;2;175;238;238m'
 export PASTEL_PINK='\033[38;2;221;160;221m'
 export PASTEL_LAVENDER='\033[38;2;220;201;255m'
-export PASTEL_GREEN='\033[38;2;201;255;209m'
+export PASTEL_GREEN='\033[38;2;195;245;195m'
 export PASTEL_YELLOW='\033[38;2;255;235;169m'
 export RESET='\033[0m'
 
@@ -137,7 +137,7 @@ prompt_termux_reboot(){
   printf "${PASTEL_GREEN}•${RESET} Activate desktop environment shortcuts\n"
   printf "${PASTEL_GREEN}•${RESET} Ensure all services start correctly\n\n"
   
-  printf "${PASTEL_PINK}Press Enter to reboot Termux...${RESET} "
+  printf "${PASTEL_LAVENDER}Press Enter to reboot Termux...${RESET} "
   
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     read -r || true

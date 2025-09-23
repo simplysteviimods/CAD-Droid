@@ -49,7 +49,7 @@ install_ubuntu_container(){
   printf "${PASTEL_LAVENDER}• Container-based isolation${RESET}\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Install Ubuntu container? (Y/n):${RESET} "
+    printf "${PASTEL_LAVENDER}Install Ubuntu container? (Y/n):${RESET} "
     local response
     read -r response || response="y"
     case "${response,,}" in
@@ -172,7 +172,7 @@ display_feature_parity_options(){
   printf "${PASTEL_CYAN}+=${RESET} System Monitoring & Diagnostics\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Install additional features? (y/N):${RESET} "
+    printf "${PASTEL_LAVENDER}Install additional features? (y/N):${RESET} "
     local response
     read -r response || response="n"
     case "${response,,}" in

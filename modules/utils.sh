@@ -950,7 +950,7 @@ TERMUX_PROPS_EOF
 
 # Final completion with reboot prompt
 cad_droid_completion(){
-  printf "\n${PASTEL_PINK}CAD-Droid Setup Complete!${RESET}\n"
+  printf "\n${PASTEL_LAVENDER}CAD-Droid Setup Complete!${RESET}\n"
   printf "${PASTEL_YELLOW}========================================${RESET}\n\n"
   
   printf "${PASTEL_GREEN}Installation Summary:${RESET}\n"
@@ -974,7 +974,7 @@ cad_droid_completion(){
   printf "especially the new keyboard layout and theme settings.\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Press Enter to reboot Termux now...${RESET} "
+    printf "${PASTEL_LAVENDER}Press Enter to reboot Termux now...${RESET} "
     read -r || true
     
     printf "\n${PASTEL_YELLOW}Rebooting Termux...${RESET}\n"
@@ -1045,7 +1045,7 @@ setup_ssh_keys(){
   if [ -f "$ssh_key" ]; then
     warn "SSH key already exists at $ssh_key"
     if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "${PASTEL_PINK}Overwrite existing SSH key? (y/N):${RESET} "
+      printf "${PASTEL_LAVENDER}Overwrite existing SSH key? (y/N):${RESET} "
       local response
       read -r response || response="n"
       case "${response,,}" in
@@ -1135,7 +1135,7 @@ check_previous_install(){
         printf "${PASTEL_CYAN}  1) Conservative clean (remove main installation files only)${RESET}\n"
         printf "${PASTEL_CYAN}  2) Deep clean (remove everything that would be installed/downloaded)${RESET}\n"
         printf "${PASTEL_CYAN}  3) No cleaning (continue with existing files)${RESET}\n"
-        printf "${PASTEL_PINK}Select option [1-3]:${RESET} "
+        printf "${PASTEL_LAVENDER}Select option [1-3]:${RESET} "
         
         local cleanup_choice
         read -r cleanup_choice || cleanup_choice="3"
@@ -1143,7 +1143,7 @@ check_previous_install(){
         case "$cleanup_choice" in
           1)
             printf "\n${PASTEL_YELLOW}Conservative cleanup will remove main CAD-Droid files but preserve system configurations.${RESET}\n"
-            printf "${PASTEL_PINK}Proceed with conservative cleanup? (y/N):${RESET} "
+            printf "${PASTEL_LAVENDER}Proceed with conservative cleanup? (y/N):${RESET} "
             local confirm
             read -r confirm || confirm="n"
             case "${confirm,,}" in
@@ -1159,7 +1159,7 @@ check_previous_install(){
           2)
             printf "\n${PASTEL_YELLOW}Deep cleanup will remove ALL files that would be installed or downloaded by CAD-Droid.${RESET}\n"
             printf "${PASTEL_CYAN}This includes proot-distro containers, apt caches, downloaded packages, and system configurations.${RESET}\n"
-            printf "${PASTEL_PINK}Proceed with deep cleanup? (y/N):${RESET} "
+            printf "${PASTEL_LAVENDER}Proceed with deep cleanup? (y/N):${RESET} "
             local confirm
             read -r confirm || confirm="n"
             case "${confirm,,}" in
@@ -1188,7 +1188,7 @@ check_previous_install(){
       if [ "$NON_INTERACTIVE" != "1" ]; then
         # Single confirmation prompt for incomplete installation cleanup
         printf "\n${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
-        printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
+        printf "${PASTEL_LAVENDER}Remove previous installation files and start fresh? (y/N):${RESET} "
         local response
         read -r response || response="n"
         case "${response,,}" in
@@ -1280,15 +1280,15 @@ check_previous_install(){
     printf "\n"
     
     if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "${PASTEL_PINK}Would you like to clean up ALL previous installation files?${RESET}\n"
+      printf "${PASTEL_LAVENDER}Would you like to clean up ALL previous installation files?${RESET}\n"
       printf "${PASTEL_YELLOW}This will remove CAD-Droid configurations, APKs, containers, and shortcuts.${RESET}\n"
-      printf "\n${PASTEL_PINK}   Delete all previous CAD-Droid files? (y/N):${RESET} "
+      printf "\n${PASTEL_LAVENDER}   Delete all previous CAD-Droid files? (y/N):${RESET} "
       local cleanup_response
       read -r cleanup_response || cleanup_response="n"
       case "${cleanup_response,,}" in
         y|yes)
           # Single confirmation prompt
-          printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
+          printf "\n${PASTEL_LAVENDER}Are you absolutely sure? (y/N):${RESET} "
           local final_confirm
           read -r final_confirm || final_confirm="n"
           case "${final_confirm,,}" in
