@@ -23,6 +23,21 @@ pkg_available() {
 }
 
 # Install a package only if it's not already installed
+# Get estimated installation time for a package based on known patterns
+get_package_install_time(){
+  local pkg="$1"
+  
+  # Large packages that typically take longer
+  case "$pkg" in
+    "proot-distro"|"ubuntu"|"debian"|"archlinux") echo "45" ;;
+    "xfce4"|"firefox"|"chromium"|"libreoffice") echo "40" ;;
+    "gcc"|"g++"|"build-essential"|"python3-dev") echo "35" ;;
+    "nodejs"|"python3"|"golang"|"rust") echo "30" ;;
+    "git"|"wget"|"curl"|"nano"|"vim") echo "15" ;;
+    *) echo "25" ;;  # Default for unknown packages
+  esac
+}
+
 apt_install_if_needed(){
   local pkg="$1"
   
@@ -229,7 +244,9 @@ install_core_packages(){
   local total=${#essential_packages[@]}
   
   for pkg in "${essential_packages[@]}"; do
-    if run_with_progress "Install $pkg" 15 apt_install_if_needed "$pkg"; then
+    local install_time
+    install_time=$(get_package_install_time "$pkg")
+    if run_with_progress "Install $pkg" "$install_time" apt_install_if_needed "$pkg"; then
       success_count=$((success_count + 1))
     fi
   done
@@ -254,7 +271,7 @@ install_network_tools(){
   )
   
   for pkg in "${network_packages[@]}"; do
-    run_with_progress "Install $pkg" 10 apt_install_if_needed "$pkg" || true
+    run_with_progress "Install $pkg" 20 apt_install_if_needed "$pkg" || true
   done
   
   return 0
@@ -267,7 +284,7 @@ install_container_support(){
   pecho "$PASTEL_PURPLE" "Installing container support..."
   
   if ! dpkg_is_installed "proot-distro"; then
-    if run_with_progress "Install proot-distro" 20 apt_install_if_needed "proot-distro"; then
+    if run_with_progress "Install proot-distro" 30 apt_install_if_needed "proot-distro"; then
       ok "Container support installed"
     else
       warn "Failed to install container support"
@@ -293,7 +310,7 @@ install_x11_packages(){
   )
   
   for pkg in "${x11_packages[@]}"; do
-    run_with_progress "Install $pkg" 25 apt_install_if_needed "$pkg" || true
+    run_with_progress "Install $pkg" 35 apt_install_if_needed "$pkg" || true
   done
   
   return 0
@@ -604,7 +621,9 @@ step_xfce_termux(){
   local total=${#xfce_packages[@]}
   
   for pkg in "${xfce_packages[@]}"; do
-    if run_with_progress "Install $pkg" 20 apt_install_if_needed "$pkg"; then
+    local install_time
+    install_time=$(get_package_install_time "$pkg")
+    if run_with_progress "Install $pkg" "$install_time" apt_install_if_needed "$pkg"; then
       success_count=$((success_count + 1))
     fi
   done
@@ -622,7 +641,7 @@ step_xfce_termux(){
   
   info "Installing desktop utilities..."
   for pkg in "${desktop_utils[@]}"; do
-    run_with_progress "Install $pkg" 15 apt_install_if_needed "$pkg" || true
+    run_with_progress "Install $pkg" 25 apt_install_if_needed "$pkg" || true
   done
   
   # Configure XFCE for Termux

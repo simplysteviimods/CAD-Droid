@@ -65,7 +65,7 @@ install_termux_xfce(){
   
   for package in "${TERMUX_XFCE_PACKAGES[@]}"; do
     current=$((current + 1))
-    if run_with_progress "Install $package ($current/$total_packages)" 30 apt_install_if_needed "$package"; then
+    if run_with_progress "Install $package ($current/$total_packages)" 35 apt_install_if_needed "$package"; then
       installed_count=$((installed_count + 1))
     else
       failed_packages+=("$package")

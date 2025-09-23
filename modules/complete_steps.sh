@@ -260,7 +260,7 @@ step_xfce(){
     
     # Install packages with progress
     for pkg in "${xfce_packages[@]}"; do
-        run_with_progress "Install $pkg" 30 bash -c "
+        run_with_progress "Install $pkg" 35 bash -c "
             pkg install -y $pkg >/dev/null 2>&1 || apt install -y $pkg >/dev/null 2>&1
         "
     done
