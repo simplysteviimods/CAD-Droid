@@ -83,7 +83,7 @@ fetch_fdroid_api(){
     return 1
   fi
   
-  local tmp="${TMPDIR:-/tmp}/fdroid_${pkg}.json"
+  local tmp="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/fdroid_${pkg}.json"
   
   # Download package metadata from F-Droid API
   if ! http_fetch "$api" "$tmp"; then
@@ -117,7 +117,7 @@ fetch_fdroid_api(){
 fetch_fdroid_page(){
   local pkg="$1"
   local out="$2"
-  local html_file="${TMPDIR:-/tmp}/fdroid_page_${pkg}.html"
+  local html_file="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/fdroid_page_${pkg}.html"
   
   if [ -z "$pkg" ] || [ -z "$out" ]; then
     return 1
@@ -159,7 +159,7 @@ fetch_github_release(){
   fi
   
   # Get latest release information from GitHub API
-  local data_file="${TMPDIR:-/tmp}/github_${repo//\//_}.json"
+  local data_file="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}/github_${repo//\//_}.json"
   if ! http_fetch "$api" "$data_file"; then
     return 1
   fi
@@ -455,9 +455,14 @@ download_apk_with_spinner(){
 rename_apk_with_priority(){
   local plugin_name="$1" outdir="$2" priority="$3"
   
-  # Find the downloaded APK file (may have various names)
+  # Find the downloaded APK file (may have various names) - avoid using /tmp
   local apk_file
-  apk_file=$(find "$outdir" -name "*.apk" -newer /tmp -type f | head -1)
+  apk_file=$(find "$outdir" -name "*.apk" -type f -mmin -5 | head -1)
+  
+  if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then
+    # Fallback: find any APK file in the directory
+    apk_file=$(find "$outdir" -name "*.apk" -type f | head -1)
+  fi
   
   if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then
     return 1

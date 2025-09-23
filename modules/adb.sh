@@ -228,17 +228,22 @@ connect_adb_device(){
 
 # === Android Settings Integration ===
 
-# Launch Termux:Float if available
+# Launch Termux:Float if available with developer settings instructions
 launch_termux_float(){
   # Try to launch Termux:Float for split screen convenience with current session
   if command -v am >/dev/null 2>&1; then
-    # Try multiple methods to launch Termux:Float properly
-    if am start -n com.termux.float/.app.TermuxFloatAppStarter >/dev/null 2>&1; then
+    # Use the correct Termux:Float activity
+    if am start com.termux.window/com.termux.window.TermuxFloatActivity >/dev/null 2>&1; then
       info "Termux:Float launched for split-screen convenience"
-    elif am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
-      info "Termux:Float launched for split-screen convenience"
-    elif am start --user 0 -n com.termux.float/.MainActivity >/dev/null 2>&1; then
-      info "Termux:Float launched for split-screen convenience"
+      
+      # Give user instructions for the Float window
+      echo ""
+      pecho "$PASTEL_YELLOW" "Termux:Float Window Instructions:"
+      pecho "$PASTEL_CYAN" "• Use the floating window to monitor ADB pairing"
+      pecho "$PASTEL_CYAN" "• Watch for IP address and port information"
+      pecho "$PASTEL_CYAN" "• Keep this window visible while setting up developer options"
+      echo ""
+      
     else
       debug "Termux:Float not available - that's okay, user knows to use split-screen"
     fi
@@ -251,13 +256,25 @@ open_developer_settings(){
   
   # Launch Termux:Float first for easier multi-tasking (if available)
   if command -v am >/dev/null 2>&1; then
-    # Try multiple methods to ensure Termux:Float launches properly
-    if am start -n com.termux.float/.app.TermuxFloatAppStarter >/dev/null 2>&1; then
+    # Use the correct Termux:Float activity
+    if am start com.termux.window/com.termux.window.TermuxFloatActivity >/dev/null 2>&1; then
       debug "Termux:Float launched for easier setup"
-    elif am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
-      debug "Termux:Float launched for easier setup"
-    elif am start --user 0 -n com.termux.float/.MainActivity >/dev/null 2>&1; then
-      debug "Termux:Float launched for easier setup"
+      
+      # Show Float window instructions for developer settings
+      echo ""
+      pecho "$PASTEL_PURPLE" "=== Termux:Float Window Setup ==="
+      echo ""
+      pecho "$PASTEL_YELLOW" "Your Termux:Float window is now active!"
+      echo ""
+      pecho "$PASTEL_CYAN" "What to do in the Float window:"
+      pecho "$PASTEL_CYAN" "• Monitor ADB pairing process"
+      pecho "$PASTEL_CYAN" "• Watch for IP address (e.g., 192.168.1.100)"
+      pecho "$PASTEL_CYAN" "• Note the port number (e.g., 12345)"
+      pecho "$PASTEL_CYAN" "• Enter the pairing code when shown"
+      echo ""
+      pecho "$PASTEL_PINK" "Keep the Float window visible while configuring Developer Options!"
+      echo ""
+      
     else
       debug "Termux:Float not available"
     fi
@@ -315,13 +332,15 @@ adb_wireless_helper(){
     # Automatically launch Termux:Float for easier setup (no prompt)
     info "Launching Termux:Float window for easier setup..."
     if command -v am >/dev/null 2>&1; then
-      # Try multiple methods to ensure Termux:Float launches properly with current session
-      if am start -n com.termux.float/.app.TermuxFloatAppStarter >/dev/null 2>&1; then
+      # Use the correct Termux:Float activity
+      if am start com.termux.window/com.termux.window.TermuxFloatActivity >/dev/null 2>&1; then
         debug "Termux:Float launched successfully"
-      elif am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
-        debug "Termux:Float launched successfully"
-      elif am start --user 0 -n com.termux.float/.MainActivity >/dev/null 2>&1; then
-        debug "Termux:Float launched successfully"
+        
+        # Provide Float window guidance
+        echo ""
+        pecho "$PASTEL_CYAN" "Termux:Float window is now active for ADB setup monitoring"
+        echo ""
+        
       else
         debug "Termux:Float not available - continuing with standard setup"
       fi
