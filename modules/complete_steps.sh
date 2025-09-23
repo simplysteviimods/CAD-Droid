@@ -672,8 +672,14 @@ configure_linux_env() {
     local ssh_port
     ssh_port=$(random_port)
     
+    # Store SSH port for later use by shortcuts
+    store_credential "ssh_port" "$ssh_port"
+    
     # Get user configuration
     read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    
+    # Store SSH username for later use by shortcuts
+    store_credential "ssh_username" "$UBUNTU_USERNAME"
     
     if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
         warn "User password setup failed, using default"
@@ -748,6 +754,12 @@ configure_linux_env() {
             chown -R '$UBUNTU_USERNAME':'$UBUNTU_USERNAME' /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
             chmod 700 /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
             chmod 600 /home/'$UBUNTU_USERNAME'/.ssh/authorized_keys >/dev/null 2>&1 || true
+            
+            # Configure SSH daemon with custom port
+            mkdir -p /etc/ssh >/dev/null 2>&1 || true
+            sed -i 's/#Port 22/Port $ssh_port/' /etc/ssh/sshd_config 2>/dev/null || echo 'Port $ssh_port' >> /etc/ssh/sshd_config
+            sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
+            sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 2>/dev/null || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
         \\\"
     "
     
