@@ -197,7 +197,7 @@ install_nano(){
   fi
   
   # Fallback to apt - also handle exit code 100
-  if run_with_progress "Install nano (apt)" 10 bash -c 'apt install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
+  if run_with_progress "Install nano (apt)" 10 bash -c 'yes | apt install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
     ok "Nano installed successfully via apt"
     return 0
   else
@@ -312,7 +312,7 @@ setup_vim_alternative(){
     if command -v pkg >/dev/null 2>&1; then
       run_with_progress "Install vim (pkg)" 15 bash -c 'pkg install -y vim >/dev/null 2>&1' || true
     else
-      run_with_progress "Install vim (apt)" 15 bash -c 'apt install -y vim >/dev/null 2>&1' || true
+      run_with_progress "Install vim (apt)" 15 bash -c 'yes | apt install -y vim >/dev/null 2>&1' || true
     fi
   fi
   

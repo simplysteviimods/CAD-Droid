@@ -47,7 +47,7 @@ install_adb_tools(){
     # Fallback to apt
     if [ "$installed" = false ]; then
       if run_with_progress "Install $pkg (apt)" 15 bash -c "
-        apt install -y $pkg >/dev/null 2>&1
+        yes | apt install -y $pkg >/dev/null 2>&1
       "; then
         if command -v adb >/dev/null 2>&1; then
           installed=true

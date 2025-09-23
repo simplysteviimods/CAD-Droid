@@ -420,8 +420,12 @@ download_apk_with_spinner(){
   # Show spinner while downloading
   printf "Downloading %s... " "$name"
   
-  # Start download in background
-  fetch_termux_addon "$name" "$pkg" "$repo" "$patt" "$outdir" &
+  # Create a unique temporary subdirectory for this download to avoid conflicts
+  local temp_download_dir="$outdir/tmp_${name//[^a-zA-Z0-9]/_}_$$"
+  mkdir -p "$temp_download_dir" 2>/dev/null || return 1
+  
+  # Start download in background to the temporary directory
+  fetch_termux_addon "$name" "$pkg" "$repo" "$patt" "$temp_download_dir" &
   local pid=$!
   
   # Simple spinner animation
@@ -445,7 +449,40 @@ download_apk_with_spinner(){
   
   # Rename downloaded APK with priority and proper name if download succeeded
   if [ $result -eq 0 ]; then
-    rename_apk_with_priority "$name" "$outdir" "$priority"
+    # Find the downloaded APK in the temporary directory and move it with proper name
+    local downloaded_apk
+    downloaded_apk=$(find "$temp_download_dir" -name "*.apk" -type f | head -1)
+    
+    if [ -n "$downloaded_apk" ] && [ -f "$downloaded_apk" ]; then
+      # Map plugin names to proper Termux plugin names
+      local proper_name
+      case "$name" in
+        "Termux:API"|"Termux-API") proper_name="Termux-API" ;;
+        "Termux:X11"|"Termux-X11") proper_name="Termux-X11" ;;
+        "Termux:GUI"|"Termux-GUI") proper_name="Termux-GUI" ;;
+        "Termux:Widget"|"Termux-Widget") proper_name="Termux-Widget" ;;
+        *) proper_name="$name" ;;
+      esac
+      
+      # Create new filename with priority
+      local final_name="${priority}. ${proper_name}.apk"
+      local final_path="$outdir/$final_name"
+      
+      # Move the file to final location with correct name
+      if mv "$downloaded_apk" "$final_path" 2>/dev/null; then
+        debug "Successfully renamed APK to: $final_name"
+      else
+        warn "Download succeeded but renaming failed for $name"
+      fi
+    else
+      warn "Download succeeded but no APK file found for $name"
+    fi
+    
+    # Clean up temporary directory
+    rm -rf "$temp_download_dir" 2>/dev/null || true
+  else
+    # Clean up temporary directory on failure
+    rm -rf "$temp_download_dir" 2>/dev/null || true
   fi
   
   return $result
@@ -455,13 +492,36 @@ download_apk_with_spinner(){
 rename_apk_with_priority(){
   local plugin_name="$1" outdir="$2" priority="$3"
   
-  # Find the downloaded APK file (may have various names) - avoid using /tmp
+  # Find the downloaded APK file more specifically to avoid cross-contamination
   local apk_file
-  apk_file=$(find "$outdir" -name "*.apk" -type f -mmin -5 | head -1)
+  
+  # First try to find files based on the plugin name pattern
+  case "$plugin_name" in
+    "Termux:API"|"Termux-API")
+      # Look for API-related APK files
+      apk_file=$(find "$outdir" -name "*api*.apk" -o -name "*API*.apk" -type f -mmin -5 | head -1)
+      ;;
+    "Termux:X11"|"Termux-X11")
+      # Look for X11-related APK files (including the special case filename)
+      apk_file=$(find "$outdir" -name "*x11*.apk" -o -name "*X11*.apk" -o -name "app-universal-debug.apk" -type f -mmin -5 | head -1)
+      ;;
+    "Termux:GUI"|"Termux-GUI")
+      # Look for GUI-related APK files
+      apk_file=$(find "$outdir" -name "*gui*.apk" -o -name "*GUI*.apk" -type f -mmin -5 | head -1)
+      ;;
+    "Termux:Widget"|"Termux-Widget")
+      # Look for Widget-related APK files
+      apk_file=$(find "$outdir" -name "*widget*.apk" -o -name "*Widget*.apk" -type f -mmin -5 | head -1)
+      ;;
+    *)
+      # Generic fallback
+      apk_file=$(find "$outdir" -name "*.apk" -type f -mmin -5 | head -1)
+      ;;
+  esac
   
   if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then
-    # Fallback: find any APK file in the directory
-    apk_file=$(find "$outdir" -name "*.apk" -type f | head -1)
+    # Fallback: find any APK file in the directory, but prefer the most recent
+    apk_file=$(find "$outdir" -name "*.apk" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)
   fi
   
   if [ -z "$apk_file" ] || [ ! -f "$apk_file" ]; then

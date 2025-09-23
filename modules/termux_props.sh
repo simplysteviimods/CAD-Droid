@@ -246,28 +246,58 @@ fi
 if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
   export CAD_INTRO_SHOWN=1
   echo ""
-  echo -e "\e[38;5;183m===================================================\e[0m"
-  echo -e "\e[38;5;217m              Welcome to CAD-Droid                \e[0m"
-  echo -e "\e[38;5;183m===================================================\e[0m"
+  
+  # Create a gradient-style title card using the same logic as draw_card
+  card_width=55
+  title="Welcome to CAD-Droid"
+  subtitle="Your Android development environment"
+  
+  # Use similar gradient logic as draw_card function
+  # Default pastel colors if not available
+  start_color="9DF2F2"  # Pastel cyan
+  end_color="31D4D4"    # Vibrant cyan
+  
+  # Create gradient border using equal signs
+  border_chars=""
+  i=0
+  while [ $i -lt $card_width ]; do
+    border_chars="${border_chars}="
+    i=$((i + 1))
+  done
+  
+  # Top border with gradient color (cyan)
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
+  
+  # Title - centered with lavender color
+  title_padding=$(( (card_width - ${#title}) / 2 ))
+  printf "%*s\033[38;2;230;220;255m%s\033[0m\n" $title_padding "" "$title"
+  
+  # Subtitle - centered with gradient mid-tone
+  subtitle_padding=$(( (card_width - ${#subtitle}) / 2 ))
+  printf "%*s\033[38;2;175;238;238m%s\033[0m\n" $subtitle_padding "" "$subtitle"
+  
+  # Bottom border with gradient color
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
+  
   echo ""
   if [ -f "$HOME/.cad/cad_droid_installed" ]; then
-    echo -e "\e[32m✓\e[0m CAD-Droid installation \e[32mcomplete\e[0m"
+    printf "\033[38;2;195;245;195m✓\033[0m CAD-Droid installation \033[38;2;195;245;195mcomplete\033[0m\n"
     echo ""
-    echo -e "\e[38;5;159mAvailable shortcuts:\e[0m"
+    printf "\033[38;2;175;238;238mAvailable shortcuts:\033[0m\n"
     if [ -x "$HOME/.local/bin/Linux Desktop" ]; then
-      echo -e "  \e[38;5;217m•\e[0m Linux Desktop - XFCE desktop environment"
+      printf "  \033[38;2;230;220;255m•\033[0m Linux Desktop - XFCE desktop environment\n"
     fi
     if [ -x "$HOME/.local/bin/Linux Sunshine" ]; then
-      echo -e "  \e[38;5;217m•\e[0m Linux Sunshine - Desktop with remote streaming"
+      printf "  \033[38;2;230;220;255m•\033[0m Linux Sunshine - Desktop with remote streaming\n"
     fi
     echo ""
-    echo -e "\e[38;5;159mHelp commands:\e[0m"
-    echo -e "  \e[38;5;217m•\e[0m cad-droid - System management"
-    echo -e "  \e[38;5;217m•\e[0m file-manager - Open file browser"
-    echo -e "  \e[38;5;217m•\e[0m system-info - Show system information"
+    printf "\033[38;2;175;238;238mHelp commands:\033[0m\n"
+    printf "  \033[38;2;230;220;255m•\033[0m cad-droid - System management\n"
+    printf "  \033[38;2;230;220;255m•\033[0m file-manager - Open file browser\n"
+    printf "  \033[38;2;230;220;255m•\033[0m system-info - Show system information\n"
   else
-    echo -e "\e[33m⚠\e[0m CAD-Droid installation \e[33mnot detected\e[0m"
-    echo -e "Run \e[38;5;217m./setup.sh\e[0m to install CAD-Droid"
+    printf "\033[38;2;255;235;169m⚠\033[0m CAD-Droid installation \033[38;2;255;235;169mnot detected\033[0m\n"
+    printf "Run \033[38;2;230;220;255m./setup.sh\033[0m to install CAD-Droid\n"
   fi
   echo ""
 fi

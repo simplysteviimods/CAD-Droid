@@ -39,7 +39,7 @@ show_cad_droid_intro(){
   printf "${PASTEL_YELLOW}Make sure you have a stable internet connection and sufficient storage space.${RESET}\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Press Enter to begin CAD-Droid installation...${RESET} "
+    printf "${PASTEL_LAVENDER}Press Enter to begin CAD-Droid installation...${RESET} "
     read -r || true
   fi
 }

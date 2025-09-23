@@ -248,6 +248,13 @@ validate_spinner_delay() {
         SPINNER_DELAY="0.02"
       fi
       ;;
+    "openssl")
+      if command -v pkg >/dev/null 2>&1; then
+        run_with_progress "Install openssl (pkg)" 15 bash -c 'pkg install -y openssl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      else
+        run_with_progress "Install openssl (apt)" 15 bash -c 'yes | apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
+      fi
+      ;;
     *)
       # Integer value
       if [ "$delay_val" -ge 1 ] 2>/dev/null; then
@@ -410,7 +417,21 @@ read_option(){
 # Returns: 0 if installed, 1 if not installed
 is_distro_installed(){ 
   local distro="$1"
-  [ -n "$distro" ] && [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro" ]
+  
+  # Check if distro name is provided
+  [ -n "$distro" ] || return 1
+  
+  # Check if the rootfs directory exists
+  [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro" ] || return 1
+  
+  # Check if proot-distro recognizes it as installed
+  if command -v proot-distro >/dev/null 2>&1; then
+    proot-distro list --installed 2>/dev/null | grep -q "^$distro$"
+  else
+    # Fallback: check for essential directories in the rootfs
+    [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro/bin" ] && \
+    [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$distro/usr" ]
+  fi
 }
 
 # Read non-empty input with validation (nounset-safe 3-arg variant)
@@ -690,8 +711,14 @@ detect_install_missing_libs() {
   local libs_needed=()
   local test_output
   
-  # Test a common binary to detect missing libraries
-  test_output=$( (date >/dev/null) 2>&1 || true )
+  # Test multiple common binaries to detect missing libraries
+  local test_commands=("date" "cut" "grep" "ls")
+  for cmd in "${test_commands[@]}"; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      test_output=$( ($cmd --help >/dev/null) 2>&1 || true )
+      break
+    fi
+  done
   
   # Check for libpcre2-8.so issues
   if echo "$test_output" | grep -qi 'libpcre2-8.so'; then
@@ -699,11 +726,48 @@ detect_install_missing_libs() {
     warn "Detected missing libpcre2-8.so library"
   fi
   
+  # Check for libandroid-selinux.so dependency on libpcre2-8.so (specific xfce4 error)
+  if echo "$test_output" | grep -qi 'libandroid-selinux.so.*libpcre2-8.so'; then
+    if ! [[ " ${libs_needed[*]} " =~ " pcre2 " ]]; then
+      libs_needed+=("pcre2")
+      warn "Detected libpcre2-8.so dependency issue for libandroid-selinux.so"
+    fi
+  fi
+  
   # Check for libgmp.so issues
   if echo "$test_output" | grep -qi 'libgmp.so'; then
     libs_needed+=("libgmp")
     warn "Detected missing libgmp.so library"
   fi
+  
+  # Check for libcrypto.so.3 issues (openssl)
+  if echo "$test_output" | grep -qi 'libcrypto.so.3'; then
+    libs_needed+=("openssl")
+    warn "Detected missing libcrypto.so.3 library"
+  fi
+  
+  # Proactive installation for known problematic libraries during XFCE installation
+  # These libraries are commonly missing and cause XFCE installation failures
+  local critical_libs=("pcre2" "openssl")
+  for lib in "${critical_libs[@]}"; do
+    if ! [[ " ${libs_needed[*]} " =~ " $lib " ]]; then
+      # Check if the library packages are actually installed
+      case "$lib" in
+        "pcre2")
+          if ! dpkg_is_installed "libpcre2-8-0" && ! dpkg_is_installed "pcre2-utils"; then
+            libs_needed+=("pcre2")
+            warn "Proactively installing libpcre2 (commonly missing during XFCE installation)"
+          fi
+          ;;
+        "openssl")
+          if ! dpkg_is_installed "openssl" && ! dpkg_is_installed "libssl3"; then
+            libs_needed+=("openssl")
+            warn "Proactively installing OpenSSL libraries (commonly missing during XFCE installation)"
+          fi
+          ;;
+      esac
+    fi
+  done
   
   # Proactive detection using ldd if available
   if command -v ldd >/dev/null 2>&1; then
@@ -723,6 +787,14 @@ detect_install_missing_libs() {
       if ! [[ " ${libs_needed[*]} " =~ " libgmp " ]]; then
         libs_needed+=("libgmp")
         warn "Proactive detection: libgmp missing"
+      fi
+    fi
+    
+    # Check for missing libcrypto (openssl)
+    if echo "$ldd_output" | grep -qi "libcrypto.*not found"; then
+      if ! [[ " ${libs_needed[*]} " =~ " openssl " ]]; then
+        libs_needed+=("openssl")
+        warn "Proactive detection: libcrypto missing"
       fi
     fi
   fi
@@ -748,18 +820,13 @@ install_runtime_library() {
   
   case "$lib" in
     "pcre2")
-      if command -v pkg >/dev/null 2>&1; then
-        run_with_progress "Install libpcre2 (pkg)" 15 bash -c 'pkg install -y pcre2 >/dev/null 2>&1 || [ $? -eq 100 ]'
-      else
-        run_with_progress "Install libpcre2 (apt)" 15 bash -c 'apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
-      fi
+      run_with_progress "Install libpcre2 (apt)" 15 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     "libgmp")
-      if command -v pkg >/dev/null 2>&1; then
-        run_with_progress "Install libgmp (pkg)" 15 bash -c 'pkg install -y libgmp >/dev/null 2>&1 || [ $? -eq 100 ]'
-      else
-        run_with_progress "Install libgmp (apt)" 15 bash -c 'apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
-      fi
+      run_with_progress "Install libgmp (apt)" 15 bash -c 'yes | apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      ;;
+    "openssl")
+      run_with_progress "Install openssl (apt)" 15 bash -c 'yes | apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     *)
       warn "Unknown library: $lib"
@@ -950,7 +1017,7 @@ TERMUX_PROPS_EOF
 
 # Final completion with reboot prompt
 cad_droid_completion(){
-  printf "\n${PASTEL_PINK}CAD-Droid Setup Complete!${RESET}\n"
+  printf "\n${PASTEL_LAVENDER}CAD-Droid Setup Complete!${RESET}\n"
   printf "${PASTEL_YELLOW}========================================${RESET}\n\n"
   
   printf "${PASTEL_GREEN}Installation Summary:${RESET}\n"
@@ -974,7 +1041,7 @@ cad_droid_completion(){
   printf "especially the new keyboard layout and theme settings.\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Press Enter to reboot Termux now...${RESET} "
+    printf "${PASTEL_LAVENDER}Press Enter to reboot Termux now...${RESET} "
     read -r || true
     
     printf "\n${PASTEL_YELLOW}Rebooting Termux...${RESET}\n"
@@ -1045,7 +1112,7 @@ setup_ssh_keys(){
   if [ -f "$ssh_key" ]; then
     warn "SSH key already exists at $ssh_key"
     if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "${PASTEL_PINK}Overwrite existing SSH key? (y/N):${RESET} "
+      printf "${PASTEL_LAVENDER}Overwrite existing SSH key? (y/N):${RESET} "
       local response
       read -r response || response="n"
       case "${response,,}" in
@@ -1135,7 +1202,7 @@ check_previous_install(){
         printf "${PASTEL_CYAN}  1) Conservative clean (remove main installation files only)${RESET}\n"
         printf "${PASTEL_CYAN}  2) Deep clean (remove everything that would be installed/downloaded)${RESET}\n"
         printf "${PASTEL_CYAN}  3) No cleaning (continue with existing files)${RESET}\n"
-        printf "${PASTEL_PINK}Select option [1-3]:${RESET} "
+        printf "${PASTEL_LAVENDER}Select option [1-3]:${RESET} "
         
         local cleanup_choice
         read -r cleanup_choice || cleanup_choice="3"
@@ -1143,7 +1210,7 @@ check_previous_install(){
         case "$cleanup_choice" in
           1)
             printf "\n${PASTEL_YELLOW}Conservative cleanup will remove main CAD-Droid files but preserve system configurations.${RESET}\n"
-            printf "${PASTEL_PINK}Proceed with conservative cleanup? (y/N):${RESET} "
+            printf "${PASTEL_LAVENDER}Proceed with conservative cleanup? (y/N):${RESET} "
             local confirm
             read -r confirm || confirm="n"
             case "${confirm,,}" in
@@ -1159,7 +1226,7 @@ check_previous_install(){
           2)
             printf "\n${PASTEL_YELLOW}Deep cleanup will remove ALL files that would be installed or downloaded by CAD-Droid.${RESET}\n"
             printf "${PASTEL_CYAN}This includes proot-distro containers, apt caches, downloaded packages, and system configurations.${RESET}\n"
-            printf "${PASTEL_PINK}Proceed with deep cleanup? (y/N):${RESET} "
+            printf "${PASTEL_LAVENDER}Proceed with deep cleanup? (y/N):${RESET} "
             local confirm
             read -r confirm || confirm="n"
             case "${confirm,,}" in
@@ -1186,18 +1253,52 @@ check_previous_install(){
       warn "Incomplete installation attempt detected (started: $flag_date)"
       
       if [ "$NON_INTERACTIVE" != "1" ]; then
-        # Single confirmation prompt for incomplete installation cleanup
-        printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
-        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
-        printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
-        local response
-        read -r response || response="n"
-        case "${response,,}" in
-          y|yes)
-            cleanup_previous_install "conservative"
-            info "Previous installation cleaned up - continuing with fresh installation"
+        # Show the same cleanup options for incomplete installations
+        printf "\n${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+        
+        # Enhanced cleanup options (same as completed installation)
+        printf "${PASTEL_PURPLE}Choose cleanup option:${RESET}\n"
+        printf "${PASTEL_CYAN}  1) Conservative clean (remove main installation files only)${RESET}\n"
+        printf "${PASTEL_CYAN}  2) Deep clean (remove everything that would be installed/downloaded)${RESET}\n"
+        printf "${PASTEL_CYAN}  3) No cleaning (continue with existing files)${RESET}\n"
+        printf "${PASTEL_LAVENDER}Select option [1-3]:${RESET} "
+        
+        local cleanup_choice
+        read -r cleanup_choice || cleanup_choice="3"
+        
+        case "$cleanup_choice" in
+          1)
+            printf "\n${PASTEL_YELLOW}Conservative cleanup will remove main CAD-Droid files but preserve system configurations.${RESET}\n"
+            printf "${PASTEL_LAVENDER}Proceed with conservative cleanup? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install "conservative"
+                info "Conservative cleanup completed - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing files"
+                ;;
+            esac
             ;;
-          *)
+          2)
+            printf "\n${PASTEL_YELLOW}Deep cleanup will remove ALL files that would be installed or downloaded by CAD-Droid.${RESET}\n"
+            printf "${PASTEL_RED}This includes containers, APKs, SSH keys, and system configurations.${RESET}\n"
+            printf "${PASTEL_LAVENDER}Proceed with deep cleanup? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install "deep"
+                info "Deep cleanup completed - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing files"
+                ;;
+            esac
+            ;;
+          3|*)
             info "Continuing with existing installation state"
             ;;
         esac
@@ -1281,15 +1382,15 @@ check_previous_install(){
     printf "\n"
     
     if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "${PASTEL_PINK}Would you like to clean up ALL previous installation files?${RESET}\n"
+      printf "${PASTEL_LAVENDER}Would you like to clean up ALL previous installation files?${RESET}\n"
       printf "${PASTEL_YELLOW}This will remove CAD-Droid configurations, APKs, containers, and shortcuts.${RESET}\n"
-      printf "\n${PASTEL_PINK}   Delete all previous CAD-Droid files? (y/N):${RESET} "
+      printf "\n${PASTEL_LAVENDER}   Delete all previous CAD-Droid files? (y/N):${RESET} "
       local cleanup_response
       read -r cleanup_response || cleanup_response="n"
       case "${cleanup_response,,}" in
         y|yes)
           # Single confirmation prompt
-          printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
+          printf "\n${PASTEL_LAVENDER}Are you absolutely sure? (y/N):${RESET} "
           local final_confirm
           read -r final_confirm || final_confirm="n"
           case "${final_confirm,,}" in
@@ -1342,6 +1443,7 @@ cleanup_previous_install(){
   local deep_cleanup_items=(
     "$HOME/.config/xfce4"
     "$HOME/.proot-distro"
+    "$PREFIX/var/lib/proot-distro"
     "$PREFIX/var/lib/apt/lists"
     "$PREFIX/var/cache/apt"
     "$PREFIX/tmp"
@@ -1450,6 +1552,27 @@ cleanup_previous_install(){
     
     if apt-get update >/dev/null 2>&1; then
       debug "Updated package indexes after cleanup"
+    fi
+    
+    # Deep cleanup: Remove proot-distro containers and data
+    info "Removing proot-distro containers and data..."
+    if command -v proot-distro >/dev/null 2>&1; then
+      # List and remove all installed distributions
+      local installed_distros
+      installed_distros=$(proot-distro list --installed 2>/dev/null | grep -E '^[a-z]+$' || true)
+      if [ -n "$installed_distros" ]; then
+        while IFS= read -r distro; do
+          if [ -n "$distro" ]; then
+            info "Removing proot-distro container: $distro"
+            if proot-distro remove "$distro" --force 2>/dev/null; then
+              debug "Removed proot-distro container: $distro"
+              cleaned_count=$((cleaned_count + 1))
+            else
+              warn "Failed to remove proot-distro container: $distro"
+            fi
+          fi
+        done <<< "$installed_distros"
+      fi
     fi
   fi
   

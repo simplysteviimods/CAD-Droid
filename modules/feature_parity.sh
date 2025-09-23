@@ -21,13 +21,9 @@ setup_proot_containers(){
     ensure_mirror_applied
   fi
   
-  # Install proot-distro
+  # Install proot-distro using apt (more reliable than pkg)
   if ! command -v proot-distro >/dev/null 2>&1; then
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Install proot-distro (pkg)" 30 bash -c 'pkg install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
-    else  
-      run_with_progress "Install proot-distro (apt)" 30 bash -c 'apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
-    fi
+    run_with_progress "Install proot-distro (apt)" 30 bash -c 'yes | DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
   fi
   
   if ! command -v proot-distro >/dev/null 2>&1; then
@@ -53,7 +49,7 @@ install_ubuntu_container(){
   printf "${PASTEL_LAVENDER}• Container-based isolation${RESET}\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Install Ubuntu container? (Y/n):${RESET} "
+    printf "${PASTEL_LAVENDER}Install Ubuntu container? (Y/n):${RESET} "
     local response
     read -r response || response="y"
     case "${response,,}" in
@@ -66,8 +62,8 @@ install_ubuntu_container(){
   
   info "Installing Ubuntu container..."
   
-  # Install Ubuntu with progress feedback
-  run_with_progress "Install Ubuntu container" 180 bash -c 'proot-distro install ubuntu >/dev/null 2>&1'
+  # Install Ubuntu with progress feedback and non-interactive mode
+  run_with_progress "Install Ubuntu container" 180 bash -c 'DEBIAN_FRONTEND=noninteractive proot-distro install ubuntu >/dev/null 2>&1'
   
   if proot_distro_installed "ubuntu"; then
     ok "Ubuntu container installed successfully"
@@ -76,7 +72,7 @@ install_ubuntu_container(){
     run_with_progress "Configure Ubuntu container" 45 bash -c '
       proot-distro login ubuntu -- bash -c "
         apt update >/dev/null 2>&1 &&
-        apt install -y sudo openssh-server wget curl jq nano dbus-x11 ca-certificates >/dev/null 2>&1
+        yes | apt install -y sudo openssh-server wget curl jq nano dbus-x11 ca-certificates >/dev/null 2>&1
       "
     '
     
@@ -176,7 +172,7 @@ display_feature_parity_options(){
   printf "${PASTEL_CYAN}+=${RESET} System Monitoring & Diagnostics\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
-    printf "${PASTEL_PINK}Install additional features? (y/N):${RESET} "
+    printf "${PASTEL_LAVENDER}Install additional features? (y/N):${RESET} "
     local response
     read -r response || response="n"
     case "${response,,}" in

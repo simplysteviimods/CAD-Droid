@@ -70,7 +70,7 @@ apt_install_if_needed(){
   fi
   
   # Fallback to apt install - also handle exit code 100
-  apt install -y "$pkg" >/dev/null 2>&1
+  yes | apt install -y "$pkg" >/dev/null 2>&1
   local apt_result=$?
   if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
     ok "$pkg installed successfully via apt"
@@ -98,7 +98,7 @@ apt_fix_broken() {
     fi
     
     # Fallback to apt commands
-    apt install -f -y >/dev/null 2>&1 &&
+    yes | apt install -f -y >/dev/null 2>&1 &&
     apt autoremove -y >/dev/null 2>&1
   '
 }
@@ -151,6 +151,7 @@ ensure_download_tool(){
 # - Providing user feedback about which mirror is being used
 ensure_mirror_applied(){
   local sources_file="$PREFIX/etc/apt/sources.list"
+  debug "Ensuring mirror is applied, sources file: $sources_file"
   
   # Ensure we have a valid mirror URL - set default if none selected
   if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
@@ -159,16 +160,28 @@ ensure_mirror_applied(){
     SELECTED_MIRROR_NAME="Default"
   fi
   
+  debug "Using mirror URL: $SELECTED_MIRROR_URL"
+  
   # Always rewrite sources to ensure selected mirror is used
   debug "Enforcing mirror: ${SELECTED_MIRROR_URL}"
-  echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
+  if ! echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file" 2>/dev/null; then
+    warn "Failed to write sources file: $sources_file"
+    debug "Sources file write: FAILED"
+    return 1
+  fi
+  
+  debug "Sources file updated successfully"
+  debug "Current sources content: $(cat "$sources_file" 2>/dev/null || echo 'Could not read')"
   
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
   # Apply termux-reload-settings first to ensure configuration is loaded
   if command -v termux-reload-settings >/dev/null 2>&1; then
+    debug "Reloading Termux settings"
     run_with_progress "Reload Termux settings" 3 termux-reload-settings
+  else
+    debug "termux-reload-settings not available"
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -321,34 +334,67 @@ install_x11_packages(){
 # Update package lists using appropriate Termux commands
 update_package_lists(){
   if [ "${PACKAGES_UPDATED:-0}" = "1" ]; then
+    debug "Package lists already updated this session, skipping"
     return 0  # Already updated this session
   fi
   
   info "Updating package lists..."
+  debug "Using mirror: ${SELECTED_MIRROR_URL:-default}"
   
   # Ensure selected mirror is applied and sources file is written before updating
   ensure_mirror_applied
   
+  # Check if sources file exists and is readable
+  local sources_file="$PREFIX/etc/apt/sources.list"
+  if [ ! -f "$sources_file" ]; then
+    warn "Sources file missing: $sources_file"
+    debug "Creating minimal sources file"
+    echo "deb ${SELECTED_MIRROR_URL:-https://packages.termux.dev/apt/termux-main} stable main" > "$sources_file"
+  fi
+  
+  debug "Sources file content:"
+  debug "$(cat "$sources_file" 2>/dev/null || echo 'Could not read sources file')"
+  
   # Simple approach - try pkg first, then apt
   if command -v pkg >/dev/null 2>&1; then
     info "Updating with pkg..."
-    if pkg update -y >/dev/null 2>&1; then
+    debug "Running: pkg update -y"
+    local pkg_log="${TMPDIR:-$PREFIX/tmp}/pkg-update-$$.log"
+    if yes | pkg update -y 2>&1 | tee "$pkg_log" >/dev/null; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
+      debug "pkg update: SUCCESS"
+      rm -f "$pkg_log" 2>/dev/null || true
       return 0
     else
       warn "pkg update failed, trying apt..."
+      debug "pkg update: FAILED"
+      if [ -f "$pkg_log" ]; then
+        debug "pkg update error log:"
+        debug "$(cat "$pkg_log" 2>/dev/null | tail -10)"
+        rm -f "$pkg_log" 2>/dev/null || true
+      fi
     fi
   fi
   
   # Fallback to apt-get update
   info "Updating with apt..."
-  if apt-get update >/dev/null 2>&1; then
+  debug "Running: apt-get update"
+  local apt_log="${TMPDIR:-$PREFIX/tmp}/apt-update-$$.log"
+  if yes | apt-get update 2>&1 | tee "$apt_log" >/dev/null; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
+    debug "apt-get update: SUCCESS"
+    rm -f "$apt_log" 2>/dev/null || true
     return 0
   else
     warn "Package list update failed"
+    debug "apt-get update: FAILED"
+    if [ -f "$apt_log" ]; then
+      debug "apt-get update error log:"
+      debug "$(cat "$apt_log" 2>/dev/null | tail -10)"
+      rm -f "$apt_log" 2>/dev/null || true
+    fi
     return 1
   fi
 }
@@ -366,12 +412,28 @@ upgrade_packages(){
     return 1
   }
   
+  # Proactively install essential libraries before upgrading to prevent CANNOT LINK EXECUTABLE errors
+  debug "Installing essential libraries before package upgrade"
+  if command -v detect_install_missing_libs >/dev/null 2>&1; then
+    detect_install_missing_libs || true
+  fi
+  
+  # Also directly install essential packages to ensure availability
+  local essential_libs=("libpcre2-8-0" "pcre2-utils" "openssl" "libssl3")
+  for lib in "${essential_libs[@]}"; do
+    if ! dpkg -l | grep -q "$lib"; then
+      info "Installing $lib to prevent upgrade errors..."
+      run_with_progress "Install $lib (apt)" 15 bash -c "yes | DEBIAN_FRONTEND=noninteractive apt install -y '$lib' >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
+    fi
+  done
+  
   # Upgrade with spinners and non-interactive flags
   if command -v pkg >/dev/null 2>&1; then
     if run_with_progress "Upgrading packages with pkg" 45 bash -c '
-      DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
+      yes | DEBIAN_FRONTEND=noninteractive pkg upgrade -y \
         -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
+        -o Dpkg::Options::="--force-confold" \
+        -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1
     '; then
       ok "Packages upgraded successfully via pkg"
       return 0
@@ -382,9 +444,10 @@ upgrade_packages(){
   
   # Fallback to apt upgrade with spinner and non-interactive flags
   if run_with_progress "Upgrading packages with apt" 45 bash -c '
-    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    yes | DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
       -o Dpkg::Options::="--force-confdef" \
-      -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
+      -o Dpkg::Options::="--force-confold" \
+      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1
   '; then
     ok "Packages upgraded successfully via apt"
     return 0
@@ -504,9 +567,54 @@ step_mirror(){
     fi
   fi
   
-  # Write mirror configuration
-  # Simple mirror configuration
-  echo "deb ${SELECTED_MIRROR_URL} stable main" > "$PREFIX/etc/apt/sources.list"
+  # Test selected mirror before proceeding
+  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
+    info "Testing selected mirror connectivity..."
+    debug "Testing mirror: $SELECTED_MIRROR_URL"
+    if curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
+      ok "Mirror connectivity test passed: $SELECTED_MIRROR_NAME"
+      debug "Mirror test: SUCCESS"
+    else
+      warn "Selected mirror is not reachable, trying fallback"
+      debug "Mirror test: FAILED"
+      # Try to find a working mirror from the list
+      local working_mirror="" working_name=""
+      for i in "${!urls[@]}"; do
+        debug "Testing fallback mirror: ${urls[$i]}"
+        if curl --max-time 8 --connect-timeout 3 --fail --silent --head "${urls[$i]}" >/dev/null 2>&1; then
+          working_mirror="${urls[$i]}"
+          working_name="${names[$i]}"
+          debug "Found working fallback mirror: $working_mirror"
+          break
+        fi
+      done
+      
+      if [ -n "$working_mirror" ]; then
+        SELECTED_MIRROR_URL="$working_mirror"
+        SELECTED_MIRROR_NAME="$working_name"
+        ok "Using working fallback mirror: $SELECTED_MIRROR_NAME"
+      else
+        warn "No working mirrors found, using original selection anyway"
+        debug "All mirrors failed connectivity test"
+      fi
+    fi
+  fi
+  
+  # Write mirror configuration with better error handling
+  debug "Writing mirror configuration to sources.list"
+  local sources_file="$PREFIX/etc/apt/sources.list"
+  
+  # Ensure directory exists
+  mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+  
+  # Write the new mirror configuration
+  if echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"; then
+    debug "Mirror configuration written successfully"
+    debug "Sources file content: $(cat "$sources_file" 2>/dev/null || echo 'failed to read')"
+  else
+    warn "Failed to write mirror configuration"
+    return 1
+  fi
   
   # Reload settings and clean up sources
   if command -v termux-reload-settings >/dev/null 2>&1; then
@@ -516,12 +624,28 @@ step_mirror(){
   sanitize_sources_main_only
   verify_mirror
   
-  # Simple mirror test
-  info "Testing mirror connection..."
-  if apt-get update >/dev/null 2>&1; then
-    ok "Mirror connection successful: ${SELECTED_MIRROR_NAME}"
+  # Verify the mirror is working by testing package list update
+  debug "Verifying mirror configuration with package update test"
+  
+  # Create temp directory if it doesn't exist and use proper temp file
+  local temp_dir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+  mkdir -p "$temp_dir" 2>/dev/null || true
+  local update_log="$temp_dir/mirror-test-$$"
+  
+  if yes | apt-get update >"$update_log" 2>&1; then
+    ok "Mirror configuration verified successfully: ${SELECTED_MIRROR_NAME}"
+    debug "Mirror verification: SUCCESS"
+    rm -f "$update_log" 2>/dev/null || true
   else
-    warn "Mirror may have issues, but continuing..."
+    warn "Mirror verification failed, but mirror configuration is saved"
+    debug "Mirror verification: FAILED"
+    if [ -f "$update_log" ]; then
+      debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
+    else
+      debug "Update log: could not create temporary file"
+    fi
+    rm -f "$update_log" 2>/dev/null || true
+    # Don't return error - the configuration is saved even if verification fails
   fi
   
   mark_step_status "success"
@@ -536,19 +660,14 @@ step_bootstrap(){
 
 # Step: Add X11 repository
 step_x11repo(){
-  # Ensure selected mirror is applied before installing X11 repo
-  ensure_mirror_applied
-  
-  # Try pkg first, then apt as fallback
-  if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Add X11 repository (pkg)" 15 bash -c 'pkg install -y x11-repo >/dev/null 2>&1'; then
-      mark_step_status "success"
-      return 0
-    fi
+  # Mirror should already be configured in step_mirror, only ensure if not available
+  if [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
+    debug "Sources file missing, applying mirror configuration"
+    ensure_mirror_applied
   fi
   
-  # Fallback to apt
-  run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || true'
+  # Use apt directly as pkg is not reliable for x11-repo
+  run_with_progress "Add X11 repository (apt)" 15 bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1 || true'
   mark_step_status "success"
 }
 
@@ -563,9 +682,30 @@ step_aptni(){
 
 # Step: System update
 step_systemup(){
-  if update_package_lists; then
-    upgrade_packages || true
+  debug "Starting system update (step 6)..."
+  debug "Current mirror: ${SELECTED_MIRROR_URL:-not set}"
+  debug "Packages updated flag: ${PACKAGES_UPDATED:-0}"
+  
+  # Mirror should already be configured in step_mirror, only ensure if not set
+  if [ -z "${SELECTED_MIRROR_URL:-}" ] || [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
+    debug "Mirror not configured, applying mirror configuration"
+    ensure_mirror_applied
+  else
+    debug "Using existing mirror configuration: ${SELECTED_MIRROR_NAME:-unknown}"
   fi
+  
+  if update_package_lists; then
+    debug "Package list update: SUCCESS"
+    upgrade_packages || {
+      warn "Package upgrade failed but continuing"
+      debug "Package upgrade: FAILED (exit code: $?)"
+    }
+  else
+    warn "Package list update failed"
+    debug "Package list update: FAILED (exit code: $?)"
+  fi
+  
+  debug "System update step completed"
   mark_step_status "success"
 }
 
@@ -586,19 +726,29 @@ step_coreinst(){
 step_xfce_termux(){
   info "Installing XFCE desktop environment for Termux..."
   
-  # Ensure X11 repository is available first
-  ensure_mirror_applied
+  # Mirror should already be configured, only ensure if sources.list doesn't exist
+  if [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
+    debug "Sources file missing, applying mirror configuration"
+    ensure_mirror_applied
+  fi
   
   # Install X11 repo if not already installed
   if ! dpkg_is_installed "x11-repo"; then
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Add X11 repository (pkg)" 15 bash -c 'pkg install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
-    else
-      run_with_progress "Add X11 repository (apt)" 15 bash -c 'apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
-    fi
+    run_with_progress "Add X11 repository (apt)" 15 bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
     
-    # Update indexes after adding X11 repo
-    ensure_mirror_applied
+    # Update indexes after adding X11 repo - don't need ensure_mirror_applied
+    debug "Updating package indexes after X11 repo installation"
+    update_package_lists || true
+  fi
+  
+  # Proactively install critical libraries that commonly cause XFCE installation failures
+  info "Installing critical runtime libraries..."
+  run_with_progress "Install libpcre2 libraries" 20 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
+  run_with_progress "Install OpenSSL libraries" 20 bash -c 'yes | apt install -y openssl libssl3 >/dev/null 2>&1 || [ $? -eq 100 ]'
+  
+  # Detect and install any remaining missing runtime libraries
+  if command -v detect_install_missing_libs >/dev/null 2>&1; then
+    detect_install_missing_libs || true
   fi
   
   # XFCE desktop components for Termux
