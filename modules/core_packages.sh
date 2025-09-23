@@ -412,17 +412,20 @@ upgrade_packages(){
     return 1
   }
   
-  # Proactively install libpcre2 before upgrading to prevent CANNOT LINK EXECUTABLE errors
-  debug "Installing libpcre2 libraries before package upgrade"
+  # Proactively install essential libraries before upgrading to prevent CANNOT LINK EXECUTABLE errors
+  debug "Installing essential libraries before package upgrade"
   if command -v detect_install_missing_libs >/dev/null 2>&1; then
     detect_install_missing_libs || true
   fi
   
-  # Also directly install pcre2 packages to ensure availability
-  if ! dpkg -l | grep -q "libpcre2-8-0"; then
-    info "Installing libpcre2 to prevent upgrade errors..."
-    run_with_progress "Install libpcre2 (apt)" 15 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]' || true
-  fi
+  # Also directly install essential packages to ensure availability
+  local essential_libs=("libpcre2-8-0" "pcre2-utils" "openssl" "libssl3")
+  for lib in "${essential_libs[@]}"; do
+    if ! dpkg -l | grep -q "$lib"; then
+      info "Installing $lib to prevent upgrade errors..."
+      run_with_progress "Install $lib (apt)" 15 bash -c "DEBIAN_FRONTEND=noninteractive apt install -y '$lib' >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
+    fi
+  done
   
   # Upgrade with spinners and non-interactive flags
   if command -v pkg >/dev/null 2>&1; then

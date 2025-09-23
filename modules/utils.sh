@@ -248,6 +248,13 @@ validate_spinner_delay() {
         SPINNER_DELAY="0.02"
       fi
       ;;
+    "openssl")
+      if command -v pkg >/dev/null 2>&1; then
+        run_with_progress "Install openssl (pkg)" 15 bash -c 'pkg install -y openssl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      else
+        run_with_progress "Install openssl (apt)" 15 bash -c 'apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
+      fi
+      ;;
     *)
       # Integer value
       if [ "$delay_val" -ge 1 ] 2>/dev/null; then
@@ -727,6 +734,12 @@ detect_install_missing_libs() {
     warn "Detected missing libgmp.so library"
   fi
   
+  # Check for libcrypto.so.3 issues (openssl)
+  if echo "$test_output" | grep -qi 'libcrypto.so.3'; then
+    libs_needed+=("openssl")
+    warn "Detected missing libcrypto.so.3 library"
+  fi
+  
   # Proactive detection using ldd if available
   if command -v ldd >/dev/null 2>&1; then
     local ldd_output
@@ -745,6 +758,14 @@ detect_install_missing_libs() {
       if ! [[ " ${libs_needed[*]} " =~ " libgmp " ]]; then
         libs_needed+=("libgmp")
         warn "Proactive detection: libgmp missing"
+      fi
+    fi
+    
+    # Check for missing libcrypto (openssl)
+    if echo "$ldd_output" | grep -qi "libcrypto.*not found"; then
+      if ! [[ " ${libs_needed[*]} " =~ " openssl " ]]; then
+        libs_needed+=("openssl")
+        warn "Proactive detection: libcrypto missing"
       fi
     fi
   fi
@@ -774,6 +795,9 @@ install_runtime_library() {
       ;;
     "libgmp")
       run_with_progress "Install libgmp (apt)" 15 bash -c 'apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      ;;
+    "openssl")
+      run_with_progress "Install openssl (apt)" 15 bash -c 'apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
       ;;
     *)
       warn "Unknown library: $lib"

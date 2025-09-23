@@ -247,31 +247,36 @@ if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
   export CAD_INTRO_SHOWN=1
   echo ""
   
-  # Create a gradient-style title card using pastel colors
+  # Create a gradient-style title card using the same logic as draw_card
   card_width=55
   title="Welcome to CAD-Droid"
   subtitle="Your Android development environment"
   
-  # Create border string (more portable than seq)
+  # Use similar gradient logic as draw_card function
+  # Default pastel colors if not available
+  start_color="9DF2F2"  # Pastel cyan
+  end_color="31D4D4"    # Vibrant cyan
+  
+  # Create gradient border using equal signs
   border_chars=""
   i=0
   while [ $i -lt $card_width ]; do
-    border_chars="${border_chars}═"
+    border_chars="${border_chars}="
     i=$((i + 1))
   done
   
-  # Top border with gradient-like color
+  # Top border with gradient color (cyan)
   printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
   
   # Title - centered with lavender color
   title_padding=$(( (card_width - ${#title}) / 2 ))
   printf "%*s\033[38;2;230;220;255m%s\033[0m\n" $title_padding "" "$title"
   
-  # Subtitle - centered with cyan color  
+  # Subtitle - centered with gradient mid-tone
   subtitle_padding=$(( (card_width - ${#subtitle}) / 2 ))
   printf "%*s\033[38;2;175;238;238m%s\033[0m\n" $subtitle_padding "" "$subtitle"
   
-  # Bottom border
+  # Bottom border with gradient color
   printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
   
   echo ""
