@@ -21,13 +21,9 @@ setup_proot_containers(){
     ensure_mirror_applied
   fi
   
-  # Install proot-distro
+  # Install proot-distro using apt (more reliable than pkg)
   if ! command -v proot-distro >/dev/null 2>&1; then
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Install proot-distro (pkg)" 30 bash -c 'pkg install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
-    else  
-      run_with_progress "Install proot-distro (apt)" 30 bash -c 'apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
-    fi
+    run_with_progress "Install proot-distro (apt)" 30 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
   fi
   
   if ! command -v proot-distro >/dev/null 2>&1; then
@@ -66,8 +62,8 @@ install_ubuntu_container(){
   
   info "Installing Ubuntu container..."
   
-  # Install Ubuntu with progress feedback
-  run_with_progress "Install Ubuntu container" 180 bash -c 'proot-distro install ubuntu >/dev/null 2>&1'
+  # Install Ubuntu with progress feedback and non-interactive mode
+  run_with_progress "Install Ubuntu container" 180 bash -c 'DEBIAN_FRONTEND=noninteractive proot-distro install ubuntu >/dev/null 2>&1'
   
   if proot_distro_installed "ubuntu"; then
     ok "Ubuntu container installed successfully"

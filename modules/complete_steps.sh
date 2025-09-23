@@ -24,7 +24,7 @@ step_container(){
     # Ensure proot-distro is available
     if ! dpkg_is_installed "proot-distro"; then
         info "Installing proot-distro for container support..."
-        apt_install_if_needed "proot-distro"
+        run_with_progress "Install proot-distro (apt)" 30 bash -c 'DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
     fi
     
     # Distribution selection
@@ -49,7 +49,7 @@ step_container(){
     if [ "$NON_INTERACTIVE" = "1" ]; then
         sel="1"  # Default to Ubuntu
     else
-        read_option "Select distribution" sel 1 4 1
+        read_option "Select distribution [1-4]" sel 1 4 1
     fi
     
     # Map selection to distribution name
@@ -63,21 +63,47 @@ step_container(){
     esac
     
     info "Selected distribution: $distro_name"
+    debug "Container install path: $PREFIX/var/lib/proot-distro/installed-rootfs/$distro_name"
     
     # Install distribution if not already installed
     if ! is_distro_installed "$distro_name"; then
-        run_with_progress "Install $distro_name container" 120 \
-            proot-distro install "$distro_name"
+        info "Installing $distro_name container (this may take several minutes)..."
+        debug "Running: proot-distro install $distro_name"
+        if run_with_progress "Install $distro_name container" 120 \
+            bash -c "DEBIAN_FRONTEND=noninteractive proot-distro install '$distro_name' 2>&1 | tee /tmp/proot-install.log"; then
+            ok "$distro_name container installed successfully"
+            debug "Container installation completed without errors"
+        else
+            warn "$distro_name container installation may have had issues"
+            debug "Container installation exit code: $?"
+            if [ -f /tmp/proot-install.log ]; then
+                debug "Installation log contents:"
+                debug "$(cat /tmp/proot-install.log 2>/dev/null || echo 'Could not read log')"
+            fi
+        fi
     else
         ok "$distro_name container already installed"
+        debug "Container found at: $PREFIX/var/lib/proot-distro/installed-rootfs/$distro_name"
+    fi
+    
+    # Verify installation
+    debug "Verifying container installation..."
+    if is_distro_installed "$distro_name"; then
+        debug "Container verification: SUCCESS - $distro_name is properly installed"
+    else
+        warn "Container verification: FAILED - $distro_name installation may be incomplete"
     fi
     
     # Configure Linux environment with user accounts and SSH
+    debug "Starting Linux environment configuration for: $distro_name"
     if configure_linux_env "$distro_name"; then
+        debug "Linux environment configuration: SUCCESS"
         mark_step_status "success"
     else
+        debug "Linux environment configuration: FAILED (exit code: $?)"
         mark_step_status "warning"
         warn "Container configuration had issues but container is available"
+        debug "Container is still available for manual configuration"
     fi
 }
 
@@ -667,10 +693,12 @@ METRICS_JSON_EOF
 # Configure Linux container environment with SSH access
 configure_linux_env() {
     local distro="$1"
+    debug "Starting Linux environment configuration for distribution: $distro"
     
     # Generate SSH port
     local ssh_port
     ssh_port=$(random_port)
+    debug "Generated SSH port: $ssh_port"
     
     # Store SSH port for later use by shortcuts
     store_credential "ssh_port" "$ssh_port"
@@ -797,6 +825,9 @@ LAUNCHER_EOF
     info "Access container with: container"
     info "SSH key available at: $ssh_key"
     info "Container user: $UBUNTU_USERNAME"
+    
+    debug "Linux environment configuration completed successfully"
+    debug "Container: $distro, User: $UBUNTU_USERNAME, SSH Port: $ssh_port"
     
     return 0
 }

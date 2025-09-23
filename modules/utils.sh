@@ -1342,6 +1342,7 @@ cleanup_previous_install(){
   local deep_cleanup_items=(
     "$HOME/.config/xfce4"
     "$HOME/.proot-distro"
+    "$PREFIX/var/lib/proot-distro"
     "$PREFIX/var/lib/apt/lists"
     "$PREFIX/var/cache/apt"
     "$PREFIX/tmp"
@@ -1450,6 +1451,27 @@ cleanup_previous_install(){
     
     if apt-get update >/dev/null 2>&1; then
       debug "Updated package indexes after cleanup"
+    fi
+    
+    # Deep cleanup: Remove proot-distro containers and data
+    info "Removing proot-distro containers and data..."
+    if command -v proot-distro >/dev/null 2>&1; then
+      # List and remove all installed distributions
+      local installed_distros
+      installed_distros=$(proot-distro list --installed 2>/dev/null | grep -E '^[a-z]+$' || true)
+      if [ -n "$installed_distros" ]; then
+        while IFS= read -r distro; do
+          if [ -n "$distro" ]; then
+            info "Removing proot-distro container: $distro"
+            if proot-distro remove "$distro" --force 2>/dev/null; then
+              debug "Removed proot-distro container: $distro"
+              cleaned_count=$((cleaned_count + 1))
+            else
+              warn "Failed to remove proot-distro container: $distro"
+            fi
+          fi
+        done <<< "$installed_distros"
+      fi
     fi
   fi
   
