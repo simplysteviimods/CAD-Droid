@@ -228,57 +228,9 @@ connect_adb_device(){
 
 # === Android Settings Integration ===
 
-# Launch Termux:Float if available with developer settings instructions
-launch_termux_float(){
-  # Try to launch Termux:Float for split screen convenience with current session
-  if command -v am >/dev/null 2>&1; then
-    # Use the correct Termux:Float activity
-    if am start com.termux.window/com.termux.window.TermuxFloatActivity >/dev/null 2>&1; then
-      info "Termux:Float launched for split-screen convenience"
-      
-      # Give user instructions for the Float window
-      echo ""
-      pecho "$PASTEL_YELLOW" "Termux:Float Window Instructions:"
-      pecho "$PASTEL_CYAN" "• Use the floating window to monitor ADB pairing"
-      pecho "$PASTEL_CYAN" "• Watch for IP address and port information"
-      pecho "$PASTEL_CYAN" "• Keep this window visible while setting up developer options"
-      echo ""
-      
-    else
-      debug "Termux:Float not available - that's okay, user knows to use split-screen"
-    fi
-  fi
-}
-
 # Open Android developer settings with user guidance
 open_developer_settings(){
   local settings_opened=false
-  
-  # Launch Termux:Float first for easier multi-tasking (if available)
-  if command -v am >/dev/null 2>&1; then
-    # Use the correct Termux:Float activity
-    if am start com.termux.window/com.termux.window.TermuxFloatActivity >/dev/null 2>&1; then
-      debug "Termux:Float launched for easier setup"
-      
-      # Show Float window instructions for developer settings
-      echo ""
-      pecho "$PASTEL_PURPLE" "=== Termux:Float Window Setup ==="
-      echo ""
-      pecho "$PASTEL_YELLOW" "Your Termux:Float window is now active!"
-      echo ""
-      pecho "$PASTEL_CYAN" "What to do in the Float window:"
-      pecho "$PASTEL_CYAN" "• Monitor ADB pairing process"
-      pecho "$PASTEL_CYAN" "• Watch for IP address (e.g., 192.168.1.100)"
-      pecho "$PASTEL_CYAN" "• Note the port number (e.g., 12345)"
-      pecho "$PASTEL_CYAN" "• Enter the pairing code when shown"
-      echo ""
-      pecho "$PASTEL_PINK" "Keep the Float window visible while configuring Developer Options!"
-      echo ""
-      
-    else
-      debug "Termux:Float not available"
-    fi
-  fi
   
   info "Opening Android Developer Settings..."
   
@@ -317,7 +269,7 @@ open_developer_settings(){
 
 # === ADB Wireless Setup Workflow ===
 
-# Complete ADB wireless setup process with enhanced instructions and Termux:Float support
+# Complete ADB wireless setup process with enhanced instructions
 adb_wireless_helper(){
   if [ "$ENABLE_ADB" != "1" ]; then
     return 0
@@ -325,26 +277,9 @@ adb_wireless_helper(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "IMPORTANT: Enter split-screen mode if not using Termux:Float"
+    pecho "$PASTEL_YELLOW" "IMPORTANT: Enter split-screen mode for easier setup"
     pecho "$PASTEL_YELLOW" "Otherwise the pairing code and port will change!"
     echo ""
-    
-    # Automatically launch Termux:Float for easier setup (no prompt)
-    info "Launching Termux:Float window for easier setup..."
-    if command -v am >/dev/null 2>&1; then
-      # Use the correct Termux:Float activity
-      if am start com.termux.window/com.termux.window.TermuxFloatActivity >/dev/null 2>&1; then
-        debug "Termux:Float launched successfully"
-        
-        # Provide Float window guidance
-        echo ""
-        pecho "$PASTEL_CYAN" "Termux:Float window is now active for ADB setup monitoring"
-        echo ""
-        
-      else
-        debug "Termux:Float not available - continuing with standard setup"
-      fi
-    fi
     
     # Skip the first prompt - only use the one later in the function
   else
@@ -441,7 +376,7 @@ step_adb(){
     
     pecho "$PASTEL_PURPLE" "IMPORTANT SETUP STEPS:"
     echo ""
-    pecho "$PASTEL_PINK" "1. IMPORTANT: Enter split-screen mode if not using Termux:Float"
+    pecho "$PASTEL_PINK" "1. IMPORTANT: Enter split-screen mode for easier setup"
     pecho "$PASTEL_PINK"  "   Otherwise the pairing code and port will change!"
     pecho "$PASTEL_PINK" "2. Split your screen between Settings and Termux"
     pecho "$PASTEL_PINK" "3. In Settings > System > Developer Options"
@@ -479,9 +414,6 @@ step_adb(){
     echo ""
     pecho "$PASTEL_YELLOW" "Opening Developer Settings for ADB wireless debugging setup..."
     echo ""
-    
-    # Try to launch Termux:Float first (if available)
-    launch_termux_float
     
     # Open developer settings directly
     if ! open_developer_settings; then

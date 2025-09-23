@@ -360,12 +360,12 @@ step_apk(){
     warn "Failed to download Termux:GUI"
   fi
   
-  # Install Termux:Float (floating window support) - Priority 4
-  if download_apk_with_spinner "Termux:Float" "com.termux.float" "termux/termux-float" ".*float.*\.apk" "$APK_DOWNLOAD_DIR" "4"; then
-    ok "Termux:Float downloaded successfully"
+  # Install Termux:Widget (home screen widget support) - Priority 4
+  if download_apk_with_spinner "Termux:Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$APK_DOWNLOAD_DIR" "4"; then
+    ok "Termux:Widget downloaded successfully"
   else
     failed=$((failed + 1))
-    warn "Failed to download Termux:Float"
+    warn "Failed to download Termux:Widget"
   fi
   
   # Show results
@@ -474,7 +474,7 @@ rename_apk_with_priority(){
     "Termux:API"|"Termux-API") proper_name="Termux-API" ;;
     "Termux:X11"|"Termux-X11") proper_name="Termux-X11" ;;
     "Termux:GUI"|"Termux-GUI") proper_name="Termux-GUI" ;;
-    "Termux:Float"|"Termux-Float") proper_name="Termux-Float" ;;
+    "Termux:Widget"|"Termux-Widget") proper_name="Termux-Widget" ;;
     *) proper_name="$plugin_name" ;;
   esac
   
