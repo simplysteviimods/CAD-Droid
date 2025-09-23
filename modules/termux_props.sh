@@ -267,12 +267,12 @@ configure_nano_colors(){
   
   info "Configuring nano editor with pastel colors..."
   
-  # Add nano color configuration
+  # Add nano color configuration with unified purple theme
   cat >> "$nanorc" << 'NANO_CONFIG_EOF'
 
 # CAD-Droid nano theme
-# Pastel colors for better readability
-set titlecolor brightwhite,lightmagenta
+# Unified purple pastel colors for better readability
+set titlecolor brightwhite,magenta
 set statuscolor brightwhite,lightcyan
 set selectedcolor brightwhite,lightblue
 set stripecolor yellow
