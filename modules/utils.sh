@@ -1135,7 +1135,7 @@ check_previous_install(){
         case "${response,,}" in
           y|yes)
             # Add confirmation prompt
-            printf "\n${PASTEL_YELLOW}⚠️  This will permanently delete:${RESET}\n"
+            printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
             printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
             printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
             printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
@@ -1282,7 +1282,7 @@ check_previous_install(){
       case "${cleanup_response,,}" in
         y|yes)
           # Add confirmation prompt
-          printf "\n${PASTEL_YELLOW}⚠️  This will permanently delete:${RESET}\n"
+          printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
           printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
           printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
           printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
@@ -1315,6 +1315,9 @@ check_previous_install(){
 cleanup_previous_install(){
   info "Cleaning up previous installation..."
   
+  # Temporarily disable exit on error for cleanup operations
+  set +e
+  
   local cleanup_items=(
     "$HOME/.cad"
     "$HOME/.shortcuts"
@@ -1333,8 +1336,6 @@ cleanup_previous_install(){
   
   # Clean up temporary files but preserve permanent install flag
   # Note: We keep the install flag as it's now permanent
-  local cleaned_count=0
-  local total_size=0
   local config_files=(
     "$HOME/.bashrc"
     "$HOME/.termux/termux.properties" 
@@ -1375,7 +1376,7 @@ cleanup_previous_install(){
   
   # Clean up APK installer files and cache if the function exists
   if command -v cleanup_apk_installer_files >/dev/null 2>&1; then
-    cleanup_apk_installer_files
+    cleanup_apk_installer_files || true
   else
     # Fallback APK cleanup if the dedicated function isn't available
     local apk_cleanup_items=(
@@ -1426,6 +1427,9 @@ cleanup_previous_install(){
   fi
   
   ok "Cleanup completed - removed $cleaned_count items ($size_display)"
+  
+  # Re-enable exit on error
+  set -e
 }
 
 # Text wrapping function that breaks on word boundaries

@@ -125,7 +125,7 @@ prompt_termux_reboot(){
   info "Setup completion process finished"
   
   printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
-  printf "${PASTEL_YELLOW}                      🔄 RESTART REQUIRED 🔄                   ${RESET}\n"
+  printf "${PASTEL_YELLOW}                      RESTART REQUIRED                         ${RESET}\n"
   printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
   
   printf "${PASTEL_LAVENDER}To complete the installation and apply all configurations,${RESET}\n"
