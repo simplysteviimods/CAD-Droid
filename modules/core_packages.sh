@@ -151,6 +151,7 @@ ensure_download_tool(){
 # - Providing user feedback about which mirror is being used
 ensure_mirror_applied(){
   local sources_file="$PREFIX/etc/apt/sources.list"
+  debug "Ensuring mirror is applied, sources file: $sources_file"
   
   # Ensure we have a valid mirror URL - set default if none selected
   if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
@@ -159,16 +160,28 @@ ensure_mirror_applied(){
     SELECTED_MIRROR_NAME="Default"
   fi
   
+  debug "Using mirror URL: $SELECTED_MIRROR_URL"
+  
   # Always rewrite sources to ensure selected mirror is used
   debug "Enforcing mirror: ${SELECTED_MIRROR_URL}"
-  echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
+  if ! echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file" 2>/dev/null; then
+    warn "Failed to write sources file: $sources_file"
+    debug "Sources file write: FAILED"
+    return 1
+  fi
+  
+  debug "Sources file updated successfully"
+  debug "Current sources content: $(cat "$sources_file" 2>/dev/null || echo 'Could not read')"
   
   # Clean up any conflicting sources to prevent mirror mixing
   sanitize_sources_main_only
   
   # Apply termux-reload-settings first to ensure configuration is loaded
   if command -v termux-reload-settings >/dev/null 2>&1; then
+    debug "Reloading Termux settings"
     run_with_progress "Reload Termux settings" 3 termux-reload-settings
+  else
+    debug "termux-reload-settings not available"
   fi
   
   # Add user-facing info for transparency when mirror name is available (only once)
@@ -321,34 +334,61 @@ install_x11_packages(){
 # Update package lists using appropriate Termux commands
 update_package_lists(){
   if [ "${PACKAGES_UPDATED:-0}" = "1" ]; then
+    debug "Package lists already updated this session, skipping"
     return 0  # Already updated this session
   fi
   
   info "Updating package lists..."
+  debug "Using mirror: ${SELECTED_MIRROR_URL:-default}"
   
   # Ensure selected mirror is applied and sources file is written before updating
   ensure_mirror_applied
   
+  # Check if sources file exists and is readable
+  local sources_file="$PREFIX/etc/apt/sources.list"
+  if [ ! -f "$sources_file" ]; then
+    warn "Sources file missing: $sources_file"
+    debug "Creating minimal sources file"
+    echo "deb ${SELECTED_MIRROR_URL:-https://packages.termux.dev/apt/termux-main} stable main" > "$sources_file"
+  fi
+  
+  debug "Sources file content:"
+  debug "$(cat "$sources_file" 2>/dev/null || echo 'Could not read sources file')"
+  
   # Simple approach - try pkg first, then apt
   if command -v pkg >/dev/null 2>&1; then
     info "Updating with pkg..."
-    if pkg update -y >/dev/null 2>&1; then
+    debug "Running: pkg update -y"
+    if pkg update -y 2>&1 | tee /tmp/pkg-update.log >/dev/null; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
+      debug "pkg update: SUCCESS"
       return 0
     else
       warn "pkg update failed, trying apt..."
+      debug "pkg update: FAILED"
+      if [ -f /tmp/pkg-update.log ]; then
+        debug "pkg update error log:"
+        debug "$(cat /tmp/pkg-update.log 2>/dev/null | tail -10)"
+      fi
     fi
   fi
   
   # Fallback to apt-get update
   info "Updating with apt..."
-  if apt-get update >/dev/null 2>&1; then
+  debug "Running: apt-get update"
+  if apt-get update 2>&1 | tee /tmp/apt-update.log >/dev/null; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
+    debug "apt-get update: SUCCESS"
     return 0
   else
     warn "Package list update failed"
+    debug "apt-get update: FAILED"
+    if [ -f /tmp/apt-update.log ]; then
+      debug "apt-get update error log:"
+      debug "$(cat /tmp/apt-update.log 2>/dev/null | tail -10)"
+    fi
     return 1
   fi
 }
@@ -504,6 +544,39 @@ step_mirror(){
     fi
   fi
   
+  # Test selected mirror before proceeding
+  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
+    info "Testing selected mirror connectivity..."
+    debug "Testing mirror: $SELECTED_MIRROR_URL"
+    if curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
+      ok "Mirror connectivity test passed: $SELECTED_MIRROR_NAME"
+      debug "Mirror test: SUCCESS"
+    else
+      warn "Selected mirror is not reachable, trying fallback"
+      debug "Mirror test: FAILED"
+      # Try to find a working mirror from the list
+      local working_mirror="" working_name=""
+      for i in "${!urls[@]}"; do
+        debug "Testing fallback mirror: ${urls[$i]}"
+        if curl --max-time 8 --connect-timeout 3 --fail --silent --head "${urls[$i]}" >/dev/null 2>&1; then
+          working_mirror="${urls[$i]}"
+          working_name="${names[$i]}"
+          debug "Found working fallback mirror: $working_mirror"
+          break
+        fi
+      done
+      
+      if [ -n "$working_mirror" ]; then
+        SELECTED_MIRROR_URL="$working_mirror"
+        SELECTED_MIRROR_NAME="$working_name"
+        ok "Using working fallback mirror: $SELECTED_MIRROR_NAME"
+      else
+        warn "No working mirrors found, using original selection anyway"
+        debug "All mirrors failed connectivity test"
+      fi
+    fi
+  fi
+  
   # Write mirror configuration
   # Simple mirror configuration
   echo "deb ${SELECTED_MIRROR_URL} stable main" > "$PREFIX/etc/apt/sources.list"
@@ -555,9 +628,46 @@ step_aptni(){
 
 # Step: System update
 step_systemup(){
-  if update_package_lists; then
-    upgrade_packages || true
+  debug "Starting system update (step 6)..."
+  debug "Current mirror: ${SELECTED_MIRROR_URL:-not set}"
+  debug "Packages updated flag: ${PACKAGES_UPDATED:-0}"
+  
+  # Ensure mirror is valid and available before proceeding
+  ensure_mirror_applied
+  
+  # Test current mirror connectivity before attempting updates
+  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
+    debug "Testing mirror connectivity: $SELECTED_MIRROR_URL"
+    if ! curl --max-time 10 --connect-timeout 5 --fail --silent --head "$SELECTED_MIRROR_URL" >/dev/null 2>&1; then
+      warn "Current mirror appears unreachable, attempting to select a new one"
+      # Try to reselect a working mirror
+      if command -v select_fastest_mirror >/dev/null 2>&1; then
+        local new_mirror
+        if new_mirror=$(select_fastest_mirror "main"); then
+          info "Selected new working mirror: $new_mirror"
+          SELECTED_MIRROR_URL="$new_mirror"
+          ensure_mirror_applied
+        else
+          warn "Could not find working mirror, will attempt update anyway"
+        fi
+      fi
+    else
+      debug "Mirror connectivity test: PASSED"
+    fi
   fi
+  
+  if update_package_lists; then
+    debug "Package list update: SUCCESS"
+    upgrade_packages || {
+      warn "Package upgrade failed but continuing"
+      debug "Package upgrade: FAILED (exit code: $?)"
+    }
+  else
+    warn "Package list update failed"
+    debug "Package list update: FAILED (exit code: $?)"
+  fi
+  
+  debug "System update step completed"
   mark_step_status "success"
 }
 
