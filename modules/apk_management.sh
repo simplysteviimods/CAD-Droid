@@ -298,7 +298,7 @@ select_apk_directory(){
   return 0
 }
 
-# === Main APK Step Function (Simplified) ===
+# === Main APK Step Function (Enhanced) ===
 
 # Main APK management step (based on working reference)
 step_apk(){
@@ -321,33 +321,38 @@ step_apk(){
   local failed=0
   
   # Install Termux:API (required for GitHub setup and other features)
-  info "Downloading Termux:API..."
-  if ! fetch_termux_addon "Termux-API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  if download_apk_with_spinner "Termux:API" "com.termux.api" "termux/termux-api" ".*api.*\.apk" "$APK_DOWNLOAD_DIR"; then
+    ok "Termux:API downloaded successfully"
+  else
     failed=$((failed + 1))
     warn "Failed to download Termux:API"
-  else
-    ok "Termux:API downloaded successfully"
   fi
   
   # Install Termux:X11 (required for GUI apps)
-  info "Downloading Termux:X11..."
-  if ! fetch_termux_addon "Termux-X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  if download_apk_with_spinner "Termux:X11" "com.termux.x11" "termux/termux-x11" ".*x11.*\.apk" "$APK_DOWNLOAD_DIR"; then
+    ok "Termux:X11 downloaded successfully"
+  else
     failed=$((failed + 1))
     warn "Failed to download Termux:X11"
-  else
-    ok "Termux:X11 downloaded successfully"
   fi
   
   # Install Termux:GUI (additional GUI support)
-  info "Downloading Termux:GUI..."
-  if ! fetch_termux_addon "Termux-GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$APK_DOWNLOAD_DIR"; then
+  if download_apk_with_spinner "Termux:GUI" "com.termux.gui" "termux/termux-gui" ".*gui.*\.apk" "$APK_DOWNLOAD_DIR"; then
+    ok "Termux:GUI downloaded successfully"
+  else
     failed=$((failed + 1))
     warn "Failed to download Termux:GUI"
-  else
-    ok "Termux:GUI downloaded successfully"
   fi
   
-  # Show results and instructions
+  # Install Termux:Float (floating window support)
+  if download_apk_with_spinner "Termux:Float" "com.termux.float" "termux/termux-float" ".*float.*\.apk" "$APK_DOWNLOAD_DIR"; then
+    ok "Termux:Float downloaded successfully"
+  else
+    failed=$((failed + 1))
+    warn "Failed to download Termux:Float"
+  fi
+  
+  # Show results
   if [ "$failed" -eq 0 ]; then
     ok "All APKs downloaded successfully to: $APK_DOWNLOAD_DIR"
     mark_step_status "success"
@@ -356,28 +361,153 @@ step_apk(){
     mark_step_status "warning"
   fi
   
-  # Show installation instructions
+  # Enhanced installation instructions and file manager opening
   if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
     echo ""
-    pecho "$PASTEL_PINK" "=== APK Installation Ready ==="
+    pecho "$PASTEL_PINK" "=== APK Installation Guide ==="
     echo ""
-    pecho "$PASTEL_YELLOW" "Installation process:"
-    pecho "$PASTEL_CYAN" "1. File manager will open to APK directory"
-    pecho "$PASTEL_CYAN" "2. Install each APK by tapping on it"
-    pecho "$PASTEL_CYAN" "3. Enable 'Install from Unknown Sources' if prompted"
-    pecho "$PASTEL_CYAN" "4. Grant all requested permissions"
+    pecho "$PASTEL_YELLOW" "What you need to do:"
+    pecho "$PASTEL_CYAN" "+= Open Android Settings → Security → Unknown Sources"
+    pecho "$PASTEL_CYAN" "+= Or: Settings → Apps → File Manager → Install Unknown Apps"  
+    pecho "$PASTEL_CYAN" "+= Enable installation from your file manager"
+    echo ""
+    pecho "$PASTEL_YELLOW" "APKs are located at:"
+    pecho "$PASTEL_CYAN" "+= $APK_DOWNLOAD_DIR"
+    echo ""
+    pecho "$PASTEL_YELLOW" "Installation steps:"
+    pecho "$PASTEL_CYAN" "+= Allow ALL permissions when prompted"
+    pecho "$PASTEL_CYAN" "+= Enable 'Display over other apps' for widgets"
+    pecho "$PASTEL_CYAN" "+= Enable notification access if requested"
     echo ""
     pecho "$PASTEL_YELLOW" "Press Enter to open file manager..."
     read -r || true
     
-    # Try to open file manager
-    if command -v am >/dev/null 2>&1; then
-      am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1 || true
+    # Open file manager with enhanced logic
+    open_apk_directory
+  else
+    info "Non-interactive mode: APK directory will open automatically"
+    # Try to open file manager even in non-interactive mode
+    open_apk_directory >/dev/null 2>&1 || true
+  fi
+  
+  return 0
+}
+
+# Download APK with spinner animation
+download_apk_with_spinner(){
+  local name="$1" pkg="$2" repo="$3" patt="$4" outdir="$5"
+  
+  if [ -z "$name" ] || [ -z "$pkg" ] || [ -z "$outdir" ]; then
+    return 1
+  fi
+  
+  # Show spinner while downloading
+  printf "Downloading %s... " "$name"
+  
+  # Start download in background
+  fetch_termux_addon "$name" "$pkg" "$repo" "$patt" "$outdir" &
+  local pid=$!
+  
+  # Simple spinner animation
+  local frame=0
+  local spinner_chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  
+  while kill -0 "$pid" 2>/dev/null; do
+    local char_index=$((frame % 10))
+    local spinner_char="${spinner_chars:$char_index:1}"
+    printf "\r\033[38;2;175;238;238m%s\033[0m Downloading %s..." "$spinner_char" "$name"
+    frame=$((frame + 1))
+    sleep 0.1
+  done
+  
+  # Wait for download to complete and get result
+  wait "$pid"
+  local result=$?
+  
+  # Clear spinner line
+  printf "\r\033[2K"
+  
+  return $result
+}
+
+# Open file manager to APK download directory (enhanced)
+open_apk_directory(){
+  info "Opening APK download directory..."
+  
+  if [ ! -d "$APK_DOWNLOAD_DIR" ]; then
+    err "APK download directory not found: $APK_DOWNLOAD_DIR"
+    return 1
+  fi
+  
+  # Ensure proper permissions before opening
+  chmod 755 "$APK_DOWNLOAD_DIR" 2>/dev/null || true
+  find "$APK_DOWNLOAD_DIR" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+  
+  # Count downloaded APKs
+  local apk_count
+  apk_count=$(find "$APK_DOWNLOAD_DIR" -name "*.apk" -type f 2>/dev/null | wc -l)
+  
+  if [ "$apk_count" -eq 0 ]; then
+    warn "No APK files found in download directory"
+  else
+    ok "Found $apk_count APK files ready for installation"
+  fi
+  
+  # Try multiple methods to open file manager
+  local opened=0
+  
+  # Method 1: Direct file manager intent with directory
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
+    if am start -a android.intent.action.VIEW -d "file://$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened in file manager"
     fi
+  fi
+  
+  # Method 2: Use content provider for external storage
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
+    if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary/Download/CAD-Droid-APKs" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened via content provider"
+    fi
+  fi
+  
+  # Method 3: Fallback to termux-open
+  if [ $opened -eq 0 ] && command -v termux-open >/dev/null 2>&1; then
+    if termux-open "$APK_DOWNLOAD_DIR" >/dev/null 2>&1; then
+      opened=1
+      ok "APK directory opened with termux-open"
+    fi
+  fi
+  
+  # Method 4: Last resort - general Downloads folder
+  if [ $opened -eq 0 ] && command -v am >/dev/null 2>&1; then
+    if am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/root/primary/Download" >/dev/null 2>&1; then
+      opened=1
+      info "Downloads folder opened - navigate to CAD-Droid-APKs"
+    fi
+  fi
+  
+  if [ $opened -eq 0 ]; then
+    warn "Could not open file manager automatically"
+    info "Please manually open: $APK_DOWNLOAD_DIR"
+  fi
+  
+  # If interactive, wait for user to complete installation
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+    echo ""
+    info "Install each APK file by tapping on it in the file manager"
+    info "Configure permissions as requested by each app"
+    echo ""
+    printf "${PASTEL_PINK}Press Enter after installing all APKs and configuring permissions...${RESET} "
+    read -r || true
+  else
+    info "Non-interactive mode: continuing after ${APK_PAUSE_TIMEOUT:-45}s delay"
+    sleep "${APK_PAUSE_TIMEOUT:-45}"
   fi
   
   return 0
 }
 
 # Export functions for use in other modules
-export -f step_apk fetch_termux_addon http_fetch wget_get
+export -f step_apk fetch_termux_addon http_fetch wget_get download_apk_with_spinner open_apk_directory

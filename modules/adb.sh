@@ -228,6 +228,18 @@ connect_adb_device(){
 
 # === Android Settings Integration ===
 
+# Launch Termux:Float if available
+launch_termux_float(){
+  # Try to launch Termux:Float for split screen convenience
+  if command -v am >/dev/null 2>&1; then
+    if am start -n com.termux.float/.MainActivity >/dev/null 2>&1; then
+      info "Termux:Float launched for split-screen convenience"
+    else
+      debug "Termux:Float not available - that's okay, user knows to use split-screen"
+    fi
+  fi
+}
+
 # Open Android developer settings with user guidance
 open_developer_settings(){
   local settings_opened=false
@@ -425,6 +437,9 @@ step_adb(){
     echo ""
     pecho "$PASTEL_YELLOW" "Opening Developer Settings for ADB wireless debugging setup..."
     echo ""
+    
+    # Try to launch Termux:Float first (if available)
+    launch_termux_float
     
     # Open developer settings directly
     if ! open_developer_settings; then
