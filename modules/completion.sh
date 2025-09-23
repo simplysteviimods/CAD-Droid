@@ -49,7 +49,7 @@ show_completion_summary(){
     fi
     
     # Force exit of current shell
-    exec exit 0
+    exit 0
   else
     printf "${PASTEL_PINK}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
   fi

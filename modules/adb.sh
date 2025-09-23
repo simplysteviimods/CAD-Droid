@@ -277,17 +277,8 @@ adb_wireless_helper(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "ADB Wireless Debugging Setup:"
-    echo ""
-    pecho "$PASTEL_CYAN" "Step 1: Open Developer Settings"
-    pecho "$PASTEL_CYAN" "• Developer settings will open automatically"
-    pecho "$PASTEL_CYAN" "• Find 'Wireless debugging' and tap it"
-    pecho "$PASTEL_CYAN" "• Toggle it ON if not already enabled"
-    echo ""
-    pecho "$PASTEL_CYAN" "Step 2: Pair Your Device"
-    pecho "$PASTEL_CYAN" "• Tap 'Pair device with pairing code'"
-    pecho "$PASTEL_CYAN" "• Note the IP address, port, and 6-digit code"
-    pecho "$PASTEL_CYAN" "• You'll enter these details in the next step"
+    pecho "$PASTEL_YELLOW" "IMPORTANT: Enter split-screen mode if not using Termux:Float"
+    pecho "$PASTEL_YELLOW" "Otherwise the pairing code and port will change!"
     echo ""
     
     # Offer to launch Termux:Float for easy access during setup
@@ -430,23 +421,10 @@ step_adb(){
   # Show the setup guide and open developer settings once
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "ADB Wireless Debugging Setup:"
-    echo ""
-    pecho "$PASTEL_CYAN" "Step 1: Open Developer Settings"
-    pecho "$PASTEL_CYAN" "• Developer settings will open automatically"
-    pecho "$PASTEL_CYAN" "• Find 'Wireless debugging' and tap it"
-    pecho "$PASTEL_CYAN" "• Toggle it ON if not already enabled"
-    echo ""
-    pecho "$PASTEL_CYAN" "Step 2: Pair Your Device"
-    pecho "$PASTEL_CYAN" "• Tap 'Pair device with pairing code'"
-    pecho "$PASTEL_CYAN" "• Note the IP address, port, and 6-digit code"
-    pecho "$PASTEL_CYAN" "• You'll enter these details in the next step"
+    pecho "$PASTEL_YELLOW" "Opening Developer Settings for ADB wireless debugging setup..."
     echo ""
     
-    printf "${PASTEL_PINK}Press Enter to open Developer Settings...${RESET} "
-    read -r || true
-    
-    # Open developer settings
+    # Open developer settings directly
     if ! open_developer_settings; then
       info "Please manually navigate to Developer Options and enable Wireless debugging"
     fi

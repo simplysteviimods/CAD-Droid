@@ -49,7 +49,7 @@ step_container(){
     if [ "$NON_INTERACTIVE" = "1" ]; then
         sel="1"  # Default to Ubuntu
     else
-        read_option "Select distribution (1-4)" sel 1 4 1
+        read_option "Select distribution" sel 1 4 1
     fi
     
     # Map selection to distribution name
