@@ -12,6 +12,131 @@ readonly _CAD_CORE_PACKAGES_LOADED=1
 
 # === Package Installation Functions ===
 
+# Initialize Termux APT environment to prevent lock errors
+initialize_apt_environment(){
+  debug "Initializing Termux APT environment"
+  
+  # Create necessary dpkg directories to prevent lock errors
+  local dpkg_dirs=(
+    "$PREFIX/var/lib/dpkg"
+    "$PREFIX/var/lib/dpkg/info"
+    "$PREFIX/var/lib/dpkg/updates" 
+    "$PREFIX/var/lib/apt/lists"
+    "$PREFIX/var/cache/apt/archives"
+    "$PREFIX/var/cache/apt/archives/partial"
+    "$PREFIX/etc/apt"
+    "$PREFIX/etc/apt/sources.list.d"
+  )
+  
+  for dir in "${dpkg_dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+      mkdir -p "$dir" 2>/dev/null || {
+        warn "Failed to create directory: $dir"
+        continue
+      }
+      debug "Created directory: $dir"
+    fi
+  done
+  
+  # Initialize dpkg status file if it doesn't exist
+  local dpkg_status="$PREFIX/var/lib/dpkg/status"
+  if [ ! -f "$dpkg_status" ]; then
+    touch "$dpkg_status" 2>/dev/null || warn "Failed to create dpkg status file"
+    debug "Created dpkg status file: $dpkg_status"
+  fi
+  
+  # Create available file if it doesn't exist
+  local dpkg_available="$PREFIX/var/lib/dpkg/available"
+  if [ ! -f "$dpkg_available" ]; then
+    touch "$dpkg_available" 2>/dev/null || warn "Failed to create dpkg available file"
+    debug "Created dpkg available file: $dpkg_available"
+  fi
+  
+  # Remove any stale lock files that might cause issues
+  local lock_files=(
+    "$PREFIX/var/lib/dpkg/lock"
+    "$PREFIX/var/lib/dpkg/lock-frontend"
+    "$PREFIX/var/cache/apt/archives/lock"
+  )
+  
+  for lock_file in "${lock_files[@]}"; do
+    if [ -f "$lock_file" ]; then
+      # Check if the lock is actually in use by checking for running apt/dpkg processes
+      if ! pgrep -f "apt|dpkg" >/dev/null 2>&1; then
+        rm -f "$lock_file" 2>/dev/null && debug "Removed stale lock file: $lock_file"
+      fi
+    fi
+  done
+  
+  debug "APT environment initialization completed"
+}
+
+# Safely run apt/pkg commands with lock handling and retry logic
+safe_apt_operation(){
+  local operation="$1"
+  shift
+  local args="$*"
+  local max_attempts=3
+  local attempt=1
+  
+  while [ $attempt -le $max_attempts ]; do
+    if [ $attempt -gt 1 ]; then
+      debug "Attempt $attempt/$max_attempts for: $operation $args"
+      sleep 2  # Brief pause between attempts
+    fi
+    
+    # Initialize APT environment before each attempt
+    initialize_apt_environment
+    
+    case "$operation" in
+      "pkg_update")
+        if command -v pkg >/dev/null 2>&1; then
+          yes | pkg update $args
+        else
+          return 1
+        fi
+        ;;
+      "apt_update")
+        yes | apt update $args
+        ;;
+      "pkg_install")
+        if command -v pkg >/dev/null 2>&1; then
+          pkg install -y $args
+        else
+          return 1
+        fi
+        ;;
+      "apt_install")
+        yes | apt install -y $args
+        ;;
+      *)
+        warn "Unknown operation: $operation"
+        return 1
+        ;;
+    esac
+    
+    local result=$?
+    
+    # Check if the operation succeeded or if package is already installed
+    if [ $result -eq 0 ] || [ $result -eq 100 ]; then
+      return $result
+    fi
+    
+    # If it's a lock error, try again
+    if [ $result -eq 100 ]; then
+      debug "Lock error detected, retrying..."
+      attempt=$((attempt + 1))
+      continue
+    fi
+    
+    # For other errors, return immediately
+    return $result
+  done
+  
+  warn "Operation failed after $max_attempts attempts: $operation $args"
+  return 1
+}
+
 # Check if a Debian/APT package is installed
 dpkg_is_installed() { 
   dpkg -l "$1" 2>/dev/null | grep -q "^ii"
@@ -57,24 +182,29 @@ apt_install_if_needed(){
   ensure_mirror_applied
   
   # Try pkg install first (preferred), then fallback to apt install
-  # Exit code 100 means package already installed - treat as success
+  # Use safe operation wrapper to handle locks
   if command -v pkg >/dev/null 2>&1; then
-    pkg install -y "$pkg" >/dev/null 2>&1
-    local pkg_result=$?
-    if [ $pkg_result -eq 0 ] || [ $pkg_result -eq 100 ]; then
-      ok "$pkg installed successfully via pkg"
-      return 0
-    else
-      warn "pkg install failed for $pkg, trying apt install..."
+    if safe_apt_operation "pkg_install" "$pkg" >/dev/null 2>&1; then
+      local pkg_result=$?
+      if [ $pkg_result -eq 0 ] || [ $pkg_result -eq 100 ]; then
+        ok "$pkg installed successfully via pkg"
+        return 0
+      else
+        warn "pkg install failed for $pkg, trying apt install..."
+      fi
     fi
   fi
   
-  # Fallback to apt install - also handle exit code 100
-  yes | apt install -y "$pkg" >/dev/null 2>&1
-  local apt_result=$?
-  if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
-    ok "$pkg installed successfully via apt"
-    return 0
+  # Fallback to apt install with safe operation wrapper
+  if safe_apt_operation "apt_install" "$pkg" >/dev/null 2>&1; then
+    local apt_result=$?  
+    if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
+      ok "$pkg installed successfully via apt"
+      return 0
+    else
+      warn "Failed to install $pkg"
+      return 1
+    fi
   else
     warn "Failed to install $pkg"
     return 1
@@ -153,6 +283,9 @@ ensure_mirror_applied(){
   local sources_file="$PREFIX/etc/apt/sources.list"
   debug "Ensuring mirror is applied, sources file: $sources_file"
   
+  # Initialize APT environment first to prevent lock errors
+  initialize_apt_environment
+  
   # Ensure we have a valid mirror URL - set default if none selected
   if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
     debug "No mirror selected, using default Termux mirror"
@@ -212,6 +345,9 @@ sanitize_sources_main_only(){
 verify_mirror(){
   local sources_file="$PREFIX/etc/apt/sources.list"
   
+  # Initialize APT environment first to prevent lock errors  
+  initialize_apt_environment
+  
   # Ensure we have a valid mirror selection (should be set by step_mirror)
   if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
     debug "No mirror selected, reading from sources.list or using default"
@@ -260,7 +396,7 @@ verify_mirror(){
   # Use pkg update as the primary method (official Termux way)
   if command -v pkg >/dev/null 2>&1; then
     debug "Using pkg update for mirror verification"
-    if yes | pkg update >"$update_log" 2>&1; then
+    if safe_apt_operation "pkg_update" >"$update_log" 2>&1; then
       ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
       debug "Mirror verification: SUCCESS"
       rm -f "$update_log" 2>/dev/null || true
@@ -277,7 +413,7 @@ verify_mirror(){
   else
     # Fallback to apt update if pkg is not available
     debug "Using apt update for mirror verification (pkg not available)"
-    if yes | apt update >"$update_log" 2>&1; then
+    if safe_apt_operation "apt_update" >"$update_log" 2>&1; then
       ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
       debug "Mirror verification: SUCCESS"
       rm -f "$update_log" 2>/dev/null || true
@@ -424,7 +560,7 @@ update_package_lists(){
     info "Updating with pkg..."
     debug "Running: pkg update -y"
     local pkg_log="${TMPDIR:-$PREFIX/tmp}/pkg-update-$$.log"
-    if yes | pkg update -y 2>&1 | tee "$pkg_log" >/dev/null; then
+    if safe_apt_operation "pkg_update" "-y" 2>&1 | tee "$pkg_log" >/dev/null; then
       ok "Package lists updated via pkg"
       export PACKAGES_UPDATED=1
       debug "pkg update: SUCCESS"
@@ -445,7 +581,7 @@ update_package_lists(){
   info "Updating with apt..."
   debug "Running: apt update"
   local apt_log="${TMPDIR:-$PREFIX/tmp}/apt-update-$$.log"
-  if yes | apt update 2>&1 | tee "$apt_log" >/dev/null; then
+  if safe_apt_operation "apt_update" 2>&1 | tee "$apt_log" >/dev/null; then
     ok "Package lists updated via apt"
     export PACKAGES_UPDATED=1
     debug "apt update: SUCCESS"
