@@ -242,6 +242,36 @@ else
   cad_name='\u@\h'
 fi
 
+# CAD-Droid intro screen (shown once per session)
+if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
+  export CAD_INTRO_SHOWN=1
+  echo ""
+  echo -e "\e[38;5;183m═══════════════════════════════════════════════════\e[0m"
+  echo -e "\e[38;5;217m              Welcome to CAD-Droid                \e[0m"
+  echo -e "\e[38;5;183m═══════════════════════════════════════════════════\e[0m"
+  echo ""
+  if [ -f "$HOME/.cad/cad_droid_installed" ]; then
+    echo -e "\e[32m✓\e[0m CAD-Droid installation \e[32mcomplete\e[0m"
+    echo ""
+    echo -e "\e[38;5;159mAvailable shortcuts:\e[0m"
+    if [ -x "$HOME/.local/bin/Linux Desktop" ]; then
+      echo -e "  \e[38;5;217m•\e[0m Linux Desktop - XFCE desktop environment"
+    fi
+    if [ -x "$HOME/.local/bin/Linux Sunshine" ]; then
+      echo -e "  \e[38;5;217m•\e[0m Linux Sunshine - Desktop with remote streaming"
+    fi
+    echo ""
+    echo -e "\e[38;5;159mHelp commands:\e[0m"
+    echo -e "  \e[38;5;217m•\e[0m cad-droid - System management"
+    echo -e "  \e[38;5;217m•\e[0m file-manager - Open file browser"
+    echo -e "  \e[38;5;217m•\e[0m system-info - Show system information"
+  else
+    echo -e "\e[33m⚠\e[0m CAD-Droid installation \e[33mnot detected\e[0m"
+    echo -e "Run \e[38;5;217m./setup.sh\e[0m to install CAD-Droid"
+  fi
+  echo ""
+fi
+
 # Prompt: <pastel_pink>name</pastel_pink>:<pastel_cyan>cwd</pastel_cyan> and leave pastel purple color active for typed text
 PS1="${cad_pastel_pink}\${cad_name}${cad_reset}:${cad_pastel_cyan}\w${cad_reset} ${cad_pastel_purple}"
 
@@ -267,12 +297,12 @@ configure_nano_colors(){
   
   info "Configuring nano editor with pastel colors..."
   
-  # Add nano color configuration
+  # Add nano color configuration with unified purple theme
   cat >> "$nanorc" << 'NANO_CONFIG_EOF'
 
 # CAD-Droid nano theme
-# Pastel colors for better readability
-set titlecolor brightwhite,lightmagenta
+# Unified purple pastel colors for better readability
+set titlecolor brightwhite,magenta
 set statuscolor brightwhite,lightcyan
 set selectedcolor brightwhite,lightblue
 set stripecolor yellow
@@ -743,7 +773,7 @@ generate_github_ssh_key() {
       
       # Open GitHub SSH settings
       if command -v termux-open-url >/dev/null 2>&1; then
-        termux-open-url "https://github.com/settings/ssh/new"
+        termux-open-url "https://github.com/settings/ssh/new" 2>/dev/null
       elif command -v am >/dev/null 2>&1; then
         am start -a android.intent.action.VIEW -d "https://github.com/settings/ssh/new" >/dev/null 2>&1 || true
       fi

@@ -34,7 +34,6 @@ install_adb_tools(){
     # Use appropriate package manager for installation
     if command -v pkg >/dev/null 2>&1; then
       if run_with_progress "Install $pkg (pkg)" 15 bash -c "
-        pkg update -y >/dev/null 2>&1 && 
         pkg install -y $pkg >/dev/null 2>&1
       "; then
         if command -v adb >/dev/null 2>&1; then
@@ -48,7 +47,6 @@ install_adb_tools(){
     # Fallback to apt
     if [ "$installed" = false ]; then
       if run_with_progress "Install $pkg (apt)" 15 bash -c "
-        apt update >/dev/null 2>&1 && 
         apt install -y $pkg >/dev/null 2>&1
       "; then
         if command -v adb >/dev/null 2>&1; then
@@ -279,17 +277,8 @@ adb_wireless_helper(){
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
-    pecho "$PASTEL_YELLOW" "ADB Wireless Debugging Setup:"
-    echo ""
-    pecho "$PASTEL_CYAN" "Step 1: Open Developer Settings"
-    pecho "$PASTEL_CYAN" "• Developer settings will open automatically"
-    pecho "$PASTEL_CYAN" "• Find 'Wireless debugging' and tap it"
-    pecho "$PASTEL_CYAN" "• Toggle it ON if not already enabled"
-    echo ""
-    pecho "$PASTEL_CYAN" "Step 2: Pair Your Device"
-    pecho "$PASTEL_CYAN" "• Tap 'Pair device with pairing code'"
-    pecho "$PASTEL_CYAN" "• Note the IP address, port, and 6-digit code"
-    pecho "$PASTEL_CYAN" "• You'll enter these details in the next step"
+    pecho "$PASTEL_YELLOW" "IMPORTANT: Enter split-screen mode if not using Termux:Float"
+    pecho "$PASTEL_YELLOW" "Otherwise the pairing code and port will change!"
     echo ""
     
     # Offer to launch Termux:Float for easy access during setup
@@ -303,17 +292,7 @@ adb_wireless_helper(){
       sleep 2
     fi
     
-    printf "${PASTEL_PINK}Press Enter to open Developer Settings...${RESET} "
-    read -r || true
-    
-    # Open developer settings
-    open_developer_settings
-    
-    echo ""
-    pecho "$PASTEL_YELLOW" "Complete the pairing process in the Developer Settings that just opened."
-    echo ""
-    printf "${PASTEL_PINK}Press Enter after completing the pairing setup...${RESET} "
-    read -r || true
+    # Skip the first prompt - only use the one later in the function
   else
     info "Non-interactive mode: skipping manual ADB setup"
     return 0
@@ -438,10 +417,20 @@ step_adb(){
     mark_step_status "warning"
     return 0
   fi
-  
-  # Open developer settings once and run the helper (no duplicate prompts)
-  if ! open_developer_settings; then
-    info "Please manually navigate to Developer Options and enable Wireless debugging"
+
+  # Show the setup guide and open developer settings once
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "Opening Developer Settings for ADB wireless debugging setup..."
+    echo ""
+    
+    # Open developer settings directly
+    if ! open_developer_settings; then
+      info "Please manually navigate to Developer Options and enable Wireless debugging"
+    fi
+  else
+    info "Non-interactive mode: skipping manual ADB setup"
+    return 0
   fi
   
   # Run the actual ADB helper with enhanced detection

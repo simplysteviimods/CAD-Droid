@@ -39,8 +39,6 @@ ESSENTIAL_APKS=(
   ["Termux:API"]="com.termux.api"
   ["Termux:Boot"]="com.termux.boot"
   ["Termux:Float"]="com.termux.float"
-  ["Termux:Styling"]="com.termux.styling"
-  ["Termux:Tasker"]="com.termux.tasker"
   ["Termux:Widget"]="com.termux.widget"
   ["Termux:X11"]="com.termux.x11"
   ["Termux:GUI"]="com.termux.gui"
@@ -52,8 +50,6 @@ TERMUX_GITHUB_URLS=(
   ["com.termux.api"]="https://github.com/termux/termux-api/releases/latest/download/termux-api.apk"
   ["com.termux.boot"]="https://github.com/termux/termux-boot/releases/latest/download/termux-boot.apk"
   ["com.termux.float"]="https://github.com/termux/termux-float/releases/latest/download/termux-float.apk"
-  ["com.termux.styling"]="https://github.com/termux/termux-styling/releases/latest/download/termux-styling.apk"
-  ["com.termux.tasker"]="https://github.com/termux/termux-tasker/releases/latest/download/termux-tasker.apk"
   ["com.termux.widget"]="https://github.com/termux/termux-widget/releases/latest/download/termux-widget.apk"
   ["com.termux.x11"]="https://github.com/termux/termux-x11/releases/latest/download/termux-x11-universal-1.02.07-0-all.apk"
   ["com.termux.gui"]="https://github.com/termux/termux-gui/releases/latest/download/termux-gui.apk"
@@ -208,7 +204,7 @@ ensure_min_size(){
   return 0
 }
 
-# Enhanced HTTP fetch function with wget-only approach
+# Enhanced HTTP fetch function with progress tracking
 http_fetch(){
   local url="$1" output="$2"
   local timeout="${CURL_MAX_TIME:-40}"
@@ -218,8 +214,14 @@ http_fetch(){
     return 1
   fi
   
-  # Use wget with proper timeouts and error handling
-  if wget \
+  # Start background wget process
+  local start_time=$(date +%s)
+  
+  # Remove existing file to ensure clean download
+  rm -f "$output" 2>/dev/null || true
+  
+  # Use wget with progress tracking
+  wget \
     --timeout="$timeout" \
     --connect-timeout="$connect_timeout" \
     --tries=3 \
@@ -227,11 +229,43 @@ http_fetch(){
     --no-check-certificate \
     --quiet \
     --output-document="$output" \
-    "$url"; then
-    return 0
-  else
-    return 1
-  fi
+    --no-clobber=false \
+    "$url" &
+  
+  local pid=$!
+  
+  # Simple spinner without percentage (we can't detect actual download progress)
+  local frame=0
+  local delay="${SPINNER_DELAY:-0.1}"
+  
+  # Show simple spinner while download runs
+  while kill -0 "$pid" 2>/dev/null; do
+    # Get current spinner character
+    local spinner_count=${#BRAILLE_CHARS[@]:-8}
+    local sym_idx=$((frame % spinner_count))
+    local sym="${BRAILLE_CHARS[$sym_idx]:-*}"
+    
+    # Display simple progress line without percentage
+    printf "\r\033[2K\033[38;2;175;238;238m%s\033[0m Downloading APK..." "$sym"
+    
+    # Safe frame increment
+    if [ "$frame" -lt 10000 ] 2>/dev/null; then
+      frame=$((frame + 1))
+    else
+      frame=0
+    fi
+    
+    sleep "$delay"
+  done
+  
+  # Wait for process to complete and capture exit code
+  wait "$pid"
+  local rc=$?
+  
+  # Clear progress line
+  printf "\r\033[2K"
+  
+  return $rc
 }
 
 # Fetch APK from F-Droid using their API  
@@ -582,8 +616,45 @@ download_fdroid_apk(){
   friendly_name=$(get_friendly_apk_name "$app_name")
   local output_file="$APK_DOWNLOAD_DIR/${friendly_name}.apk"
   
-  # Always overwrite existing APKs to ensure latest version
-  [ -f "$output_file" ] && rm -f "$output_file" 2>/dev/null || true
+  # Check if APK already exists and prompt user
+  if [ -f "$output_file" ]; then
+    local file_size
+    file_size=$(wc -c < "$output_file" 2>/dev/null || echo "0")
+    local size_display
+    if [ "$file_size" -gt 1048576 ]; then
+      size_display="$(( file_size / 1048576 )) MB"
+    elif [ "$file_size" -gt 1024 ]; then
+      size_display="$(( file_size / 1024 )) KB"
+    else
+      size_display="${file_size} bytes"
+    fi
+    
+    if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+      warn "APK already exists: ${friendly_name}.apk ($size_display)"
+      printf "${PASTEL_PINK}Overwrite existing APK file? (y/N):${RESET} "
+      local overwrite_response
+      read -r overwrite_response || overwrite_response="n"
+      case "${overwrite_response,,}" in
+        y|yes)
+          info "Overwriting existing APK file..."
+          rm -f "$output_file" 2>/dev/null || true
+          ;;
+        *)
+          info "Keeping existing APK file - skipping download"
+          # Update tracking arrays to reflect existing file
+          PENDING_APKS=("${PENDING_APKS[@]/$app_name}")
+          DOWNLOADED_APKS+=("$app_name:$output_file")
+          save_apk_state
+          echo "$output_file"
+          return 0
+          ;;
+      esac
+    else
+      # In non-interactive mode, always overwrite
+      warn "Non-interactive mode: overwriting existing APK file"
+      rm -f "$output_file" 2>/dev/null || true
+    fi
+  fi
   
   # Try F-Droid first with enhanced progress display
   local download_url
@@ -723,7 +794,7 @@ download_essential_apks(){
     esac
     
     # Use spinner for each APK download with progress indication
-    if run_with_progress "($total/8) Downloading $app_name" 15 \
+    if run_with_progress "($total/6) Downloading $app_name" 15 \
        fetch_termux_addon "$app_name" "$package_id" "$repo_path" "$github_pattern" "$APK_DOWNLOAD_DIR"; then
       success=$((success + 1))
       ok "Downloaded: $app_name"
@@ -1056,10 +1127,6 @@ manage_apks(){
     # Show detailed permissions guide
     check_apk_permissions
     echo ""
-    
-    # All instructions shown, now prompt to begin
-    printf "${PASTEL_PINK}Press Enter to open file manager and begin APK installation...${RESET} "
-    read -r || true
   else
     info "Non-interactive mode: beginning APK installation process automatically"
   fi

@@ -49,7 +49,7 @@ show_completion_summary(){
     fi
     
     # Force exit of current shell
-    exec exit 0
+    exit 0
   else
     printf "${PASTEL_PINK}Run 'exit' and restart Termux to complete setup${RESET}\n\n"
   fi
@@ -67,7 +67,7 @@ configure_completion_bashrc(){
 
 # Pastel color definitions for terminal
 export PASTEL_CYAN='\033[38;2;175;238;238m'
-export PASTEL_PINK='\033[38;2;255;201;217m'
+export PASTEL_PINK='\033[38;2;221;160;221m'
 export PASTEL_LAVENDER='\033[38;2;220;201;255m'
 export PASTEL_GREEN='\033[38;2;201;255;209m'
 export PASTEL_YELLOW='\033[38;2;255;235;169m'
@@ -120,12 +120,12 @@ BASHRC_COMPLETION_EOF
   ok "Final bash configuration applied"
 }
 
-# Prompt for Termux restart
+# Prompt for Termux restart with app close/reopen
 prompt_termux_reboot(){
   info "Setup completion process finished"
   
   printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
-  printf "${PASTEL_YELLOW}                      🔄 RESTART REQUIRED 🔄                   ${RESET}\n"
+  printf "${PASTEL_YELLOW}                      RESTART REQUIRED                         ${RESET}\n"
   printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
   
   printf "${PASTEL_LAVENDER}To complete the installation and apply all configurations,${RESET}\n"
@@ -147,15 +147,27 @@ prompt_termux_reboot(){
   fi
   
   # Show countdown
-  printf "\n${PASTEL_YELLOW}Restarting Termux in...${RESET}\n"
+  printf "\n${PASTEL_YELLOW}Closing Termux in...${RESET}\n"
   for i in 3 2 1; do
     printf "${PASTEL_CYAN}$i${RESET}..."
     sleep 1
   done
   printf "${PASTEL_GREEN}GO!${RESET}\n\n"
   
-  # Execute the restart
-  exec "$PREFIX/bin/bash" -l
+  # Log out and close the app completely, then reopen
+  info "Closing and reopening Termux for clean environment reload..."
+  
+  # Try to close Termux gracefully using Android intents
+  if command -v am >/dev/null 2>&1; then
+    # Close current session
+    am force-stop com.termux 2>/dev/null || true
+    sleep 2
+    # Reopen Termux
+    am start -n com.termux/com.termux.app.TermuxActivity 2>/dev/null || true
+  else
+    # Fallback to bash restart
+    exec "$PREFIX/bin/bash" -l
+  fi
 }
 
 # Main completion function

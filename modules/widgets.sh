@@ -20,6 +20,19 @@ fi
 WIDGET_DIR="$HOME/.local/share/applications"
 DESKTOP_DIR="$HOME/Desktop"
 
+# Helper functions for SSH configuration
+get_ssh_port() {
+    read_credential "ssh_port" || echo "8022"  # fallback port
+}
+
+get_ssh_username() {
+    read_credential "ssh_username" || echo "caduser"  # fallback username
+}
+
+get_ssh_key_path() {
+    echo "$HOME/.ssh/id_ed25519"
+}
+
 # === Widget Creation Functions ===
 
 # Initialize widget system
@@ -313,7 +326,131 @@ DESKTOP_ENTRY_EOF
     return 0
 }
 
-# === Widget Management Functions ===
+# Create Linux desktop shortcuts using tmux and SSH
+create_linux_desktop_shortcuts(){
+    info "Creating Linux desktop shortcuts..."
+    
+    # Create shortcuts directory
+    local widget_shortcuts="$HOME/.shortcuts"
+    mkdir -p "$widget_shortcuts" 2>/dev/null || true
+    
+    # Linux Desktop shortcut (portrait mode, X11 focus)
+    cat > "$widget_shortcuts/Linux Desktop" << 'LINUX_DESKTOP_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Linux Desktop - X11 XFCE Desktop Environment with SSH Key Authentication
+
+# Simple credential reader function
+read_credential() {
+    local name="$1"
+    local cred_file="$HOME/.cad/credentials/$name.cred"
+    if [ -f "$cred_file" ]; then
+        cat "$cred_file" 2>/dev/null
+    else
+        return 1
+    fi
+}
+
+# Get SSH configuration from stored credentials
+SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "caduser")
+SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Check if SSH key exists
+if [ ! -f "$SSH_KEY" ]; then
+    echo "SSH key not found at $SSH_KEY"
+    echo "Please run the full CAD-Droid setup first"
+    exit 1
+fi
+
+echo "Starting Linux Desktop..."
+echo "SSH Port: $SSH_PORT"
+echo "Username: $SSH_USERNAME"
+
+# Start Termux:X11
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+
+# Create new tmux session for container setup
+tmux new -s rootlog -d
+
+# Send commands to tmux session to setup SSH daemon
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started' && tmux wait -S ssh_ready" enter
+
+# Wait for SSH daemon to be ready
+tmux wait ssh_ready
+
+# Connect to the container via SSH with X11 forwarding and start XFCE
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
+
+# Clean up tmux session when done
+tmux kill-session -t rootlog 2>/dev/null || true
+LINUX_DESKTOP_EOF
+    chmod +x "$widget_shortcuts/Linux Desktop"
+    
+    # Linux Sunshine shortcut (landscape mode, includes Sunshine for remote access)
+    cat > "$widget_shortcuts/Linux Sunshine" << 'LINUX_SUNSHINE_EOF'
+#!/data/data/com.termux/files/usr/bin/bash  
+# Linux Sunshine - X11 Desktop with Remote Streaming and SSH Key Authentication
+
+# Force landscape orientation for better streaming experience
+am start -a android.intent.action.MAIN -c android.intent.category.HOME
+
+# Simple credential reader function
+read_credential() {
+    local name="$1"
+    local cred_file="$HOME/.cad/credentials/$name.cred"
+    if [ -f "$cred_file" ]; then
+        cat "$cred_file" 2>/dev/null
+    else
+        return 1
+    fi
+}
+
+# Get SSH configuration from stored credentials
+SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "caduser")
+SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Check if SSH key exists  
+if [ ! -f "$SSH_KEY" ]; then
+    echo "SSH key not found at $SSH_KEY"
+    echo "Please run the full CAD-Droid setup first"
+    exit 1
+fi
+
+echo "Starting Linux Sunshine Desktop..."
+echo "SSH Port: $SSH_PORT"
+echo "Username: $SSH_USERNAME"
+
+# Start Termux:X11
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+
+# Create new tmux session for container setup
+tmux new -s sunshine_session -d
+
+# Setup SSH daemon and Sunshine in the container
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+tmux send-keys "sudo systemctl start sunshine || sudo sunshine --service & echo 'Sunshine started'" enter
+tmux send-keys "echo 'Services ready' && tmux wait -S services_ready" enter
+
+# Wait for services to be ready
+tmux wait services_ready
+
+# Connect with X11 forwarding and start XFCE with Sunshine
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" '
+export DISPLAY=:0
+sunshine --config-dir ~/.config/sunshine &
+termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"
+'
+
+# Clean up tmux session when done
+tmux kill-session -t sunshine_session 2>/dev/null || true
+LINUX_SUNSHINE_EOF
+    chmod +x "$widget_shortcuts/Linux Sunshine"
+    
+    ok "Linux desktop shortcuts created: 'Linux Desktop' and 'Linux Sunshine'"
+}
 
 # Install all widget categories
 install_widgets(){
@@ -331,6 +468,7 @@ install_widgets(){
     create_productivity_widgets
     create_container_widgets
     create_devenv_widgets
+    create_linux_desktop_shortcuts
     
     # Create widget index
     create_widget_index

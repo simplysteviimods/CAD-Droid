@@ -791,7 +791,7 @@ configure_pastel_shell_prompt() {
 # === CAD-Droid Pastel Shell Configuration ===
 
 # Pastel color definitions
-PASTEL_PINK='\[\033[38;5;213m\]'
+PASTEL_PINK='\[\033[38;2;221;160;221m\]'
 PASTEL_PURPLE='\[\033[38;5;183m\]'
 PASTEL_CYAN='\[\033[38;5;159m\]'
 PASTEL_GREEN='\[\033[38;5;158m\]'
@@ -1090,62 +1090,132 @@ setup_ssh_keys(){
 # === Installation Management ===
 
 # Installation flag to track CAD-Droid installation attempts
-readonly INSTALL_FLAG_FILE="$HOME/.cad/install_in_progress"
+readonly INSTALL_FLAG_FILE="$HOME/.cad/cad_droid_installed"
 readonly INSTALL_COMPLETE_FLAG="$HOME/.cad/install_complete"
 
 # Set installation flag at the beginning of install
 set_install_flag(){
-  info "Setting installation flag..."
+  info "Setting permanent installation flag..."
   mkdir -p "$(dirname "$INSTALL_FLAG_FILE")" 2>/dev/null || true
   echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_FLAG_FILE"
   export CAD_DROID_INSTALLING=1
 }
 
-# Clear installation flag on successful completion
+# Mark installation as complete and update permanent flag
 clear_install_flag(){
-  if [ -f "$INSTALL_FLAG_FILE" ]; then
-    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null || true
-  fi
+  # Update the permanent install flag with completion date
   echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$INSTALL_COMPLETE_FLAG"
-  unset CAD_DROID_INSTALLING
+  echo "Installation completed: $(date '+%Y-%m-%d %H:%M:%S')" >> "$INSTALL_FLAG_FILE"
+  # Keep CAD_DROID_INSTALLING for current session but don't unset globally
 }
 
 # Check for previous CAD-Droid installation
 check_previous_install(){
   info "Checking for previous CAD-Droid installation..."
   
-  # Check for active installation flag first
+  # Check for permanent installation flag
   if [ -f "$INSTALL_FLAG_FILE" ]; then
-    local flag_date
-    flag_date=$(cat "$INSTALL_FLAG_FILE" 2>/dev/null || echo "unknown")
-    warn "Previous installation attempt detected (started: $flag_date)"
+    local flag_content
+    flag_content=$(cat "$INSTALL_FLAG_FILE" 2>/dev/null || echo "")
     
-    if [ "$NON_INTERACTIVE" != "1" ]; then
-      printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
-      printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
-      printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
-      local response
-      read -r response || response="n"
-      case "${response,,}" in
-        y|yes)
-          cleanup_previous_install
-          set_install_flag  # Set new flag for this attempt
-          return 0
-          ;;
-        *)
-          info "Continuing with existing installation state"
-          set_install_flag  # Still set flag for this attempt
-          return 0
-          ;;
-      esac
+    # Check if this is a completed installation (contains "Installation completed")
+    if echo "$flag_content" | grep -q "Installation completed"; then
+      local install_date completion_date
+      install_date=$(echo "$flag_content" | head -1)
+      completion_date=$(echo "$flag_content" | grep "Installation completed" | head -1 | cut -d':' -f2- | sed 's/^ *//')
+      
+      warn "Previous CAD-Droid installation detected (completed: $completion_date)"
+      
+      if [ "$NON_INTERACTIVE" != "1" ]; then
+        printf "\n${PASTEL_YELLOW}Previous CAD-Droid installation found!${RESET}\n"
+        printf "${PASTEL_CYAN}Installation was completed on: $completion_date${RESET}\n\n"
+        printf "${PASTEL_PINK}Remove all previous installation files and start fresh? (y/N):${RESET} "
+        local response
+        read -r response || response="n"
+        case "${response,,}" in
+          y|yes)
+            # Add confirmation prompt
+            printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
+            printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
+            printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
+            printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
+            printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
+            printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
+            local final_confirm
+            read -r final_confirm || final_confirm="n"
+            case "${final_confirm,,}" in
+              y|yes)
+                cleanup_previous_install
+                info "Previous installation cleaned up - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with fresh installation alongside existing files"
+                ;;
+            esac
+            ;;
+          *)
+            info "Continuing with fresh installation alongside existing files"
+            return 0
+            ;;
+        esac
+      else
+        warn "Previous installation found - continuing anyway (non-interactive mode)"
+      fi
+    else
+      # This is an incomplete installation (no completion marker)
+      local flag_date
+      flag_date=$(echo "$flag_content" | head -1)
+      warn "Incomplete installation attempt detected (started: $flag_date)"
+      
+      if [ "$NON_INTERACTIVE" != "1" ]; then
+        printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
+        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+        printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
+        local response
+        read -r response || response="n"
+        case "${response,,}" in
+          y|yes)
+            # Add confirmation prompt
+            printf "\n${PASTEL_YELLOW}This will delete ALL CAD-Droid files, configurations, and downloads.${RESET}\n"
+            printf "${PASTEL_PINK}Are you sure you want to continue? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install
+                info "Previous installation cleaned up - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing installation state"
+                ;;
+            esac
+            ;;
+          *)
+            info "Continuing with existing installation state"
+            ;;
+        esac
+      else
+        warn "Incomplete installation found - continuing anyway (non-interactive mode)"
+      fi
     fi
   fi
   
+  # If no install flag found, check for other markers
+  # Enhanced detection of installation markers
   local install_markers=(
     "$HOME/.cad"
     "$HOME/.shortcuts/phantom-killer"
+    "$HOME/.shortcuts/adb-connect" 
+    "$HOME/.shortcuts/system-info"
+    "$HOME/.shortcuts/file-manager"
+    "$HOME/.shortcuts/Linux Desktop"
+    "$HOME/.shortcuts/Linux Sunshine"
     "$HOME/.termux/boot/disable-phantom-killer.sh"
     "$PREFIX/etc/motd"
+    "$HOME/.bashrc_cad_completion"
+    "$HOME/.local/bin/cad-droid"
+    "$HOME/.config/xfce4"
+    "$HOME/.proot-distro"
   )
   
   # Also check for APK installer files
@@ -1205,16 +1275,32 @@ check_previous_install(){
     
     if [ "$NON_INTERACTIVE" != "1" ]; then
       printf "${PASTEL_PINK}Would you like to clean up ALL previous installation files?${RESET}\n"
-      printf "${PASTEL_YELLOW}   This includes configuration, APKs, cache, and temporary files.${RESET}\n"
-      printf "${PASTEL_PINK}   Continue cleanup? (y/N):${RESET} "
-      local response
-      read -r response || response="n"
-      case "${response,,}" in
+      printf "${PASTEL_YELLOW}This will remove CAD-Droid configurations, APKs, containers, and shortcuts.${RESET}\n"
+      printf "\n${PASTEL_PINK}   Delete all previous CAD-Droid files? (y/N):${RESET} "
+      local cleanup_response
+      read -r cleanup_response || cleanup_response="n"
+      case "${cleanup_response,,}" in
         y|yes)
-          cleanup_previous_install
+          # Add confirmation prompt
+          printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
+          printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
+          printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
+          printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
+          printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
+          printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
+          local final_confirm
+          read -r final_confirm || final_confirm="n"
+          case "${final_confirm,,}" in
+            y|yes)
+              cleanup_previous_install
+              ;;
+            *)
+              info "Cleanup cancelled - continuing with fresh installation alongside existing files"
+              ;;
+          esac
           ;;
         *)
-          info "Continuing with existing files - some features may conflict"
+          info "Continuing with fresh installation alongside existing files"
           ;;
       esac
     else
@@ -1223,14 +1309,14 @@ check_previous_install(){
   else
     ok "No previous installation detected"
   fi
-  
-  # Set installation flag for this attempt
-  set_install_flag
 }
 
 # Clean up previous CAD-Droid installation files
 cleanup_previous_install(){
   info "Cleaning up previous installation..."
+  
+  # Temporarily disable exit on error for cleanup operations
+  set +e
   
   local cleanup_items=(
     "$HOME/.cad"
@@ -1238,20 +1324,18 @@ cleanup_previous_install(){
     "$HOME/.termux/boot/disable-phantom-killer.sh"
     "$HOME/.termux/boot/phantom-killer.log"
     "$PREFIX/etc/motd"
+    "$HOME/.bashrc_cad_completion"
+    "$HOME/.local/bin/cad-droid"
+    "/storage/emulated/0/Download/CAD-Droid-APKs"
+    "$HOME/.config/xfce4"
+    "$HOME/.proot-distro"
   )
   
   local cleaned_count=0
   local total_size=0
   
-  # Clean up installation flags first
-  if [ -f "$INSTALL_FLAG_FILE" ]; then
-    rm -f "$INSTALL_FLAG_FILE" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
-  fi
-  if [ -f "$INSTALL_COMPLETE_FLAG" ]; then
-    rm -f "$INSTALL_COMPLETE_FLAG" 2>/dev/null && cleaned_count=$((cleaned_count + 1))
-  fi
-  
-  # Completely wipe previous configurations to prevent conflicts
+  # Clean up temporary files but preserve permanent install flag
+  # Note: We keep the install flag as it's now permanent
   local config_files=(
     "$HOME/.bashrc"
     "$HOME/.termux/termux.properties" 
@@ -1292,7 +1376,7 @@ cleanup_previous_install(){
   
   # Clean up APK installer files and cache if the function exists
   if command -v cleanup_apk_installer_files >/dev/null 2>&1; then
-    cleanup_apk_installer_files
+    cleanup_apk_installer_files || true
   else
     # Fallback APK cleanup if the dedicated function isn't available
     local apk_cleanup_items=(
@@ -1343,6 +1427,9 @@ cleanup_previous_install(){
   fi
   
   ok "Cleanup completed - removed $cleaned_count items ($size_display)"
+  
+  # Re-enable exit on error
+  set -e
 }
 
 # Text wrapping function that breaks on word boundaries

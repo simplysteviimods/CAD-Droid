@@ -35,7 +35,7 @@ init_pastel_colors() {
   if init_color_support; then
     # Define comprehensive pastel color palette
     export PASTEL_CYAN='\033[38;2;175;238;238m'       # Pale Turquoise #AFEEEE
-    export PASTEL_PINK='\033[38;2;255;182;193m'       # Light Pink #FFB6C1
+    export PASTEL_PINK='\033[38;2;221;160;221m'       # Plum #DDA0DD (same as PASTEL_PURPLE)
     export PASTEL_GREEN='\033[38;2;144;238;144m'      # Light Green #90EE90
     export PASTEL_YELLOW='\033[38;2;255;255;224m'     # Light Yellow #FFFFE0
     export PASTEL_PURPLE='\033[38;2;221;160;221m'     # Plum #DDA0DD
@@ -262,6 +262,38 @@ format_body_text() {
   local wrap_width=$((width - 8))  # Leave margin for readability
   
   wrap_text_words "$text" "$wrap_width"
+}
+
+# Format and display informational text with color and wrapping (NOT for title cards)
+pecho_wrapped() {
+  local color="$1"
+  local text="$2"
+  local prefix="${3:-}"
+  
+  # Don't wrap if this looks like a title card (contains ===, ─, or other decorative chars)
+  if echo "$text" | grep -q '===\|───\|═══\|▄\|▀\|█'; then
+    # This is likely a title card - don't wrap
+    pecho "$color" "$text"
+    return
+  fi
+  
+  # Apply word wrapping for regular informational text
+  local width
+  width=$(get_terminal_width)
+  local wrap_width=$((width - 4))  # Small margin
+  
+  # Wrap the text
+  local wrapped_text
+  wrapped_text=$(wrap_text_words "$text" "$wrap_width")
+  
+  # Output each line with color and optional prefix
+  while IFS= read -r line; do
+    if [ -n "$prefix" ]; then
+      pecho "$color" "$prefix$line"
+    else
+      pecho "$color" "$line"
+    fi
+  done <<< "$wrapped_text"
 }
 
 # === Gradient and Visual Effects ===

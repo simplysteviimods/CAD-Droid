@@ -167,7 +167,7 @@ display_feature_parity_options(){
   printf "${PASTEL_GREEN}├─${RESET} Pastel Theme Configuration\n"
   printf "${PASTEL_GREEN}└─${RESET} APK Management & F-Droid Integration\n\n"
   
-  printf "${PASTEL_YELLOW}🔍 ADDITIONAL FEATURES AVAILABLE:${RESET}\n"
+  printf "${PASTEL_YELLOW}ADDITIONAL FEATURES AVAILABLE:${RESET}\n"
   printf "${PASTEL_CYAN}├─${RESET} Wine/Box86/Box64 Emulation (x86 apps on ARM)\n"
   printf "${PASTEL_CYAN}├─${RESET} Desktop Environment (XFCE)\n"
   printf "${PASTEL_CYAN}├─${RESET} Advanced Networking Tools\n"

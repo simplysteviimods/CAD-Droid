@@ -15,6 +15,42 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 set -Eeuo pipefail
 shopt -s inherit_errexit 2>/dev/null || true
 
+# Set up signal handlers for graceful script interruption
+handle_script_interruption() {
+  local exit_code=$?
+  local line_no="${1:-unknown}"
+  
+  printf "\n\033[38;2;255;192;203m✗ Script interrupted at line %s (exit code: %d)\033[0m\n" "$line_no" "$exit_code" >&2
+  
+  if [ "${NON_INTERACTIVE:-0}" != "1" ]; then
+    pecho "$PASTEL_PINK" "To ensure proper environment setup:"
+    pecho "$PASTEL_CYAN" "• Exit Termux completely (swipe up from bottom, close Termux)"
+    pecho "$PASTEL_CYAN" "• Reopen Termux to reload the environment"
+    pecho "$PASTEL_CYAN" "• Restart the installation if needed"
+    echo ""
+    
+    printf "${PASTEL_PINK}Exit Termux and reload now? (Y/n):${RESET} "
+    local response
+    read -r response || response="y"
+    
+    case "${response,,}" in
+      ""|y|yes)
+        pecho "$PASTEL_CYAN" "Exiting Termux for environment reload..."
+        sleep 2
+        exit 0
+        ;;
+      *)
+        pecho "$PASTEL_YELLOW" "Remember to exit and reload Termux manually to apply changes"
+        ;;
+    esac
+  fi
+  
+  exit "$exit_code"
+}
+
+# Set up trap for errors and interruptions
+trap 'handle_script_interruption $LINENO' ERR EXIT INT TERM
+
 # Set restrictive file permissions (owner read/write only) for security
 umask 077
 
@@ -469,6 +505,14 @@ show_final_completion(){
   info "  • Restart Termux to see new prompt colors"
   info "  • Use 'nano filename' to edit files"
   info "  • Check ~/.bashrc for environment settings"
+  
+  # Call the completion module for full completion handling
+  if declare -f complete_setup >/dev/null 2>&1; then
+    echo ""
+    complete_setup
+  else
+    warn "Completion module not available - restart Termux manually"
+  fi
 }
 
 run_diagnostics(){
@@ -513,6 +557,9 @@ run_diagnostics(){
 main_execution(){
   # Load all modules first
   load_all_modules
+  
+  # Check for previous installations before setting new flag
+  check_previous_install
   
   # Set installation flag at the very beginning
   set_install_flag
@@ -623,4 +670,5 @@ done
 # === Main Execution ===
 
 # Execute main installation flow
+trap - ERR EXIT INT TERM  # Clear traps for successful completion
 main_execution

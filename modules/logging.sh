@@ -188,29 +188,32 @@ run_with_progress(){
     current_time=$(date +%s 2>/dev/null || echo "$start_time")
     elapsed=$((current_time - start_time))
     
-    # Calculate percentage with bounds checking
+    # Calculate percentage with more accurate time-based calculation
     if [ "$elapsed" -le "$est" ] 2>/dev/null; then
+      # Linear progress for time within estimate
       pct=$(safe_progress_div "$elapsed" "$est")
     else
-      # Beyond estimate - show slowing progress
+      # Beyond estimate - use logarithmic slowdown for more realistic feel
       local over=$((elapsed - est))
-      local tail
-      if [ "$est" -gt 3 ] 2>/dev/null; then
-        tail=$((est / 3))
+      local extra_time=$((est / 4))  # Allow 25% extra time to reach 95%
+      
+      if [ "$over" -le "$extra_time" ] 2>/dev/null; then
+        # Progress from 90% to 95% over the extra time
+        local base_pct=90
+        local extra_pct=$(safe_progress_div "$over" "$extra_time")
+        local bonus_pct=$((extra_pct * 5 / 100))  # Max 5% bonus (90% -> 95%)
+        pct=$((base_pct + bonus_pct))
       else
-        tail=5
+        # After extra time, slowly approach 99% but never reach 100%
+        local remaining_time=$((elapsed - est - extra_time))
+        if [ "$remaining_time" -lt 60 ] 2>/dev/null; then
+          pct=95
+        elif [ "$remaining_time" -lt 120 ] 2>/dev/null; then
+          pct=97
+        else
+          pct=98
+        fi
       fi
-      
-      if [ "$tail" -lt 5 ] 2>/dev/null; then tail=5; fi
-      
-      if [ "$tail" -gt 0 ] 2>/dev/null; then
-        add=$((over * 10 / tail))
-      else
-        add=0
-      fi
-      
-      if [ "$add" -gt 10 ] 2>/dev/null; then add=10; fi
-      pct=$((90 + add))
     fi
     
     if [ "$pct" -gt 99 ] 2>/dev/null; then pct=99; fi  # Never show 100% while running

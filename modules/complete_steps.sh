@@ -49,7 +49,7 @@ step_container(){
     if [ "$NON_INTERACTIVE" = "1" ]; then
         sel="1"  # Default to Ubuntu
     else
-        read_option "Select distribution (1-4)" sel 1 4 1
+        read_option "Select distribution" sel 1 4 1
     fi
     
     # Map selection to distribution name
@@ -347,69 +347,46 @@ step_prefetch(){
         return 0
     fi
     
-    # Create prefetch script (robust temp path)
-    local tmp_base="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
-    mkdir -p "$tmp_base" 2>/dev/null || true
-    local prefetch_script
-    prefetch_script="$(mktemp "$tmp_base/prefetch_packages.XXXXXX.sh" 2>/dev/null || echo "$tmp_base/prefetch_packages.sh")"
-
-    cat > "$prefetch_script" << PREFETCH_EOF
-#!/bin/bash
-
-echo "Prefetching development packages..."
-
-# Force refresh of package archives each run
-if command -v apt-get >/dev/null 2>&1; then
-  echo "Cleaning package cache..."
-  apt-get clean >/dev/null 2>&1 || true
-  rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
-  
-  echo "Updating package lists..."
-  apt-get update >/dev/null 2>&1
-  
-  # Download packages in batches with clear progress  
-  local batch_size=5
-  local batch_num=1
-  local total_batches=\$(( (${#prefetch_packages[@]} + batch_size - 1) / batch_size ))
-  
-  echo "Processing \$total_batches batches of development packages..."
-  
-  for ((i=0; i<${#prefetch_packages[@]}; i+=batch_size)); do
-    local batch=("\${prefetch_packages[@]:i:batch_size}")
-    echo "Batch \$batch_num/\$total_batches: \${batch[*]}"
-    apt-get -o Acquire::http::No-Cache=true \\
-            -o Acquire::https::No-Cache=true \\
-            --download-only -y install "\${batch[@]}" >/dev/null 2>&1 || {
-        echo "Some packages in batch \$batch_num may not be available"
-    }
-    batch_num=\$((batch_num + 1))
-  done
-  
-  echo "Package download completed"
-else
-  echo "Package manager not available"
-fi
-
-# Show cache status
-echo ""
-echo "Package cache status:"
-du -sh /var/cache/apt/archives/ 2>/dev/null || echo "Cache information not available"
-
-# Count cached packages
-CACHED_COUNT=\$(ls -1 /var/cache/apt/archives/*.deb 2>/dev/null | wc -l || echo 0)
-echo "Cached packages: \$CACHED_COUNT"
-
-echo "Package prefetch complete"
-PREFETCH_EOF
+    # Step 1: Clean package cache
+    run_with_progress "Clean package cache in container" 15 \
+        proot-distro login "$container_name" -- bash -c "
+            apt-get clean >/dev/null 2>&1 || true
+            rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true
+        "
     
-    chmod +x "$prefetch_script" 2>/dev/null || true
+    # Step 2: Update package lists
+    run_with_progress "Update package lists" 30 \
+        proot-distro login "$container_name" -- bash -c "
+            apt-get update >/dev/null 2>&1
+        "
     
-    # Run prefetch in container
-    run_with_progress "Download development packages for offline use" 180 \
-        proot-distro login "$container_name" -- bash < "$prefetch_script"
+    # Step 3: Download packages in batches with individual progress
+    local batch_size=5
+    local batch_num=1
+    local total_batches=$(( (${#prefetch_packages[@]} + batch_size - 1) / batch_size ))
     
-    # Clean up
-    rm -f "$prefetch_script" 2>/dev/null || true
+    info "Downloading $total_batches batches of development packages..."
+    
+    for ((i=0; i<${#prefetch_packages[@]}; i+=batch_size)); do
+        local batch=("${prefetch_packages[@]:i:batch_size}")
+        local batch_list="${batch[*]}"
+        
+        run_with_progress "Download batch $batch_num/$total_batches: ${batch_list// /, }" 25 \
+            proot-distro login "$container_name" -- bash -c "
+                apt-get -o Acquire::http::No-Cache=true \\
+                    --download-only --fix-missing -y \\
+                    install $batch_list >/dev/null 2>&1 || true
+            "
+        
+        batch_num=$((batch_num + 1))
+    done
+    
+    # Step 4: Report final cache status
+    run_with_progress "Check downloaded package cache" 10 \
+        proot-distro login "$container_name" -- bash -c "
+            CACHED_COUNT=\$(ls -1 /var/cache/apt/archives/*.deb 2>/dev/null | wc -l || echo 0)
+            echo \"Cached packages: \$CACHED_COUNT\"
+        "
     
     ok "Package prefetch complete"
     return 0
@@ -695,8 +672,14 @@ configure_linux_env() {
     local ssh_port
     ssh_port=$(random_port)
     
+    # Store SSH port for later use by shortcuts
+    store_credential "ssh_port" "$ssh_port"
+    
     # Get user configuration
     read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    
+    # Store SSH username for later use by shortcuts
+    store_credential "ssh_username" "$UBUNTU_USERNAME"
     
     if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
         warn "User password setup failed, using default"
@@ -771,6 +754,12 @@ configure_linux_env() {
             chown -R '$UBUNTU_USERNAME':'$UBUNTU_USERNAME' /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
             chmod 700 /home/'$UBUNTU_USERNAME'/.ssh >/dev/null 2>&1 || true
             chmod 600 /home/'$UBUNTU_USERNAME'/.ssh/authorized_keys >/dev/null 2>&1 || true
+            
+            # Configure SSH daemon with custom port
+            mkdir -p /etc/ssh >/dev/null 2>&1 || true
+            sed -i 's/#Port 22/Port $ssh_port/' /etc/ssh/sshd_config 2>/dev/null || echo 'Port $ssh_port' >> /etc/ssh/sshd_config
+            sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
+            sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 2>/dev/null || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
         \\\"
     "
     
