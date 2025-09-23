@@ -260,7 +260,7 @@ step_xfce(){
     
     # Install packages with progress
     for pkg in "${xfce_packages[@]}"; do
-        run_with_progress "Install $pkg" 30 bash -c "
+        run_with_progress "Install $pkg" 35 bash -c "
             pkg install -y $pkg >/dev/null 2>&1 || apt install -y $pkg >/dev/null 2>&1
         "
     done
@@ -675,8 +675,20 @@ configure_linux_env() {
     # Store SSH port for later use by shortcuts
     store_credential "ssh_port" "$ssh_port"
     
-    # Get user configuration
-    read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    # Get user configuration with confirmation loop
+    while true; do
+        read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+        
+        if [ "$NON_INTERACTIVE" = "1" ]; then
+            break
+        fi
+        
+        if ask_yes_no "Confirm Linux username: $UBUNTU_USERNAME" "y"; then
+            break
+        fi
+        
+        info "Please enter the username again"
+    done
     
     # Store SSH username for later use by shortcuts
     store_credential "ssh_username" "$UBUNTU_USERNAME"
@@ -723,7 +735,7 @@ configure_linux_env() {
     
     # Configure the container
     info "Setting up user accounts and SSH access..."
-    run_with_progress "Configure container environment" 30 bash -c "
+    if run_with_progress "Configure container environment" 30 bash -c "
         proot-distro login '$distro' --shared-tmp -- bash -c \\\"
             # Update package manager
             if command -v apt-get >/dev/null 2>&1; then
@@ -761,8 +773,11 @@ configure_linux_env() {
             sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
             sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 2>/dev/null || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
         \\\"
-    "
-    
+    "; then
+        ok "Container environment configured successfully"
+    else
+        warn "Container configuration completed with some warnings"
+    fi
     # Create convenience launcher
     local launcher="$PREFIX/bin/container"
     cat > "$launcher" << LAUNCHER_EOF
@@ -778,7 +793,7 @@ fi
 LAUNCHER_EOF
     chmod +x "$launcher" 2>/dev/null || true
     
-    info "Container configured successfully"
+    ok "Linux container setup completed"
     info "Access container with: container"
     info "SSH key available at: $ssh_key"
     info "Container user: $UBUNTU_USERNAME"

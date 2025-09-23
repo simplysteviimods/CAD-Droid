@@ -458,9 +458,61 @@ cleanup_broken_repositories(){
   update_repository_indexes || true
 }
 
+# Clean previous mirror configuration files to ensure clean state
+wipe_previous_mirror_config(){
+  info "Cleaning previous mirror configuration files..."
+  
+  # Files and directories to clean for fresh mirror configuration
+  local mirror_config_files=(
+    "$PREFIX/etc/apt/sources.list"
+    "$PREFIX/etc/apt/sources.list.d"
+    "$PREFIX/var/lib/apt/lists"
+    "$PREFIX/var/cache/apt/archives"
+  )
+  
+  local cleaned_count=0
+  
+  # Remove existing sources.list to ensure clean slate
+  if [ -f "$PREFIX/etc/apt/sources.list" ]; then
+    if cp "$PREFIX/etc/apt/sources.list" "$PREFIX/etc/apt/sources.list.backup.$(date +%s)" 2>/dev/null; then
+      debug "Backed up existing sources.list"
+    fi
+    if rm -f "$PREFIX/etc/apt/sources.list" 2>/dev/null; then
+      cleaned_count=$((cleaned_count + 1))
+      debug "Removed old sources.list"
+    fi
+  fi
+  
+  # Clean sources.list.d directory
+  if [ -d "$PREFIX/etc/apt/sources.list.d" ]; then
+    if rm -rf "$PREFIX/etc/apt/sources.list.d"/* 2>/dev/null; then
+      cleaned_count=$((cleaned_count + 1))
+      debug "Cleaned sources.list.d directory"
+    fi
+  fi
+  
+  # Clean package lists to force fresh download
+  if [ -d "$PREFIX/var/lib/apt/lists" ]; then
+    if rm -rf "$PREFIX/var/lib/apt/lists"/* 2>/dev/null; then
+      cleaned_count=$((cleaned_count + 1))
+      debug "Cleaned package lists"
+    fi
+  fi
+  
+  # Ensure directories exist
+  mkdir -p "$PREFIX/etc/apt/sources.list.d" 2>/dev/null || true
+  mkdir -p "$PREFIX/var/lib/apt/lists" 2>/dev/null || true
+  mkdir -p "$PREFIX/var/cache/apt/archives" 2>/dev/null || true
+  
+  debug "Mirror configuration files cleaned ($cleaned_count items)"
+}
+
 # Main mirror configuration function
 configure_repositories(){
   info "Configuring package repositories..."
+  
+  # Wipe previous mirror configuration for clean setup
+  wipe_previous_mirror_config
   
   # Clean up any broken repositories first
   cleanup_broken_repositories
@@ -489,3 +541,4 @@ export -f test_mirror_speed
 export -f select_fastest_mirror
 export -f update_repository_indexes
 export -f configure_repositories
+export -f wipe_previous_mirror_config

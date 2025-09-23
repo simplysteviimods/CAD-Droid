@@ -951,17 +951,17 @@ TERMUX_PROPS_EOF
 # Final completion with reboot prompt
 cad_droid_completion(){
   printf "\n${PASTEL_PINK}CAD-Droid Setup Complete!${RESET}\n"
-  printf "${PASTEL_YELLOW}═══════════════════════════════════════${RESET}\n\n"
+  printf "${PASTEL_YELLOW}========================================${RESET}\n\n"
   
   printf "${PASTEL_GREEN}Installation Summary:${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Critical bug fixes applied\n"
-  printf "${PASTEL_CYAN}├─${RESET} Pastel theme configured\n"  
-  printf "${PASTEL_CYAN}├─${RESET} APK management system ready\n"
-  printf "${PASTEL_CYAN}├─${RESET} ADB wireless setup completed\n"
-  printf "${PASTEL_CYAN}├─${RESET} Phantom process killer disabled\n"
-  printf "${PASTEL_CYAN}├─${RESET} Widget shortcuts created\n"
-  printf "${PASTEL_CYAN}├─${RESET} Container support installed\n"
-  printf "${PASTEL_CYAN}└─${RESET} XFCE desktop environment ready\n\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Critical bug fixes applied\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Pastel theme configured\n"  
+  printf "${PASTEL_CYAN}+= ${RESET} APK management system ready\n"
+  printf "${PASTEL_CYAN}+= ${RESET} ADB wireless setup completed\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Phantom process killer disabled\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Widget shortcuts created\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Container support installed\n"
+  printf "${PASTEL_CYAN}+= ${RESET} XFCE desktop environment ready\n\n"
   
   printf "${PASTEL_YELLOW}Quick Start Guide:${RESET}\n"
   printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to home screen (especially phantom-killer)\n"
@@ -1129,33 +1129,51 @@ check_previous_install(){
       if [ "$NON_INTERACTIVE" != "1" ]; then
         printf "\n${PASTEL_YELLOW}Previous CAD-Droid installation found!${RESET}\n"
         printf "${PASTEL_CYAN}Installation was completed on: $completion_date${RESET}\n\n"
-        printf "${PASTEL_PINK}Remove all previous installation files and start fresh? (y/N):${RESET} "
-        local response
-        read -r response || response="n"
-        case "${response,,}" in
-          y|yes)
-            # Add confirmation prompt
-            printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
-            printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
-            printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
-            printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
-            printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
-            printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
-            local final_confirm
-            read -r final_confirm || final_confirm="n"
-            case "${final_confirm,,}" in
+        
+        # Enhanced cleanup options
+        printf "${PASTEL_PURPLE}Choose cleanup option:${RESET}\n"
+        printf "${PASTEL_CYAN}  1) Conservative clean (remove main installation files only)${RESET}\n"
+        printf "${PASTEL_CYAN}  2) Deep clean (remove everything that would be installed/downloaded)${RESET}\n"
+        printf "${PASTEL_CYAN}  3) No cleaning (continue with existing files)${RESET}\n"
+        printf "${PASTEL_PINK}Select option [1-3]:${RESET} "
+        
+        local cleanup_choice
+        read -r cleanup_choice || cleanup_choice="3"
+        
+        case "$cleanup_choice" in
+          1)
+            printf "\n${PASTEL_YELLOW}Conservative cleanup will remove main CAD-Droid files but preserve system configurations.${RESET}\n"
+            printf "${PASTEL_PINK}Proceed with conservative cleanup? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
               y|yes)
-                cleanup_previous_install
-                info "Previous installation cleaned up - continuing with fresh installation"
+                cleanup_previous_install "conservative"
+                info "Conservative cleanup completed - continuing with fresh installation"
                 ;;
               *)
-                info "Cleanup cancelled - continuing with fresh installation alongside existing files"
+                info "Cleanup cancelled - continuing with existing files"
                 ;;
             esac
             ;;
-          *)
-            info "Continuing with fresh installation alongside existing files"
-            return 0
+          2)
+            printf "\n${PASTEL_YELLOW}Deep cleanup will remove ALL files that would be installed or downloaded by CAD-Droid.${RESET}\n"
+            printf "${PASTEL_CYAN}This includes proot-distro containers, apt caches, downloaded packages, and system configurations.${RESET}\n"
+            printf "${PASTEL_PINK}Proceed with deep cleanup? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install "deep"
+                info "Deep cleanup completed - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing files"
+                ;;
+            esac
+            ;;
+          3|*)
+            info "No cleanup selected - continuing with existing files"
             ;;
         esac
       else
@@ -1168,27 +1186,16 @@ check_previous_install(){
       warn "Incomplete installation attempt detected (started: $flag_date)"
       
       if [ "$NON_INTERACTIVE" != "1" ]; then
+        # Single confirmation prompt for incomplete installation cleanup
         printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
-        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
         printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
         local response
         read -r response || response="n"
         case "${response,,}" in
           y|yes)
-            # Add confirmation prompt
-            printf "\n${PASTEL_YELLOW}This will delete ALL CAD-Droid files, configurations, and downloads.${RESET}\n"
-            printf "${PASTEL_PINK}Are you sure you want to continue? (y/N):${RESET} "
-            local confirm
-            read -r confirm || confirm="n"
-            case "${confirm,,}" in
-              y|yes)
-                cleanup_previous_install
-                info "Previous installation cleaned up - continuing with fresh installation"
-                ;;
-              *)
-                info "Cleanup cancelled - continuing with existing installation state"
-                ;;
-            esac
+            cleanup_previous_install "conservative"
+            info "Previous installation cleaned up - continuing with fresh installation"
             ;;
           *)
             info "Continuing with existing installation state"
@@ -1281,12 +1288,7 @@ check_previous_install(){
       read -r cleanup_response || cleanup_response="n"
       case "${cleanup_response,,}" in
         y|yes)
-          # Add confirmation prompt
-          printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
-          printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
-          printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
-          printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
-          printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
+          # Single confirmation prompt
           printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
           local final_confirm
           read -r final_confirm || final_confirm="n"
@@ -1313,12 +1315,19 @@ check_previous_install(){
 
 # Clean up previous CAD-Droid installation files
 cleanup_previous_install(){
-  info "Cleaning up previous installation..."
+  local cleanup_type="${1:-conservative}"
+  
+  if [ "$cleanup_type" = "conservative" ]; then
+    info "Performing conservative cleanup of previous installation..."
+  else
+    info "Performing deep cleanup of previous installation..."
+  fi
   
   # Temporarily disable exit on error for cleanup operations
   set +e
   
-  local cleanup_items=(
+  # Conservative cleanup items (main CAD-Droid files)
+  local conservative_cleanup_items=(
     "$HOME/.cad"
     "$HOME/.shortcuts"
     "$HOME/.termux/boot/disable-phantom-killer.sh"
@@ -1327,39 +1336,67 @@ cleanup_previous_install(){
     "$HOME/.bashrc_cad_completion"
     "$HOME/.local/bin/cad-droid"
     "/storage/emulated/0/Download/CAD-Droid-APKs"
+  )
+  
+  # Deep cleanup items (everything that would be installed/downloaded)
+  local deep_cleanup_items=(
     "$HOME/.config/xfce4"
     "$HOME/.proot-distro"
+    "$PREFIX/var/lib/apt/lists"
+    "$PREFIX/var/cache/apt"
+    "$PREFIX/tmp"
+    "$HOME/.cache"
+    "$PREFIX/var/lib/dpkg"
+    "$PREFIX/share/applications"
+    "$PREFIX/share/pixmaps"
+    "$PREFIX/etc/pulse"
+    "$PREFIX/lib/pulse*"
+    "$PREFIX/bin/pulseaudio"
+    "$PREFIX/bin/startxfce4"
+    "$PREFIX/bin/xfce4*"
+    "$PREFIX/share/xfce4"
+    "$PREFIX/etc/xdg/xfce4"
   )
+  
+  local cleanup_items=()
+  
+  # Select cleanup items based on type
+  if [ "$cleanup_type" = "deep" ]; then
+    cleanup_items=("${conservative_cleanup_items[@]}" "${deep_cleanup_items[@]}")
+  else
+    cleanup_items=("${conservative_cleanup_items[@]}")
+  fi
   
   local cleaned_count=0
   local total_size=0
   
-  # Clean up temporary files but preserve permanent install flag
-  # Note: We keep the install flag as it's now permanent
-  local config_files=(
-    "$HOME/.bashrc"
-    "$HOME/.termux/termux.properties" 
-    "$HOME/.termux/colors.properties"
-    "$HOME/.termux/font.ttf"
-    "$HOME/.nanorc"
-    "$PREFIX/etc/nanorc"
-  )
-  
-  for config_file in "${config_files[@]}"; do
-    if [ -f "$config_file" ]; then
-      local config_size
-      config_size=$(du -sb "$config_file" 2>/dev/null | cut -f1) || config_size=0
-      total_size=$((total_size + config_size))
-      if rm -f "$config_file" 2>/dev/null; then
-        cleaned_count=$((cleaned_count + 1))
-        debug "Removed config file: $config_file"
-      else
-        warn "Failed to remove config file: $config_file"
+  # Clean up configuration files only in deep mode
+  if [ "$cleanup_type" = "deep" ]; then
+    local config_files=(
+      "$HOME/.bashrc"
+      "$HOME/.termux/termux.properties" 
+      "$HOME/.termux/colors.properties"
+      "$HOME/.termux/font.ttf"
+      "$HOME/.nanorc"
+      "$PREFIX/etc/nanorc"
+    )
+    
+    for config_file in "${config_files[@]}"; do
+      if [ -f "$config_file" ]; then
+        local config_size
+        config_size=$(du -sb "$config_file" 2>/dev/null | cut -f1) || config_size=0
+        total_size=$((total_size + config_size))
+        if rm -f "$config_file" 2>/dev/null; then
+          cleaned_count=$((cleaned_count + 1))
+          debug "Removed config file: $config_file"
+        else
+          warn "Failed to remove config file: $config_file"
+        fi
       fi
-    fi
-  done
+    done
+  fi
   
-  # Clean up standard installation files
+  # Clean up main installation files
   for item in "${cleanup_items[@]}"; do
     if [ -e "$item" ]; then
       local size
@@ -1373,6 +1410,48 @@ cleanup_previous_install(){
       fi
     fi
   done
+  
+  # Deep cleanup: Remove installed packages that would be installed by CAD-Droid
+  if [ "$cleanup_type" = "deep" ]; then
+    info "Removing packages that would be installed by CAD-Droid..."
+    
+    # List of packages typically installed by CAD-Droid
+    local cad_packages=(
+      "proot-distro"
+      "xfce4"
+      "tigervnc"
+      "pulseaudio"
+      "git"
+      "wget"
+      "curl"
+      "nano"
+      "termux-api"
+      "python"
+      "nodejs"
+      "openssh"
+      "rsync"
+    )
+    
+    for pkg in "${cad_packages[@]}"; do
+      if pkg list-installed 2>/dev/null | grep -q "^${pkg}/"; then
+        if pkg uninstall -y "$pkg" 2>/dev/null; then
+          debug "Uninstalled package: $pkg"
+          cleaned_count=$((cleaned_count + 1))
+        else
+          debug "Failed to uninstall package: $pkg"
+        fi
+      fi
+    done
+    
+    # Clean apt caches and update indexes
+    if apt-get clean 2>/dev/null; then
+      debug "Cleaned apt cache"
+    fi
+    
+    if apt-get update >/dev/null 2>&1; then
+      debug "Updated package indexes after cleanup"
+    fi
+  fi
   
   # Clean up APK installer files and cache if the function exists
   if command -v cleanup_apk_installer_files >/dev/null 2>&1; then
@@ -1426,7 +1505,11 @@ cleanup_previous_install(){
     size_display="${total_size} bytes"
   fi
   
-  ok "Cleanup completed - removed $cleaned_count items ($size_display)"
+  if [ "$cleanup_type" = "deep" ]; then
+    ok "Deep cleanup completed - removed $cleaned_count items ($size_display)"
+  else
+    ok "Conservative cleanup completed - removed $cleaned_count items ($size_display)"
+  fi
   
   # Re-enable exit on error
   set -e

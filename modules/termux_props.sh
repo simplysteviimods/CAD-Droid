@@ -246,9 +246,9 @@ fi
 if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
   export CAD_INTRO_SHOWN=1
   echo ""
-  echo -e "\e[38;5;183m═══════════════════════════════════════════════════\e[0m"
+  echo -e "\e[38;5;183m===================================================\e[0m"
   echo -e "\e[38;5;217m              Welcome to CAD-Droid                \e[0m"
-  echo -e "\e[38;5;183m═══════════════════════════════════════════════════\e[0m"
+  echo -e "\e[38;5;183m===================================================\e[0m"
   echo ""
   if [ -f "$HOME/.cad/cad_droid_installed" ]; then
     echo -e "\e[32m✓\e[0m CAD-Droid installation \e[32mcomplete\e[0m"

@@ -153,27 +153,27 @@ DEV_EOF
 
 # Feature scan results and implementation options
 display_feature_parity_options(){
-  printf "\n${PASTEL_PINK}═══ CAD-Droid Feature Parity Analysis ═══${RESET}\n\n"
+  printf "\n${PASTEL_PINK}=== CAD-Droid Feature Parity Analysis ===${RESET}\n\n"
   
   printf "${PASTEL_YELLOW}Features found in setup_original.sh:${RESET}\n\n"
   
   printf "${PASTEL_CYAN}IMPLEMENTED:${RESET}\n"
-  printf "${PASTEL_GREEN}├─${RESET} Container Support (proot-distro, Ubuntu)\n"
-  printf "${PASTEL_GREEN}├─${RESET} SSH Server Setup\n"
-  printf "${PASTEL_GREEN}├─${RESET} ADB Wireless Configuration\n"  
-  printf "${PASTEL_GREEN}├─${RESET} Phantom Process Killer Disable\n"
-  printf "${PASTEL_GREEN}├─${RESET} Widget Shortcuts System\n"
-  printf "${PASTEL_GREEN}├─${RESET} Package Management & Mirrors\n"
-  printf "${PASTEL_GREEN}├─${RESET} Pastel Theme Configuration\n"
-  printf "${PASTEL_GREEN}└─${RESET} APK Management & F-Droid Integration\n\n"
+  printf "${PASTEL_GREEN}+=${RESET} Container Support (proot-distro, Ubuntu)\n"
+  printf "${PASTEL_GREEN}+=${RESET} SSH Server Setup\n"
+  printf "${PASTEL_GREEN}+=${RESET} ADB Wireless Configuration\n"  
+  printf "${PASTEL_GREEN}+=${RESET} Phantom Process Killer Disable\n"
+  printf "${PASTEL_GREEN}+=${RESET} Widget Shortcuts System\n"
+  printf "${PASTEL_GREEN}+=${RESET} Package Management & Mirrors\n"
+  printf "${PASTEL_GREEN}+=${RESET} Pastel Theme Configuration\n"
+  printf "${PASTEL_GREEN}+=${RESET} APK Management & F-Droid Integration\n\n"
   
   printf "${PASTEL_YELLOW}ADDITIONAL FEATURES AVAILABLE:${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Wine/Box86/Box64 Emulation (x86 apps on ARM)\n"
-  printf "${PASTEL_CYAN}├─${RESET} Desktop Environment (XFCE)\n"
-  printf "${PASTEL_CYAN}├─${RESET} Advanced Networking Tools\n"
-  printf "${PASTEL_CYAN}├─${RESET} Build Tools & Development Environment\n"
-  printf "${PASTEL_CYAN}├─${RESET} Multimedia Processing Tools\n"
-  printf "${PASTEL_CYAN}└─${RESET} System Monitoring & Diagnostics\n\n"
+  printf "${PASTEL_CYAN}+=${RESET} Wine/Box86/Box64 Emulation (x86 apps on ARM)\n"
+  printf "${PASTEL_CYAN}+=${RESET} Desktop Environment (XFCE)\n"
+  printf "${PASTEL_CYAN}+=${RESET} Advanced Networking Tools\n"
+  printf "${PASTEL_CYAN}+=${RESET} Build Tools & Development Environment\n"
+  printf "${PASTEL_CYAN}+=${RESET} Multimedia Processing Tools\n"
+  printf "${PASTEL_CYAN}+=${RESET} System Monitoring & Diagnostics\n\n"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     printf "${PASTEL_PINK}Install additional features? (y/N):${RESET} "

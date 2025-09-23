@@ -74,12 +74,12 @@ export PASTEL_YELLOW='\033[38;2;255;235;169m'
 export RESET='\033[0m'
 
 # Enhanced prompt with pastel colors
-PS1="\[$PASTEL_CYAN\]┌─[\[$PASTEL_PINK\]\u\[$PASTEL_LAVENDER\]@\[$PASTEL_PINK\]\h\[$PASTEL_CYAN\]]─[\[$PASTEL_GREEN\]\w\[$PASTEL_CYAN\]]\n└─\[$PASTEL_LAVENDER\]\$\[$RESET\] "
+PS1="\[$PASTEL_CYAN\]+= [\[$PASTEL_PINK\]\u\[$PASTEL_LAVENDER\]@\[$PASTEL_PINK\]\h\[$PASTEL_CYAN\]]= [\[$PASTEL_GREEN\]\w\[$PASTEL_CYAN\]]\n+= \[$PASTEL_LAVENDER\]\$\[$RESET\] "
 
 # Welcome message
-echo -e "${PASTEL_PINK}╔══════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${PASTEL_CYAN}║                   CAD-Droid Ready!                    ║${RESET}"
-echo -e "${PASTEL_PINK}╚══════════════════════════════════════════════════════════════╝${RESET}"
+echo -e "${PASTEL_PINK}===============================================================${RESET}"
+echo -e "${PASTEL_CYAN}                   CAD-Droid Ready!                    ${RESET}"
+echo -e "${PASTEL_PINK}===============================================================${RESET}"
 echo -e "${PASTEL_LAVENDER}Your mobile development environment is ready to use!${RESET}\n"
 
 # Helpful aliases with pastel feedback
@@ -124,9 +124,9 @@ BASHRC_COMPLETION_EOF
 prompt_termux_reboot(){
   info "Setup completion process finished"
   
-  printf "\n${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n"
+  printf "\n${PASTEL_PINK}===============================================================${RESET}\n"
   printf "${PASTEL_YELLOW}                      RESTART REQUIRED                         ${RESET}\n"
-  printf "${PASTEL_PINK}═══════════════════════════════════════════════════════════════${RESET}\n\n"
+  printf "${PASTEL_PINK}===============================================================${RESET}\n\n"
   
   printf "${PASTEL_LAVENDER}To complete the installation and apply all configurations,${RESET}\n"
   printf "${PASTEL_LAVENDER}Termux needs to be restarted.${RESET}\n\n"
