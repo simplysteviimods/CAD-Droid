@@ -971,15 +971,15 @@ check_apk_permissions(){
   fi
   
   # Provide comprehensive installation instructions
-  printf "\n${PASTEL_PINK}═══ APK Installation Guide ═══${RESET}\n\n"
+  printf "\n${PASTEL_PINK}=== APK Installation Guide ===${RESET}\n\n"
   
   printf "${PASTEL_YELLOW}Step 1: Enable Unknown App Sources${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Open Android Settings → Security → Unknown Sources\n"
-  printf "${PASTEL_CYAN}├─${RESET} Or: Settings → Apps → File Manager → Install Unknown Apps\n"  
-  printf "${PASTEL_CYAN}└─${RESET} Enable installation from your file manager\n\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Open Android Settings → Security → Unknown Sources\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Or: Settings → Apps → File Manager → Install Unknown Apps\n"  
+  printf "${PASTEL_CYAN}+= ${RESET} Enable installation from your file manager\n\n"
   
   printf "${PASTEL_YELLOW}Step 2: Navigate to APK Directory${RESET}\n"
-  printf "${PASTEL_CYAN}└─${RESET} %s\n\n" "$APK_DOWNLOAD_DIR"
+  printf "${PASTEL_CYAN}+= ${RESET} %s\n\n" "$APK_DOWNLOAD_DIR"
   
   printf "${PASTEL_YELLOW}Step 3: Install APKs in Order${RESET}\n"
   
@@ -1019,9 +1019,9 @@ check_apk_permissions(){
   done
   
   printf "\n${PASTEL_YELLOW}Step 4: Grant All Permissions${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Allow ALL permissions when prompted\n"
-  printf "${PASTEL_CYAN}├─${RESET} Enable 'Display over other apps' for widgets\n"
-  printf "${PASTEL_CYAN}└─${RESET} Enable notification access if requested\n\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Allow ALL permissions when prompted\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Enable 'Display over other apps' for widgets\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Enable notification access if requested\n\n"
   
   printf "${PASTEL_RED}Important:${RESET} ${PASTEL_YELLOW}Install Termux:API first - other apps depend on it!${RESET}\n\n"
 }
@@ -1030,7 +1030,7 @@ check_apk_permissions(){
 assist_apk_permissions(){
   info "Setting up APK permissions..."
   
-  printf "\n${PASTEL_PINK}═══ Permission Setup Assistant ═══${RESET}\n\n"
+  printf "\n${PASTEL_PINK}=== Permission Setup Assistant ===${RESET}\n\n"
   
   # Check if Termux:API is installed, but don't fail if it's not
   if ! command -v termux-api-start >/dev/null 2>&1; then
@@ -1039,9 +1039,9 @@ assist_apk_permissions(){
     
     # Still provide helpful information without testing
     printf "${PASTEL_YELLOW}Manual Permission Settings:${RESET}\n"
-    printf "${PASTEL_CYAN}├─${RESET} Open Settings → Apps → Termux:API → Permissions\n"
-    printf "${PASTEL_CYAN}├─${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
-    printf "${PASTEL_CYAN}└─${RESET} For widgets: Enable 'Display over other apps'\n\n"
+    printf "${PASTEL_CYAN}+= ${RESET} Open Settings → Apps → Termux:API → Permissions\n"
+    printf "${PASTEL_CYAN}+= ${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
+    printf "${PASTEL_CYAN}+= ${RESET} For widgets: Enable 'Display over other apps'\n\n"
     
     info "Permission setup information provided - continuing with setup"
     return 0
@@ -1077,9 +1077,9 @@ assist_apk_permissions(){
   
   # Provide links to permission settings
   printf "\n${PASTEL_YELLOW}Quick Permission Settings:${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Open Settings → Apps → Termux:API → Permissions\n"
-  printf "${PASTEL_CYAN}├─${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
-  printf "${PASTEL_CYAN}└─${RESET} For widgets: Enable 'Display over other apps'\n\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Open Settings → Apps → Termux:API → Permissions\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Enable: Phone, Location, Storage, Camera, Microphone\n"
+  printf "${PASTEL_CYAN}+= ${RESET} For widgets: Enable 'Display over other apps'\n\n"
   
   # Ask if user wants to continue to permission settings
   if [ "$NON_INTERACTIVE" != "1" ]; then

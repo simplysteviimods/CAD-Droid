@@ -97,11 +97,11 @@ configure_boot_screen(){
   local motd_file="$PREFIX/etc/motd"
   cat > "$motd_file" << 'MOTD_EOF'
 
-  ╔═══════════════════════════════════════════════════════════╗
-  ║                        CAD-Droid                          ║
-  ║              Computer-Aided Development                   ║
-  ║                     for Android                           ║
-  ╚═══════════════════════════════════════════════════════════╝
+  ===============================================================
+  =                        CAD-Droid                          =
+  =              Computer-Aided Development                   =
+  =                     for Android                           =
+  ===============================================================
 
   Quick Commands:
     cad-status    - System status      cad-help      - Help & commands

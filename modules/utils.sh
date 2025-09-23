@@ -951,17 +951,17 @@ TERMUX_PROPS_EOF
 # Final completion with reboot prompt
 cad_droid_completion(){
   printf "\n${PASTEL_PINK}CAD-Droid Setup Complete!${RESET}\n"
-  printf "${PASTEL_YELLOW}═══════════════════════════════════════${RESET}\n\n"
+  printf "${PASTEL_YELLOW}========================================${RESET}\n\n"
   
   printf "${PASTEL_GREEN}Installation Summary:${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Critical bug fixes applied\n"
-  printf "${PASTEL_CYAN}├─${RESET} Pastel theme configured\n"  
-  printf "${PASTEL_CYAN}├─${RESET} APK management system ready\n"
-  printf "${PASTEL_CYAN}├─${RESET} ADB wireless setup completed\n"
-  printf "${PASTEL_CYAN}├─${RESET} Phantom process killer disabled\n"
-  printf "${PASTEL_CYAN}├─${RESET} Widget shortcuts created\n"
-  printf "${PASTEL_CYAN}├─${RESET} Container support installed\n"
-  printf "${PASTEL_CYAN}└─${RESET} XFCE desktop environment ready\n\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Critical bug fixes applied\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Pastel theme configured\n"  
+  printf "${PASTEL_CYAN}+= ${RESET} APK management system ready\n"
+  printf "${PASTEL_CYAN}+= ${RESET} ADB wireless setup completed\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Phantom process killer disabled\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Widget shortcuts created\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Container support installed\n"
+  printf "${PASTEL_CYAN}+= ${RESET} XFCE desktop environment ready\n\n"
   
   printf "${PASTEL_YELLOW}Quick Start Guide:${RESET}\n"
   printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to home screen (especially phantom-killer)\n"
@@ -1134,12 +1134,7 @@ check_previous_install(){
         read -r response || response="n"
         case "${response,,}" in
           y|yes)
-            # Add confirmation prompt
-            printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
-            printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
-            printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
-            printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
-            printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
+            # Single confirmation prompt
             printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
             local final_confirm
             read -r final_confirm || final_confirm="n"
@@ -1168,27 +1163,16 @@ check_previous_install(){
       warn "Incomplete installation attempt detected (started: $flag_date)"
       
       if [ "$NON_INTERACTIVE" != "1" ]; then
+        # Single confirmation prompt for incomplete installation cleanup
         printf "\n${PASTEL_YELLOW}Incomplete installation detected!${RESET}\n"
-        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+        printf "${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
         printf "${PASTEL_PINK}Remove previous installation files and start fresh? (y/N):${RESET} "
         local response
         read -r response || response="n"
         case "${response,,}" in
           y|yes)
-            # Add confirmation prompt
-            printf "\n${PASTEL_YELLOW}This will delete ALL CAD-Droid files, configurations, and downloads.${RESET}\n"
-            printf "${PASTEL_PINK}Are you sure you want to continue? (y/N):${RESET} "
-            local confirm
-            read -r confirm || confirm="n"
-            case "${confirm,,}" in
-              y|yes)
-                cleanup_previous_install
-                info "Previous installation cleaned up - continuing with fresh installation"
-                ;;
-              *)
-                info "Cleanup cancelled - continuing with existing installation state"
-                ;;
-            esac
+            cleanup_previous_install
+            info "Previous installation cleaned up - continuing with fresh installation"
             ;;
           *)
             info "Continuing with existing installation state"
@@ -1281,12 +1265,7 @@ check_previous_install(){
       read -r cleanup_response || cleanup_response="n"
       case "${cleanup_response,,}" in
         y|yes)
-          # Add confirmation prompt
-          printf "\n${PASTEL_YELLOW}WARNING: This will permanently delete:${RESET}\n"
-          printf "${PASTEL_CYAN}   • All CAD-Droid configurations and settings${RESET}\n"
-          printf "${PASTEL_CYAN}   • Downloaded APK files and installation data${RESET}\n"
-          printf "${PASTEL_CYAN}   • Linux containers and development environments${RESET}\n"
-          printf "${PASTEL_CYAN}   • Widget shortcuts and system integrations${RESET}\n"
+          # Single confirmation prompt
           printf "\n${PASTEL_PINK}Are you absolutely sure? (y/N):${RESET} "
           local final_confirm
           read -r final_confirm || final_confirm="n"
@@ -1329,6 +1308,10 @@ cleanup_previous_install(){
     "/storage/emulated/0/Download/CAD-Droid-APKs"
     "$HOME/.config/xfce4"
     "$HOME/.proot-distro"
+    "$PREFIX/var/lib/apt/lists"
+    "$PREFIX/var/cache/apt"
+    "$PREFIX/tmp"
+    "$HOME/.cache"
   )
   
   local cleaned_count=0

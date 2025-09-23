@@ -385,14 +385,16 @@ step_adb(){
     pecho "$PASTEL_PINK" "Without ADB, Android will randomly kill your Linux processes!"
     echo ""
     
-    pecho "$PASTEL_PURPLE" "What you need to do:"
+    pecho "$PASTEL_PURPLE" "IMPORTANT SETUP STEPS:"
     echo ""
-    pecho "$PASTEL_PINK" "1. Split your screen between Settings and Termux"
-    pecho "$PASTEL_PINK" "2. In Settings > System > Developer Options"
-    pecho "$PASTEL_PINK" "3. Enable 'Wireless debugging'"  
-    pecho "$PASTEL_PINK" "4. Tap 'Pair device with pairing code'"
-    pecho "$PASTEL_PINK" "5. Note the IP address, port, and 6-digit code shown"
-    pecho "$PASTEL_PINK" "6. Return to Termux to enter the pairing information"
+    pecho "$PASTEL_PINK" "1. IMPORTANT: Enter split-screen mode if not using Termux:Float"
+    pecho "$PASTEL_PINK"  "   Otherwise the pairing code and port will change!"
+    pecho "$PASTEL_PINK" "2. Split your screen between Settings and Termux"
+    pecho "$PASTEL_PINK" "3. In Settings > System > Developer Options"
+    pecho "$PASTEL_PINK" "4. Enable 'Wireless debugging'"  
+    pecho "$PASTEL_PINK" "5. Tap 'Pair device with pairing code'"
+    pecho "$PASTEL_PINK" "6. Note the IP address, port, and 6-digit code shown"
+    pecho "$PASTEL_PINK" "7. Return to Termux to enter the pairing information"
     echo ""
     
     if ! ask_yes_no "Ready to open Developer Settings and start ADB setup?" "y"; then
@@ -485,17 +487,17 @@ disconnect_adb(){
 # Disable phantom process killer (CRITICAL for app stability)
 disable_phantom_process_killer(){
   printf "\n${PASTEL_RED}CRITICAL SYSTEM CONFIGURATION${RESET}\n"
-  printf "${PASTEL_YELLOW}═══════════════════════════════════════${RESET}\n\n"
+  printf "${PASTEL_YELLOW}========================================${RESET}\n\n"
   
   printf "${PASTEL_CYAN}What is the Phantom Process Killer?${RESET}\n"
   printf "Android's phantom process killer terminates background processes\n"
   printf "to save battery, but this breaks many useful apps and services.\n\n"
   
   printf "${PASTEL_RED}Why disable it?${RESET}\n"
-  printf "${PASTEL_CYAN}├─${RESET} Prevents apps from being randomly terminated\n"
-  printf "${PASTEL_CYAN}├─${RESET} Allows background services to run reliably\n"
-  printf "${PASTEL_CYAN}├─${RESET} Enables better multitasking and automation\n"
-  printf "${PASTEL_CYAN}└─${RESET} Essential for development and power user workflows\n\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Prevents apps from being randomly terminated\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Allows background services to run reliably\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Enables better multitasking and automation\n"
+  printf "${PASTEL_CYAN}+= ${RESET} Essential for development and power user workflows\n\n"
   
   # Test ADB connection first
   if ! test_adb_connection >/dev/null 2>&1; then
@@ -532,7 +534,7 @@ disable_phantom_process_killer(){
 
 # Enhanced ADB setup with phantom process killer emphasis
 setup_adb_with_phantom_killer(){
-  printf "\n${PASTEL_PINK}═══ ADB SETUP - CRITICAL FOR SYSTEM STABILITY ═══${RESET}\n\n"
+  printf "\n${PASTEL_PINK}=== ADB SETUP - CRITICAL FOR SYSTEM STABILITY ===${RESET}\n\n"
   
   printf "${PASTEL_RED}IMPORTANT:${RESET} ${PASTEL_YELLOW}ADB setup is essential for disabling the phantom process killer!${RESET}\n"
   printf "Without this step, your apps may be randomly terminated by Android.\n\n"

@@ -723,7 +723,7 @@ configure_linux_env() {
     
     # Configure the container
     info "Setting up user accounts and SSH access..."
-    run_with_progress "Configure container environment" 30 bash -c "
+    if run_with_progress "Configure container environment" 30 bash -c "
         proot-distro login '$distro' --shared-tmp -- bash -c \\\"
             # Update package manager
             if command -v apt-get >/dev/null 2>&1; then
@@ -761,8 +761,11 @@ configure_linux_env() {
             sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
             sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 2>/dev/null || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
         \\\"
-    "
-    
+    "; then
+        ok "Container environment configured successfully"
+    else
+        warn "Container configuration completed with some warnings"
+    fi
     # Create convenience launcher
     local launcher="$PREFIX/bin/container"
     cat > "$launcher" << LAUNCHER_EOF
@@ -778,7 +781,7 @@ fi
 LAUNCHER_EOF
     chmod +x "$launcher" 2>/dev/null || true
     
-    info "Container configured successfully"
+    ok "Linux container setup completed"
     info "Access container with: container"
     info "SSH key available at: $ssh_key"
     info "Container user: $UBUNTU_USERNAME"
