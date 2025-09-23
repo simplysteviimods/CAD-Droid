@@ -1186,17 +1186,52 @@ check_previous_install(){
       warn "Incomplete installation attempt detected (started: $flag_date)"
       
       if [ "$NON_INTERACTIVE" != "1" ]; then
-        # Single confirmation prompt for incomplete installation cleanup
-        printf "\n${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n"
-        printf "${PASTEL_LAVENDER}Remove previous installation files and start fresh? (y/N):${RESET} "
-        local response
-        read -r response || response="n"
-        case "${response,,}" in
-          y|yes)
-            cleanup_previous_install "conservative"
-            info "Previous installation cleaned up - continuing with fresh installation"
+        # Show the same cleanup options for incomplete installations
+        printf "\n${PASTEL_CYAN}This may indicate a previous installation was interrupted.${RESET}\n\n"
+        
+        # Enhanced cleanup options (same as completed installation)
+        printf "${PASTEL_PURPLE}Choose cleanup option:${RESET}\n"
+        printf "${PASTEL_CYAN}  1) Conservative clean (remove main installation files only)${RESET}\n"
+        printf "${PASTEL_CYAN}  2) Deep clean (remove everything that would be installed/downloaded)${RESET}\n"
+        printf "${PASTEL_CYAN}  3) No cleaning (continue with existing files)${RESET}\n"
+        printf "${PASTEL_LAVENDER}Select option [1-3]:${RESET} "
+        
+        local cleanup_choice
+        read -r cleanup_choice || cleanup_choice="3"
+        
+        case "$cleanup_choice" in
+          1)
+            printf "\n${PASTEL_YELLOW}Conservative cleanup will remove main CAD-Droid files but preserve system configurations.${RESET}\n"
+            printf "${PASTEL_LAVENDER}Proceed with conservative cleanup? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install "conservative"
+                info "Conservative cleanup completed - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing files"
+                ;;
+            esac
             ;;
-          *)
+          2)
+            printf "\n${PASTEL_YELLOW}Deep cleanup will remove ALL files that would be installed or downloaded by CAD-Droid.${RESET}\n"
+            printf "${PASTEL_RED}This includes containers, APKs, SSH keys, and system configurations.${RESET}\n"
+            printf "${PASTEL_LAVENDER}Proceed with deep cleanup? (y/N):${RESET} "
+            local confirm
+            read -r confirm || confirm="n"
+            case "${confirm,,}" in
+              y|yes)
+                cleanup_previous_install "deep"
+                info "Deep cleanup completed - continuing with fresh installation"
+                ;;
+              *)
+                info "Cleanup cancelled - continuing with existing files"
+                ;;
+            esac
+            ;;
+          3|*)
             info "Continuing with existing installation state"
             ;;
         esac
