@@ -67,7 +67,7 @@ configure_completion_bashrc(){
 
 # Pastel color definitions for terminal
 export PASTEL_CYAN='\033[38;2;175;238;238m'
-export PASTEL_PINK='\033[38;2;255;201;217m'
+export PASTEL_PINK='\033[38;2;221;160;221m'
 export PASTEL_LAVENDER='\033[38;2;220;201;255m'
 export PASTEL_GREEN='\033[38;2;201;255;209m'
 export PASTEL_YELLOW='\033[38;2;255;235;169m'

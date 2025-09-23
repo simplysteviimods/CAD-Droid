@@ -791,7 +791,7 @@ configure_pastel_shell_prompt() {
 # === CAD-Droid Pastel Shell Configuration ===
 
 # Pastel color definitions
-PASTEL_PINK='\[\033[38;5;213m\]'
+PASTEL_PINK='\[\033[38;2;221;160;221m\]'
 PASTEL_PURPLE='\[\033[38;5;183m\]'
 PASTEL_CYAN='\[\033[38;5;159m\]'
 PASTEL_GREEN='\[\033[38;5;158m\]'

@@ -35,7 +35,7 @@ init_pastel_colors() {
   if init_color_support; then
     # Define comprehensive pastel color palette
     export PASTEL_CYAN='\033[38;2;175;238;238m'       # Pale Turquoise #AFEEEE
-    export PASTEL_PINK='\033[38;2;240;128;192m'       # Desaturated Pink #F080C0 (between pastel and hot pink)
+    export PASTEL_PINK='\033[38;2;221;160;221m'       # Plum #DDA0DD (same as PASTEL_PURPLE)
     export PASTEL_GREEN='\033[38;2;144;238;144m'      # Light Green #90EE90
     export PASTEL_YELLOW='\033[38;2;255;255;224m'     # Light Yellow #FFFFE0
     export PASTEL_PURPLE='\033[38;2;221;160;221m'     # Plum #DDA0DD
