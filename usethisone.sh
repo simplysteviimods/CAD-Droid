@@ -463,6 +463,7 @@ init_pastel_colors() {
     export PASTEL_BLUE='\033[38;2;173;216;230m'       # Light Blue #ADD8E6
     export PASTEL_RED='\033[38;2;255;192;203m'        # Light Pink (red variant) #FFC0CB
     export PASTEL_LAVENDER='\033[38;2;230;220;255m'   # Lavender #E6DCFF
+    export PASTEL_MINT='\033[38;2;189;252;201m'       # Mint Green #BDFCC9
     export RESET='\033[0m'
   else
     # Use basic ANSI colors for limited terminals
@@ -475,6 +476,7 @@ init_pastel_colors() {
     export PASTEL_BLUE='\033[94m'   # Bright blue
     export PASTEL_RED='\033[91m'    # Bright red
     export PASTEL_LAVENDER='\033[95m' # Bright magenta (fallback)
+    export PASTEL_MINT='\033[92m'     # Bright green (fallback)
     export RESET='\033[0m'
   fi
 }
@@ -1861,54 +1863,24 @@ random_port(){
 
 # --- Termux:API Detection and Interaction ---
 
-# Wait for Termux:API app to be available with safe arithmetic
-# Returns: 0 if available, 1 if not available after timeout
+# Wait for Termux:API app to be available (simplified without user prompts)
 wait_for_termux_api(){
   if [ "${TERMUX_API_FORCE_SKIP:-0}" = "1" ]; then
     TERMUX_API_VERIFIED="skipped"
     return 0
   fi
   
-  local max_attempts="${TERMUX_API_WAIT_MAX:-4}" 
-  local delay_seconds="${TERMUX_API_WAIT_DELAY:-3}"
-  local current_attempt=1  # Initialize counter safely
-  
-  # Validate max_attempts is numeric
-  case "$max_attempts" in *[!0-9]*) max_attempts=4 ;; esac
-  case "$delay_seconds" in *[!0-9]*) delay_seconds=3 ;; esac
-  
-  # Try multiple times to detect Termux:API
-  while [ "$current_attempt" -le "$max_attempts" ] 2>/dev/null; do
-    # Test if termux-battery-status command works (indicates API is available)
-    if command -v termux-battery-status >/dev/null 2>&1; then
-      local test_result
-      test_result=$(timeout 5 termux-battery-status 2>/dev/null | head -1 || echo "")
-      if echo "$test_result" | grep -qi '"percentage"'; then
-        TERMUX_API_VERIFIED="yes"
-        return 0
-      fi
+  # Single quick check for Termux:API availability
+  if command -v termux-battery-status >/dev/null 2>&1; then
+    local test_result
+    test_result=$(timeout 5 termux-battery-status 2>/dev/null | head -1 || echo "")
+    if echo "$test_result" | grep -qi '"percentage"'; then
+      TERMUX_API_VERIFIED="yes"
+      return 0
     fi
-    
-    # Wait between attempts (except on last attempt)
-    if [ "$current_attempt" -lt "$max_attempts" ] 2>/dev/null; then
-      info "Termux:API not found (attempt $current_attempt/$max_attempts). Enter to retry or wait ${delay_seconds}s."
-      if [ "$NON_INTERACTIVE" != "1" ]; then
-        read -r -t "$delay_seconds" || true
-      else
-        safe_sleep "$delay_seconds"
-      fi
-    fi
-    
-    # Safe counter increment
-    if [ "$current_attempt" -lt 1000 ] 2>/dev/null; then
-      current_attempt=$(add_int "${current_attempt:-0}" 1)
-    else
-      break  # Safety break to prevent infinite loops
-    fi
-  done
+  fi
   
   TERMUX_API_VERIFIED="no"
-  warn "Termux:API unavailable."
   return 1
 }
 
@@ -2428,13 +2400,13 @@ fetch_termux_addon(){
     fi
   fi
   
-  # Rename APK to proper name if download was successful
+  # Rename APK to proper name if download was successful using temp directories for isolation
   if [ $success -eq 1 ]; then
-    # Find the downloaded APK and rename it to proper format
-    local downloaded_apk
-    downloaded_apk=$(find "$outdir" -name "*.apk" -type f -newer . 2>/dev/null | head -1)
+    # Create temporary directory for this specific APK to avoid conflicts
+    local temp_apk_dir="/tmp/cad-apk-$$-$(date +%s)"
+    mkdir -p "$temp_apk_dir" 2>/dev/null || temp_apk_dir="/tmp"
     
-    # Handle special renaming cases
+    # Handle special renaming cases first
     local proper_name
     case "$name" in
       "Termux-API"|"Termux:API") proper_name="Termux-API" ;;
@@ -2447,17 +2419,38 @@ fetch_termux_addon(){
     local target_name="${proper_name}.apk"
     local target_path="$outdir/$target_name"
     
-    # Rename if the file exists and name needs changing
-    if [ -f "$downloaded_apk" ] && [ "$(basename "$downloaded_apk")" != "$target_name" ]; then
-      if mv "$downloaded_apk" "$target_path" 2>/dev/null; then
-        debug "Renamed APK to: $target_name"
-      else
-        warn "Failed to rename APK to: $target_name"
+    # Find and move APK files to proper names
+    local found_apk=0
+    for apk_file in "$outdir"/*.apk; do
+      if [ -f "$apk_file" ]; then
+        local current_name
+        current_name=$(basename "$apk_file")
+        
+        # If the current name is not the target name, rename it
+        if [ "$current_name" != "$target_name" ]; then
+          if mv "$apk_file" "$target_path" 2>/dev/null; then
+            debug "Renamed $current_name to $target_name"
+            found_apk=1
+            break
+          fi
+        else
+          found_apk=1
+          break
+        fi
       fi
-    fi
+    done
     
-    # Ensure proper permissions
+    # Clean up temporary directory
+    rm -rf "$temp_apk_dir" 2>/dev/null || true
+    
+    # Ensure proper permissions on all APK files
     find "$outdir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+    
+    if [ $found_apk -eq 1 ]; then
+      debug "Successfully processed APK: $target_name"
+    else
+      warn "No APK file found to rename for $name"
+    fi
   fi
   
   return $((1 - success))
@@ -2734,9 +2727,31 @@ manual_adb_wireless_setup(){
     read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831"  
     read_nonempty "Enter the 6-digit pairing code" pairing_code "123456"
     
-    # Basic validation
-    if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      warn "Invalid IP address format"
+    # Enhanced IP validation supporting various formats
+    local ip_valid=0
+    
+    # Check for standard IPv4 format (192.168.1.100)
+    if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+      ip_valid=1
+    # Check for localhost/loopback formats
+    elif [[ "$ip" =~ ^(localhost|127\.0\.0\.1)$ ]]; then
+      ip_valid=1
+    # Check for hostname formats (android-device, pixel-7, etc.)
+    elif [[ "$ip" =~ ^[a-zA-Z][a-zA-Z0-9.-]*$ ]] && [ ${#ip} -le 253 ]; then
+      ip_valid=1
+    # Check for IP:port format and extract IP part
+    elif [[ "$ip" =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}):[0-9]+$ ]]; then
+      # Extract IP part only
+      ip="${ip%:*}"
+      ip_valid=1
+    fi
+    
+    if [ $ip_valid -eq 0 ]; then
+      warn "Invalid IP address format. Supported formats:"
+      warn "  - Standard IPv4: 192.168.1.100"
+      warn "  - Localhost: 127.0.0.1 or localhost" 
+      warn "  - Hostname: android-device, pixel-7"
+      warn "  - IP with port: 192.168.1.100:5555"
       return 1
     fi
     
@@ -4614,6 +4629,22 @@ APT_CONFIG_EOF
 
 # Step 6: System update and maintenance
 step_systemup(){ 
+  # Update and upgrade Termux packages first
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Termux pkg update" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      warn "Termux package update failed"
+    fi
+    
+    if run_with_progress "Termux pkg upgrade" 45 bash -c 'pkg upgrade -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      warn "Termux package upgrade failed"
+    fi
+  fi
+  
+  # Update and upgrade system apt packages
   if run_with_progress "System apt update" 28 bash -c 'apt-get update >/dev/null 2>&1 || true'; then
     :
   else
