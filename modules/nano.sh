@@ -184,10 +184,7 @@ install_nano(){
   
   info "Installing nano text editor..."
   
-  # Ensure selected mirror is applied before installing nano
-  if command -v ensure_mirror_applied >/dev/null 2>&1; then
-    ensure_mirror_applied
-  fi
+  # Repository configuration is handled by termux-change-repo
   
   if command -v pkg >/dev/null 2>&1; then
     if run_with_progress "Install nano (pkg)" 10 bash -c 'pkg install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
@@ -304,10 +301,7 @@ setup_vim_alternative(){
   if ! command -v vim >/dev/null 2>&1; then
     info "Installing vim as alternative editor..."
     
-    # Ensure selected mirror is applied before installing vim
-    if command -v ensure_mirror_applied >/dev/null 2>&1; then
-      ensure_mirror_applied
-    fi
+    # Repository configuration is handled by termux-change-repo
     
     if command -v pkg >/dev/null 2>&1; then
       run_with_progress "Install vim (pkg)" 15 bash -c 'pkg install -y vim >/dev/null 2>&1' || true

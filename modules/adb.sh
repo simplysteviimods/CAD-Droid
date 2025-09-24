@@ -26,10 +26,7 @@ install_adb_tools(){
   local installed=false
   
   for pkg in "${packages[@]}"; do
-    # Ensure selected mirror is applied before installing ADB packages
-    if command -v ensure_mirror_applied >/dev/null 2>&1; then
-      ensure_mirror_applied
-    fi
+    # Repository configuration is handled by termux-change-repo
     
     # Use appropriate package manager for installation
     if command -v pkg >/dev/null 2>&1; then

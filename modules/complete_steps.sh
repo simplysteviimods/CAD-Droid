@@ -505,10 +505,7 @@ case "\$1" in
         ;;
     "update"|"u")
         echo "Updating system packages..."
-        # Ensure selected mirror is applied before updating system packages
-        if command -v ensure_mirror_applied >/dev/null 2>&1; then
-            ensure_mirror_applied
-        fi
+        # Repository configuration is handled by termux-change-repo
         # Use appropriate Termux package manager
         if command -v pkg >/dev/null 2>&1; then
             pkg update -y && pkg upgrade -y
@@ -662,8 +659,6 @@ write_metrics_json(){
   "git_email": "${GIT_EMAIL//\"/\\\"}",
   "phone_type": "${TERMUX_PHONETYPE//\"/\\\"}",
   "selected_distro": "${DISTRO//\"/\\\"}",
-  "selected_mirror_name": "${SELECTED_MIRROR_NAME//\"/\\\"}",
-  "selected_mirror_url": "${SELECTED_MIRROR_URL//\"/\\\"}",
   "termux_api_verified": "${TERMUX_API_VERIFIED//\"/\\\"}",
   "user_selected_apk_dir": "${USER_SELECTED_APK_DIR//\"/\\\"}",
   "core_packages_processed": ${DOWNLOAD_COUNT:-0},

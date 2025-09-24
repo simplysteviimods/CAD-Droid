@@ -801,10 +801,7 @@ detect_install_missing_libs() {
   
   # Install missing libraries
   if [ ${#libs_needed[@]} -gt 0 ]; then
-    # Ensure mirrors are up-to-date before installation
-    if command -v ensure_mirror_applied >/dev/null 2>&1; then
-      ensure_mirror_applied
-    fi
+    # Repository configuration is handled by termux-change-repo
     
     for lib in "${libs_needed[@]}"; do
       install_runtime_library "$lib"

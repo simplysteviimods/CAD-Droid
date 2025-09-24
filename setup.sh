@@ -152,7 +152,6 @@ load_all_modules() {
   load_module "apk_management"
   load_module "adb"
   load_module "core_packages"
-  load_module "mirror_config"
   load_module "nano"
   load_module "xfce_desktop"
 

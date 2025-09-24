@@ -16,10 +16,7 @@ readonly _CAD_FEATURE_PARITY_LOADED=1
 setup_proot_containers(){
   info "Setting up Linux container support..."
   
-  # Ensure mirrors are up-to-date
-  if command -v ensure_mirror_applied >/dev/null 2>&1; then
-    ensure_mirror_applied
-  fi
+  # Repository configuration is handled by termux-change-repo
   
   # Install proot-distro using apt (more reliable than pkg)
   if ! command -v proot-distro >/dev/null 2>&1; then
