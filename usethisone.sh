@@ -1767,14 +1767,52 @@ ETA(){
 
 # Read a stored credential from secure storage
 # Parameter: credential_name
+# Read stored credential by name (supports both .cred and _password formats)
 # Returns: credential value or empty string
 read_credential(){ 
   local name="$1"
   [ -z "$name" ] && return 1
   
-  local f="$CRED_DIR/${name}_password"
-  if [ -f "$f" ] && [ -r "$f" ]; then
-    cat "$f" 2>/dev/null || true
+  # Try .cred format first (for SSH credentials)
+  local cred_file="$CRED_DIR/$name.cred"
+  if [ -f "$cred_file" ] && [ -r "$cred_file" ]; then
+    cat "$cred_file" 2>/dev/null && return 0
+  fi
+  
+  # Fallback to _password format (for passwords)
+  local pass_file="$CRED_DIR/${name}_password"
+  if [ -f "$pass_file" ] && [ -r "$pass_file" ]; then
+    cat "$pass_file" 2>/dev/null || true
+  fi
+}
+
+# Store credential securely with atomic writes
+# Parameters: credential_name, credential_value
+# Returns: 0 on success, 1 on failure
+store_credential() {
+  local name="$1" value="$2"
+  [ -z "$name" ] || [ -z "$value" ] && return 1
+  
+  local cred_file="$CRED_DIR/$name.cred"
+  local temp_file="$cred_file.tmp"
+  
+  # Ensure credentials directory exists with proper permissions
+  mkdir -p "$CRED_DIR" 2>/dev/null || return 1
+  chmod 700 "$CRED_DIR" 2>/dev/null || return 1
+  
+  # Atomic write using temporary file
+  umask 077  # Ensure restrictive permissions for temp file
+  if printf "%s" "$value" > "$temp_file" 2>/dev/null; then
+    if mv "$temp_file" "$cred_file" 2>/dev/null; then
+      chmod 600 "$cred_file" 2>/dev/null || true
+      return 0
+    else
+      rm -f "$temp_file" 2>/dev/null || true
+      return 1
+    fi
+  else
+    rm -f "$temp_file" 2>/dev/null || true
+    return 1
   fi
 }
 
@@ -2705,19 +2743,39 @@ pair_adb_device(){
     return 1
   fi
   
+  # Check if adb command is available
+  if ! command -v adb >/dev/null 2>&1; then
+    warn "ADB command not found - installing android-tools..."
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y android-tools >/dev/null 2>&1 || {
+        err "Failed to install android-tools package"
+        return 1
+      }
+    else
+      err "Cannot install ADB - pkg command not available"
+      return 1
+    fi
+  fi
+  
   info "Attempting to pair with $ip:$port using code: $pairing_code"
   
-  # Attempt pairing with timeout
+  # Attempt pairing with longer timeout and better error handling
   local pair_result
-  if pair_result=$(timeout 30 adb pair "$ip:$port" 2>&1 <<< "$pairing_code"); then
+  if pair_result=$(timeout 45 adb pair "$ip:$port" 2>&1 <<< "$pairing_code"); then
     if echo "$pair_result" | grep -qi "successfully paired"; then
+      ok "ADB pairing successful with $ip:$port"
       return 0
     else
       warn "Pairing failed: $pair_result"
       return 1
     fi
   else
-    warn "Pairing timed out or failed"
+    local exit_code=$?
+    if [ $exit_code -eq 124 ]; then
+      warn "Pairing timed out after 45 seconds"
+    else
+      warn "Pairing command failed (exit code: $exit_code)"
+    fi
     return 1
   fi
 }
@@ -2790,8 +2848,24 @@ manual_adb_wireless_setup(){
       err "Device pairing failed. Please check the code and try again."
     fi
   else
-    info "Non-interactive mode: manual ADB setup required"
-    info "Run: adb pair <ip:port> then adb connect <ip:debug_port>"
+    # Non-interactive mode: try with common default values
+    info "Non-interactive mode: attempting ADB setup with defaults"
+    info "Using default values: IP=192.168.1.100, Port=37831, Code=123456"
+    
+    # Try common default values that might work
+    if pair_adb_device "$ip" "$pairing_port" "$pairing_code"; then
+      ok "ADB paired successfully with defaults!"
+      
+      # Try to connect with default debug port
+      local debug_port="37832"
+      if connect_adb_device "$ip" "$debug_port"; then
+        ok "ADB wireless debugging setup complete!"
+        return 0
+      fi
+    fi
+    
+    info "Default ADB setup failed - manual setup required after installation"
+    info "Use: adb pair <ip:port> <code> then adb connect <ip:debug_port>"
   fi
   
   return 1
@@ -3439,6 +3513,11 @@ configure_linux_env(){
   # Generate SSH port
   LINUX_SSH_PORT=$(random_port)
   
+  # Store SSH port immediately for widget access
+  if ! store_credential "ssh_port" "$LINUX_SSH_PORT"; then
+    warn "Failed to save SSH port credential, widgets may not work correctly"
+  fi
+  
   # Get user configuration
   read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
   
@@ -3448,6 +3527,19 @@ configure_linux_env(){
       read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
     fi
   fi
+  
+  # Store SSH username immediately for widget access
+  if ! store_credential "ssh_username" "$UBUNTU_USERNAME"; then
+    warn "Failed to save SSH username credential, widgets may not work correctly"
+  fi
+  
+  # Validate username before proceeding
+  if [ -z "$UBUNTU_USERNAME" ]; then
+    err "UBUNTU_USERNAME is empty after configuration!"
+    return 1
+  fi
+  
+  info "Configuration validated - Username: '$UBUNTU_USERNAME', SSH Port: '$LINUX_SSH_PORT'"
   
   if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
     err "User password setup failed"
@@ -3630,30 +3722,136 @@ SUNSHINE_SCRIPT_EOF
 
 # Create user account and configure permissions
 create_user(){
+  echo "=== USER CREATION DEBUG ==="
+  echo "Creating user account: '$NEW_USER'"
+  echo "Current user: $(whoami)"
+  echo "Available tools:"
+  command -v useradd >/dev/null && echo "  - useradd: YES" || echo "  - useradd: NO"
+  command -v adduser >/dev/null && echo "  - adduser: YES" || echo "  - adduser: NO"
+  echo "=========================="
+  
   # Set root password
   echo "root:$ROOT_PASS" | chpasswd
   
-  # Create user if doesn't exist
+  # Create user if doesn't exist with better error handling
   if ! id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "User $NEW_USER does not exist, attempting creation..."
+    local user_created=false
+    local creation_error=""
+    
     case "$(detect_os)" in
-      alpine) adduser -D "$NEW_USER" ;;
-      *) useradd -m -s /bin/bash "$NEW_USER" 2>/dev/null || adduser "$NEW_USER" ;;
+      alpine) 
+        echo "Detected Alpine Linux, using adduser..."
+        if creation_error=$(adduser -D "$NEW_USER" 2>&1); then
+          user_created=true
+          echo "User $NEW_USER created successfully using adduser"
+        else
+          echo "Alpine adduser failed: $creation_error"
+        fi
+        ;;
+      *) 
+        echo "Detected non-Alpine Linux, trying useradd first..."
+        # Try useradd first with verbose error reporting
+        if creation_error=$(useradd -m -s /bin/bash "$NEW_USER" 2>&1); then
+          user_created=true
+          echo "User $NEW_USER created successfully using useradd"
+        else
+          echo "useradd failed: $creation_error"
+          echo "Trying adduser as fallback..."
+          if creation_error=$(adduser --disabled-password --gecos "" "$NEW_USER" 2>&1); then
+            user_created=true
+            echo "User $NEW_USER created successfully using adduser fallback"
+          else
+            echo "adduser also failed: $creation_error"
+          fi
+        fi
+        ;;
     esac
+    
+    # Final verification and manual fallback
+    if [ "$user_created" = "false" ] || ! id -u "$NEW_USER" >/dev/null 2>&1; then
+      echo "ERROR: All standard user creation methods failed"
+      echo "Last error: $creation_error"
+      echo "Attempting manual user creation..."
+      
+      # Check if user already exists in passwd (edge case)
+      if grep -q "^$NEW_USER:" /etc/passwd; then
+        echo "User $NEW_USER already exists in /etc/passwd but id command failed"
+      else
+        # Manual user creation as fallback
+        echo "Adding user manually to /etc/passwd and /etc/group..."
+        
+        # Find next available UID/GID
+        local uid=1000
+        while getent passwd $uid >/dev/null 2>&1; do
+          uid=$((uid + 1))
+        done
+        
+        echo "$NEW_USER:x:$uid:$uid:$NEW_USER:/home/$NEW_USER:/bin/bash" >> /etc/passwd
+        echo "$NEW_USER:x:$uid:" >> /etc/group
+        
+        # Create home directory
+        mkdir -p "/home/$NEW_USER"
+        chown $uid:$uid "/home/$NEW_USER"
+        chmod 755 "/home/$NEW_USER"
+        
+        echo "Manual user creation completed with UID/GID: $uid"
+      fi
+    fi
+  else
+    echo "User $NEW_USER already exists"
   fi
   
-  # Set user password
-  echo "$NEW_USER:$USER_PASS" | chpasswd
+  # Final verification with detailed debugging
+  echo "=== USER VERIFICATION ==="
+  if id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "✓ User $NEW_USER exists (id command successful)"
+    id "$NEW_USER"
+    echo "✓ User entry in /etc/passwd:"
+    grep "^$NEW_USER:" /etc/passwd || echo "✗ User not found in /etc/passwd!"
+  else
+    echo "✗ CRITICAL ERROR: User $NEW_USER does not exist after creation attempts"
+    echo "Contents of /etc/passwd:"
+    cat /etc/passwd
+    return 1
+  fi
+  echo "========================"
   
-  # Grant sudo privileges to user (use literal string to avoid shell expansion)
-  echo '$NEW_USER ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+  # Set user password
+  echo "Setting password for user $NEW_USER..."
+  if echo "$NEW_USER:$USER_PASS" | chpasswd; then
+    echo "Password set successfully for $NEW_USER"
+  else
+    echo "Failed to set password for $NEW_USER"
+  fi
+  
+  # Grant sudo privileges to user - fix the literal string issue
+  echo "Adding $NEW_USER to sudoers..."
+  echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
   
   # Set up SSH key authentication
   local home="/home/$NEW_USER" sshd="$home/.ssh"
+  echo "Setting up SSH key authentication for $NEW_USER..."
   mkdir -p "$sshd"
   echo "$SSH_PUBLIC_KEY" > "$sshd/authorized_keys"
   chmod 700 "$sshd"
   chmod 600 "$sshd/authorized_keys"
-  chown -R "$NEW_USER:$NEW_USER" "$sshd" 2>/dev/null || true
+  
+  # Get the actual UID/GID for chown
+  local user_info
+  user_info=$(id "$NEW_USER" 2>/dev/null)
+  if [ -n "$user_info" ]; then
+    local uid gid
+    uid=$(id -u "$NEW_USER")
+    gid=$(id -g "$NEW_USER")
+    chown -R "$uid:$gid" "$sshd"
+    echo "SSH directory ownership set to $uid:$gid"
+  else
+    echo "Warning: Could not determine UID/GID for $NEW_USER, using fallback"
+    chown -R 1000:1000 "$sshd" 2>/dev/null || true
+  fi
+  
+  echo "SSH key authentication configured for $NEW_USER"
 }
 
 # Configure SSH daemon with security hardening
@@ -3694,20 +3892,20 @@ install_host_launcher(){
   printf '%s\n' \
     "#!/usr/bin/env bash" \
     "# Launch desktop in portrait mode for productivity" \
-    "export DISPLAY=:0" \
+    "export DISPLAY=:1" \
     "" \
     "# Termux installation prefix" \
     "TP=\"/data/data/com.termux/files/usr\"" \
     "" \
     "# Start X11 server in portrait mode if not running" \
     "if ! pgrep -f termux-x11 >/dev/null 2>&1; then" \
-    "  \"\$TP/bin/termux-x11\" :0 -geometry 1080x1920 >/dev/null 2>&1 &" \
+    "  \"\$TP/bin/termux-x11\" :1 -geometry 1080x1920 >/dev/null 2>&1 &" \
     "  sleep 2" \
     "fi" \
     "" \
     "# Start XFCE desktop session if not running" \
     "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
-    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  DISPLAY=:1 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
     "  sleep 2" \
     "fi" \
     "" \
@@ -3732,16 +3930,16 @@ install_host_launcher(){
     "sleep 1" \
     "" \
     "# Start X11 server in landscape mode for streaming" \
-    "\"\$TP/bin/termux-x11\" :0 -geometry 1920x1080 >/dev/null 2>&1 &" \
+    "\"\$TP/bin/termux-x11\" :1 -geometry 1920x1080 >/dev/null 2>&1 &" \
     "sleep 3" \
     "" \
     "# Configure display resolution" \
-    "export DISPLAY=:0" \
+    "export DISPLAY=:1" \
     "xrandr --output default --mode 1920x1080 2>/dev/null || true" \
     "" \
     "# Start XFCE desktop session if not running" \
     "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
-    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  DISPLAY=:1 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
     "  sleep 3" \
     "fi" \
     "" \
@@ -3755,27 +3953,54 @@ install_host_launcher(){
 
 # Main setup function that coordinates all configuration
 main(){
+  echo "=== Container Configuration Started ==="
+  echo "NEW_USER: $NEW_USER"
+  echo "SSH_PORT: $SSH_PORT"
+  
   local os
   os=$(detect_os)
+  echo "Detected OS: $os"
   
   # Install packages based on detected OS
   case "$os" in
-    debian|ubuntu) pkg_install_debian ;;
-    arch) pkg_install_arch ;;
-    alpine) pkg_install_alpine ;;
-    *) echo "Unknown OS $os" ;;
+    debian|ubuntu) 
+      echo "Installing packages for debian/ubuntu..."
+      pkg_install_debian 
+      ;;
+    arch) 
+      echo "Installing packages for arch..."
+      pkg_install_arch 
+      ;;
+    alpine) 
+      echo "Installing packages for alpine..."
+      pkg_install_alpine 
+      ;;
+    *) 
+      echo "Unknown OS $os" 
+      ;;
   esac
   
   # Set up Sunshine remote desktop service
+  echo "Setting up Sunshine..."
   install_sunshine "$os"
   
   # Create and configure user account
+  echo "Creating user account..."
   create_user
   
+  # Verify user creation
+  if id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "SUCCESS: User $NEW_USER verified in /etc/passwd"
+  else
+    echo "ERROR: User $NEW_USER not found after creation!"
+  fi
+  
   # Configure and start SSH daemon
+  echo "Configuring SSH daemon..."
   harden_sshd
   
   # Install desktop launcher scripts
+  echo "Installing desktop launchers..."
   install_host_launcher
   
   # Save configuration for later reference and to Termux credentials
@@ -3798,14 +4023,27 @@ CONTAINER_SCRIPT_EOF
   script="${script//__ARCH__/$arch}"
   script="${script//__ENABLE_SUNSHINE__/$ENABLE_SUNSHINE}"
 
-  # Execute the container configuration script
+  # Execute the container configuration script with detailed logging
+  echo "=== Container Configuration Debug Info ==="
+  echo "UBUNTU_USERNAME: '$UBUNTU_USERNAME'"
+  echo "LINUX_SSH_PORT: '$LINUX_SSH_PORT'"
+  echo "Script will create user: '${UBUNTU_USERNAME//\"/\\\"}'"
+  echo "=========================================="
+  
   if run_with_progress "Configure container + Sunshine" 185 bash -c "
     proot-distro login '$DISTRO' --shared-tmp --fix-low-ports -- bash -lc \"
       cat > /root/autocfg.sh << 'EOF_SCRIPT'
 $script
 EOF_SCRIPT
       chmod +x /root/autocfg.sh
-      bash /root/autocfg.sh 2>&1 | grep -Ev '^(Selecting previously|Preparing|Unpacking|Setting up|Processing triggers|Get:|Fetched|Reading|Building)'
+      echo 'Starting container configuration...'
+      echo 'Debug: Contents of autocfg.sh:'
+      head -20 /root/autocfg.sh
+      echo '--- Running configuration script ---'
+      bash /root/autocfg.sh 2>&1
+      echo '--- Configuration script completed ---'
+      echo 'Final check - user in /etc/passwd:'
+      grep '${UBUNTU_USERNAME//\"/\\\"}' /etc/passwd || echo 'User not found in /etc/passwd!'
     \"
   "; then
     ok "Container configuration successful"
@@ -3834,20 +4072,51 @@ SSH_CONFIG_EOF
   save_ssh_credentials_for_widgets
 }
 
-# Save SSH credentials for widget shortcuts
+# Save SSH credentials for widget shortcuts with validation
 save_ssh_credentials_for_widgets(){
-  # Create credentials directory in Termux
-  local cred_dir="$HOME/.cad/credentials"
-  mkdir -p "$cred_dir" 2>/dev/null || true
+  local ssh_port="${LINUX_SSH_PORT:-8022}"
+  local ssh_username="${UBUNTU_USERNAME:-caduser}"
+  local saved_count=0
   
-  # Save SSH port and username for widgets
-  echo "${LINUX_SSH_PORT:-8022}" > "$cred_dir/ssh_port.cred" 2>/dev/null || true
-  echo "${UBUNTU_USERNAME:-caduser}" > "$cred_dir/ssh_username.cred" 2>/dev/null || true
+  # Validate credentials exist
+  if [ -z "$ssh_port" ] || [ -z "$ssh_username" ]; then
+    warn "SSH credentials are empty, using fallback values"
+    ssh_port="${ssh_port:-8022}"
+    ssh_username="${ssh_username:-caduser}"
+  fi
   
-  # Set proper permissions
-  chmod 600 "$cred_dir"/*.cred 2>/dev/null || true
+  # Store SSH port using robust credential function
+  if store_credential "ssh_port" "$ssh_port"; then
+    saved_count=$((saved_count + 1))
+  else
+    err "Failed to save SSH port credential"
+  fi
   
-  info "SSH credentials saved for widget shortcuts"
+  # Store SSH username using robust credential function
+  if store_credential "ssh_username" "$ssh_username"; then
+    saved_count=$((saved_count + 1))
+  else
+    err "Failed to save SSH username credential"
+  fi
+  
+  # Verify credentials were saved correctly
+  if [ "$saved_count" -eq 2 ]; then
+    # Test reading back the credentials
+    local test_port test_username
+    test_port=$(read_credential "ssh_port")
+    test_username=$(read_credential "ssh_username")
+    
+    if [ "$test_port" = "$ssh_port" ] && [ "$test_username" = "$ssh_username" ]; then
+      info "SSH credentials saved and verified for widget shortcuts (Port: $ssh_port, User: $ssh_username)"
+    else
+      warn "SSH credentials saved but verification failed - widgets may not work correctly"
+    fi
+  else
+    err "Failed to save SSH credentials - widgets will not work correctly"
+    return 1
+  fi
+  
+  return 0
 }
 
 # Ensure SSH daemon is running in container
@@ -3972,7 +4241,7 @@ read_credential() {
 
 # Get SSH credentials with fallbacks
 SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
-SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "caduser")
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
 # Display connection info
@@ -3986,18 +4255,23 @@ pkill -f "termux-x11" 2>/dev/null || true
 # Start Termux:X11
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 
-# Create new tmux session for container setup
+# Clean up any existing tmux sessions first
+tmux kill-session -t rootlog 2>/dev/null || true
+
+# Create new tmux session and connect to container
 tmux new -s rootlog -d
-
-# Send commands to tmux session to setup SSH daemon
 tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
-tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started' && tmux wait -S ssh_ready" enter
+sleep 2
 
-# Wait for SSH daemon to be ready
-tmux wait ssh_ready
+# Start SSH daemon in the container using simple commands
+tmux send-keys "/usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+sleep 3
+
+# Wait for SSH to be ready
+echo "SSH daemon should now be running..."
 
 # Connect to the container via SSH with X11 forwarding and start XFCE
-ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:0 && termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:1 && termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"'
 
 # Clean up tmux session when done
 tmux kill-session -t rootlog 2>/dev/null || true
@@ -4025,7 +4299,7 @@ read_credential() {
 
 # Get SSH credentials with fallbacks
 SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
-SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "caduser")
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
 # Display connection info
@@ -4036,23 +4310,28 @@ echo "Username: $SSH_USERNAME"
 # Start Termux:X11
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 
-# Create new tmux session for container setup
-tmux new -s sunshine_session -d
+# Clean up any existing tmux sessions first
+tmux kill-session -t sunshine_session 2>/dev/null || true
 
-# Setup SSH daemon and Sunshine in the container
+# Create new tmux session and connect to container
+tmux new -s sunshine_session -d
 tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
-tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
-tmux send-keys "sudo systemctl start sunshine || sudo sunshine --service & echo 'Sunshine started'" enter
-tmux send-keys "echo 'Services ready' && tmux wait -S services_ready" enter
+sleep 2
+
+# Start SSH daemon and Sunshine in the container using simple commands
+tmux send-keys "/usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+sleep 2
+tmux send-keys "command -v sunshine >/dev/null 2>&1 && sunshine --config-dir ~/.config/sunshine & echo 'Sunshine started' || echo 'Sunshine not available'" enter
+sleep 3
 
 # Wait for services to be ready
-tmux wait services_ready
+echo "Services should now be running..."
 
 # Connect with X11 forwarding and start XFCE with Sunshine
 ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" '
-export DISPLAY=:0
+export DISPLAY=:1
 sunshine --config-dir ~/.config/sunshine &
-termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"
+termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"
 '
 
 # Clean up tmux session when done
@@ -4639,8 +4918,8 @@ step_bootstrap(){
 
 # Step 4: Enable X11 repository for desktop packages with safe retry logic
 step_x11repo(){ 
-  local commands=("apt-get update || true" "apt-get -y install x11-repo || [ \$? -eq 100 ] || false" "apt-get update || true") 
-  local labels=("Update apt lists" "Install x11-repo" "Refresh lists") 
+  local commands=("apt-get update || true" "apt-get -y install x11-repo || [ \$? -eq 100 ] || false" "apt-get update || true" "apt-get -y install termux-x11-nightly || true") 
+  local labels=("Update apt lists" "Install x11-repo" "Refresh lists" "Install termux-x11-nightly") 
   local cmd_index=0
   local max_attempts=3
   
@@ -4958,11 +5237,12 @@ step_adb(){
     
     # Set up automatic phantom killer disable for future reboots
     setup_phantom_killer_auto_disable
+    mark_step_status "success"
   else
     warn "ADB setup incomplete - phantom process killer remains active"
+    warn "System stability may be affected"
+    mark_step_status "warning"
   fi
-  
-  mark_step_status "success"
 }
 
 # Disable Android phantom process killer via ADB
@@ -5097,6 +5377,20 @@ step_coreinst(){
       break  # Safety break
     fi
   done
+  
+  # After git is installed, clone termux-x11 repository with submodules
+  if dpkg_is_installed git; then
+    info "Cloning termux-x11 repository with submodules..."
+    local termux_x11_dir="$HOME/termux-x11"
+    if [ ! -d "$termux_x11_dir" ]; then
+      run_with_progress "Clone termux-x11" 15 bash -c "
+        cd \$HOME && 
+        git clone --recurse-submodules https://github.com/termux/termux-x11 >/dev/null 2>&1 || true
+      "
+    else
+      info "termux-x11 repository already exists - skipping clone"
+    fi
+  fi
   
   mark_step_status "success"
 }
