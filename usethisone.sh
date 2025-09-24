@@ -3533,6 +3533,14 @@ configure_linux_env(){
     warn "Failed to save SSH username credential, widgets may not work correctly"
   fi
   
+  # Validate username before proceeding
+  if [ -z "$UBUNTU_USERNAME" ]; then
+    err "UBUNTU_USERNAME is empty after configuration!"
+    return 1
+  fi
+  
+  info "Configuration validated - Username: '$UBUNTU_USERNAME', SSH Port: '$LINUX_SSH_PORT'"
+  
   if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
     err "User password setup failed"
     return 1
@@ -3714,73 +3722,134 @@ SUNSHINE_SCRIPT_EOF
 
 # Create user account and configure permissions
 create_user(){
-  echo "Creating user account: $NEW_USER"
+  echo "=== USER CREATION DEBUG ==="
+  echo "Creating user account: '$NEW_USER'"
+  echo "Current user: $(whoami)"
+  echo "Available tools:"
+  command -v useradd >/dev/null && echo "  - useradd: YES" || echo "  - useradd: NO"
+  command -v adduser >/dev/null && echo "  - adduser: YES" || echo "  - adduser: NO"
+  echo "=========================="
   
   # Set root password
   echo "root:$ROOT_PASS" | chpasswd
   
   # Create user if doesn't exist with better error handling
   if ! id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "User $NEW_USER does not exist, attempting creation..."
     local user_created=false
+    local creation_error=""
+    
     case "$(detect_os)" in
       alpine) 
-        if adduser -D "$NEW_USER"; then
+        echo "Detected Alpine Linux, using adduser..."
+        if creation_error=$(adduser -D "$NEW_USER" 2>&1); then
           user_created=true
           echo "User $NEW_USER created successfully using adduser"
+        else
+          echo "Alpine adduser failed: $creation_error"
         fi
         ;;
       *) 
+        echo "Detected non-Alpine Linux, trying useradd first..."
         # Try useradd first with verbose error reporting
-        if useradd -m -s /bin/bash "$NEW_USER"; then
+        if creation_error=$(useradd -m -s /bin/bash "$NEW_USER" 2>&1); then
           user_created=true
           echo "User $NEW_USER created successfully using useradd"
-        elif adduser --disabled-password --gecos "" "$NEW_USER"; then
-          user_created=true
-          echo "User $NEW_USER created successfully using adduser fallback"
+        else
+          echo "useradd failed: $creation_error"
+          echo "Trying adduser as fallback..."
+          if creation_error=$(adduser --disabled-password --gecos "" "$NEW_USER" 2>&1); then
+            user_created=true
+            echo "User $NEW_USER created successfully using adduser fallback"
+          else
+            echo "adduser also failed: $creation_error"
+          fi
         fi
         ;;
     esac
     
-    # Verify user was actually created
+    # Final verification and manual fallback
     if [ "$user_created" = "false" ] || ! id -u "$NEW_USER" >/dev/null 2>&1; then
-      echo "ERROR: Failed to create user $NEW_USER"
-      echo "Available user creation commands:"
-      command -v useradd && echo "- useradd available"
-      command -v adduser && echo "- adduser available"
+      echo "ERROR: All standard user creation methods failed"
+      echo "Last error: $creation_error"
       echo "Attempting manual user creation..."
       
-      # Manual user creation as fallback
-      echo "$NEW_USER:x:1000:1000:$NEW_USER:/home/$NEW_USER:/bin/bash" >> /etc/passwd
-      echo "$NEW_USER:x:1000:" >> /etc/group
-      mkdir -p "/home/$NEW_USER"
-      chown 1000:1000 "/home/$NEW_USER"
-      echo "Manual user creation completed"
+      # Check if user already exists in passwd (edge case)
+      if grep -q "^$NEW_USER:" /etc/passwd; then
+        echo "User $NEW_USER already exists in /etc/passwd but id command failed"
+      else
+        # Manual user creation as fallback
+        echo "Adding user manually to /etc/passwd and /etc/group..."
+        
+        # Find next available UID/GID
+        local uid=1000
+        while getent passwd $uid >/dev/null 2>&1; do
+          uid=$((uid + 1))
+        done
+        
+        echo "$NEW_USER:x:$uid:$uid:$NEW_USER:/home/$NEW_USER:/bin/bash" >> /etc/passwd
+        echo "$NEW_USER:x:$uid:" >> /etc/group
+        
+        # Create home directory
+        mkdir -p "/home/$NEW_USER"
+        chown $uid:$uid "/home/$NEW_USER"
+        chmod 755 "/home/$NEW_USER"
+        
+        echo "Manual user creation completed with UID/GID: $uid"
+      fi
     fi
   else
     echo "User $NEW_USER already exists"
   fi
   
-  # Verify user exists before proceeding
-  if ! id -u "$NEW_USER" >/dev/null 2>&1; then
-    echo "CRITICAL ERROR: User $NEW_USER does not exist after creation attempts"
-    cat /etc/passwd | grep "$NEW_USER" || echo "User not found in /etc/passwd"
+  # Final verification with detailed debugging
+  echo "=== USER VERIFICATION ==="
+  if id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "✓ User $NEW_USER exists (id command successful)"
+    id "$NEW_USER"
+    echo "✓ User entry in /etc/passwd:"
+    grep "^$NEW_USER:" /etc/passwd || echo "✗ User not found in /etc/passwd!"
+  else
+    echo "✗ CRITICAL ERROR: User $NEW_USER does not exist after creation attempts"
+    echo "Contents of /etc/passwd:"
+    cat /etc/passwd
     return 1
   fi
+  echo "========================"
   
   # Set user password
-  echo "$NEW_USER:$USER_PASS" | chpasswd
-  echo "Password set for user $NEW_USER"
+  echo "Setting password for user $NEW_USER..."
+  if echo "$NEW_USER:$USER_PASS" | chpasswd; then
+    echo "Password set successfully for $NEW_USER"
+  else
+    echo "Failed to set password for $NEW_USER"
+  fi
   
   # Grant sudo privileges to user - fix the literal string issue
+  echo "Adding $NEW_USER to sudoers..."
   echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
   
   # Set up SSH key authentication
   local home="/home/$NEW_USER" sshd="$home/.ssh"
+  echo "Setting up SSH key authentication for $NEW_USER..."
   mkdir -p "$sshd"
   echo "$SSH_PUBLIC_KEY" > "$sshd/authorized_keys"
   chmod 700 "$sshd"
   chmod 600 "$sshd/authorized_keys"
-  chown -R "$NEW_USER:$NEW_USER" "$sshd" 2>/dev/null || chown -R 1000:1000 "$sshd"
+  
+  # Get the actual UID/GID for chown
+  local user_info
+  user_info=$(id "$NEW_USER" 2>/dev/null)
+  if [ -n "$user_info" ]; then
+    local uid gid
+    uid=$(id -u "$NEW_USER")
+    gid=$(id -g "$NEW_USER")
+    chown -R "$uid:$gid" "$sshd"
+    echo "SSH directory ownership set to $uid:$gid"
+  else
+    echo "Warning: Could not determine UID/GID for $NEW_USER, using fallback"
+    chown -R 1000:1000 "$sshd" 2>/dev/null || true
+  fi
   
   echo "SSH key authentication configured for $NEW_USER"
 }
@@ -3955,6 +4024,12 @@ CONTAINER_SCRIPT_EOF
   script="${script//__ENABLE_SUNSHINE__/$ENABLE_SUNSHINE}"
 
   # Execute the container configuration script with detailed logging
+  echo "=== Container Configuration Debug Info ==="
+  echo "UBUNTU_USERNAME: '$UBUNTU_USERNAME'"
+  echo "LINUX_SSH_PORT: '$LINUX_SSH_PORT'"
+  echo "Script will create user: '${UBUNTU_USERNAME//\"/\\\"}'"
+  echo "=========================================="
+  
   if run_with_progress "Configure container + Sunshine" 185 bash -c "
     proot-distro login '$DISTRO' --shared-tmp --fix-low-ports -- bash -lc \"
       cat > /root/autocfg.sh << 'EOF_SCRIPT'
@@ -3962,7 +4037,13 @@ $script
 EOF_SCRIPT
       chmod +x /root/autocfg.sh
       echo 'Starting container configuration...'
+      echo 'Debug: Contents of autocfg.sh:'
+      head -20 /root/autocfg.sh
+      echo '--- Running configuration script ---'
       bash /root/autocfg.sh 2>&1
+      echo '--- Configuration script completed ---'
+      echo 'Final check - user in /etc/passwd:'
+      grep '${UBUNTU_USERNAME//\"/\\\"}' /etc/passwd || echo 'User not found in /etc/passwd!'
     \"
   "; then
     ok "Container configuration successful"
