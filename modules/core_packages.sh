@@ -72,96 +72,119 @@ initialize_apt_environment(){
 }
 
 # Safely run apt/pkg commands with lock handling and retry logic
-safe_apt_operation(){
-  local operation="$1"
-  shift
-  local args="$*"
-  local max_attempts=3
-  local attempt=1
+# Simple package installation using default Termux methods
+simple_pkg_install(){
+  local pkg="$1"
   
-  # Ensure mirror configuration is applied before any operation
+  # Ensure mirror configuration is applied
   if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
-    debug "Ensuring mirror configuration is applied before $operation"
     ensure_mirror_applied
   fi
   
-  while [ $attempt -le $max_attempts ]; do
-    if [ $attempt -gt 1 ]; then
-      debug "Attempt $attempt/$max_attempts for: $operation $args"
-      sleep 2  # Brief pause between attempts
+  # Try pkg first (preferred Termux method)
+  if command -v pkg >/dev/null 2>&1; then
+    debug "Installing $pkg using pkg"
+    if pkg install -y "$pkg" 2>/dev/null; then
+      return 0
     fi
-    
-    # Initialize APT environment before each attempt
-    initialize_apt_environment
-    
-    case "$operation" in
-      "pkg_update")
-        if command -v pkg >/dev/null 2>&1; then
-          debug "Running: pkg update $args"
-          yes | pkg update $args
-        else
-          debug "pkg command not available"
-          return 1
-        fi
-        ;;
-      "apt_update")
-        debug "Running: apt update $args"
-        yes | apt update $args
-        ;;
-      "pkg_install")
-        if command -v pkg >/dev/null 2>&1; then
-          debug "Running: pkg install -y $args"
-          pkg install -y $args
-        else
-          debug "pkg command not available"
-          return 1
-        fi
-        ;;
-      "apt_install")
-        debug "Running: apt install -y $args"
-        yes | apt install -y $args
-        ;;
-      "pkg_upgrade")
-        if command -v pkg >/dev/null 2>&1; then
-          debug "Running: pkg upgrade -y $args"
-          yes | DEBIAN_FRONTEND=noninteractive pkg upgrade -y $args \
-            -o Dpkg::Options::="--force-confdef" \
-            -o Dpkg::Options::="--force-confold" \
-            -o Dpkg::Options::="--force-confnew"
-        else
-          debug "pkg command not available"
-          return 1
-        fi
-        ;;
-      "apt_upgrade")
-        debug "Running: apt upgrade -y $args"
-        yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y $args \
-          -o Dpkg::Options::="--force-confdef" \
-          -o Dpkg::Options::="--force-confold" \
-          -o Dpkg::Options::="--force-confnew"
-        ;;
-      *)
-        warn "Unknown operation: $operation"
-        return 1
-        ;;
-    esac
-    
-    local result=$?
-    
-    # Check if the operation succeeded or if package is already installed/updated
-    if [ $result -eq 0 ] || [ $result -eq 100 ]; then
-      debug "$operation completed with exit code: $result"
-      return $result
+  fi
+  
+  # Fallback to apt
+  debug "Installing $pkg using apt"
+  if yes | apt install -y "$pkg" >/dev/null 2>&1; then
+    return 0
+  fi
+  
+  return 1
+}
+
+# Simple package update using default Termux methods
+simple_pkg_update(){
+  # Ensure mirror configuration is applied
+  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
+    ensure_mirror_applied
+  fi
+  
+  # Try pkg first (preferred Termux method)
+  if command -v pkg >/dev/null 2>&1; then
+    debug "Updating package lists using pkg"
+    if pkg update 2>/dev/null; then
+      return 0
     fi
+  fi
+  
+  # Fallback to apt
+  debug "Updating package lists using apt"
+  if yes | apt update >/dev/null 2>&1; then
+    return 0
+  fi
+  
+  return 1
+}
+
+# Simple package upgrade using default Termux methods
+simple_pkg_upgrade(){
+  # Ensure mirror configuration is applied
+  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
+    ensure_mirror_applied
+  fi
+  
+  # Try pkg first (preferred Termux method)
+  if command -v pkg >/dev/null 2>&1; then
+    debug "Upgrading packages using pkg"
+    if yes | pkg upgrade -y 2>/dev/null; then
+      return 0
+    fi
+  fi
+  
+  # Fallback to apt
+  debug "Upgrading packages using apt"
+  if yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y \
+      -o Dpkg::Options::="--force-confdef" \
+      -o Dpkg::Options::="--force-confold" \
+      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1; then
+    return 0
+  fi
+  
+  return 1
+}
+
+# Simple progress display with just spinner (no timeout or percentages)
+simple_run_with_progress(){
+  local desc="$1"
+  shift
+  
+  local spinner_chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  local frame=0
+  
+  # Start background process
+  "$@" &
+  local pid=$!
+  
+  # Show spinner while command runs
+  while kill -0 "$pid" 2>/dev/null; do
+    local char_index=$((frame % ${#spinner_chars}))
+    local spinner_char="${spinner_chars:$char_index:1}"
     
-    # For non-success/non-already-done errors, return immediately
-    debug "$operation failed with exit code: $result"
-    return $result
-    return $result
+    printf "\r\033[38;2;175;238;238m%s\033[0m %s" "$spinner_char" "$desc"
+    
+    frame=$((frame + 1))
+    sleep 0.1
   done
   
-  warn "Operation failed after $max_attempts attempts: $operation $args"
-  return 1
+  # Wait for process to complete
+  wait "$pid"
+  local rc=$?
+  
+  # Clear line and show result
+  printf "\r\033[2K"
+  if [ $rc -eq 0 ] || [ $rc -eq 100 ]; then
+    printf "\033[38;2;152;251;152mOK\033[0m %s\n" "$desc"
+  else
+    printf "\033[38;2;255;192;203mFAILED\033[0m %s\n" "$desc"
+  fi
+  
+  return $rc
 }
 
 # Check if a Debian/APT package is installed
@@ -205,33 +228,10 @@ apt_install_if_needed(){
   
   info "Installing $pkg..."
   
-  # Ensure selected mirror is applied before installing
-  ensure_mirror_applied
-  
-  # Try pkg install first (preferred), then fallback to apt install
-  # Use safe operation wrapper to handle locks
-  if command -v pkg >/dev/null 2>&1; then
-    if safe_apt_operation "pkg_install" "$pkg" >/dev/null 2>&1; then
-      local pkg_result=$?
-      if [ $pkg_result -eq 0 ] || [ $pkg_result -eq 100 ]; then
-        ok "$pkg installed successfully via pkg"
-        return 0
-      else
-        warn "pkg install failed for $pkg, trying apt install..."
-      fi
-    fi
-  fi
-  
-  # Fallback to apt install with safe operation wrapper
-  if safe_apt_operation "apt_install" "$pkg" >/dev/null 2>&1; then
-    local apt_result=$?  
-    if [ $apt_result -eq 0 ] || [ $apt_result -eq 100 ]; then
-      ok "$pkg installed successfully via apt"
-      return 0
-    else
-      warn "Failed to install $pkg"
-      return 1
-    fi
+  # Use simple installation method
+  if simple_pkg_install "$pkg"; then
+    ok "$pkg installed successfully"
+    return 0
   else
     warn "Failed to install $pkg"
     return 1
@@ -477,40 +477,13 @@ verify_mirror(){
   mkdir -p "$temp_dir" 2>/dev/null || true
   local update_log="$temp_dir/mirror-test-$$"
   
-  # Use pkg update as the primary method (official Termux way)
-  if command -v pkg >/dev/null 2>&1; then
-    debug "Using pkg update for mirror verification"
-    if safe_apt_operation "pkg_update" >"$update_log" 2>&1; then
-      ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
-      debug "Mirror verification: SUCCESS"
-      rm -f "$update_log" 2>/dev/null || true
-    else
-      info "Mirror verification completed (configuration saved): ${SELECTED_MIRROR_NAME}"
-      debug "Mirror verification: PARTIAL (mirror configured but update had issues)"
-      if [ -f "$update_log" ]; then
-        debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
-      else
-        debug "Update log: could not create temporary file"
-      fi
-      rm -f "$update_log" 2>/dev/null || true
-    fi
+  # Use simple update method for mirror verification
+  if simple_pkg_update; then
+    ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
+    debug "Mirror verification: SUCCESS"
   else
-    # Fallback to apt update if pkg is not available
-    debug "Using apt update for mirror verification (pkg not available)"
-    if safe_apt_operation "apt_update" >"$update_log" 2>&1; then
-      ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
-      debug "Mirror verification: SUCCESS"
-      rm -f "$update_log" 2>/dev/null || true
-    else
-      info "Mirror verification completed (configuration saved): ${SELECTED_MIRROR_NAME}"
-      debug "Mirror verification: PARTIAL (mirror configured but update had issues)"
-      if [ -f "$update_log" ]; then
-        debug "Update log: $(tail -5 "$update_log" 2>/dev/null || echo 'no log content')"
-      else
-        debug "Update log: could not create temporary file"
-      fi
-      rm -f "$update_log" 2>/dev/null || true
-    fi
+    info "Mirror verification completed (configuration saved): ${SELECTED_MIRROR_NAME}"
+    debug "Mirror verification: PARTIAL (mirror configured but update had issues)"
   fi
 }
 
@@ -541,9 +514,7 @@ install_core_packages(){
   local total=${#essential_packages[@]}
   
   for pkg in "${essential_packages[@]}"; do
-    local install_time
-    install_time=$(get_package_install_time "$pkg")
-    if run_with_progress "Install $pkg" "$install_time" apt_install_if_needed "$pkg"; then
+    if simple_run_with_progress "Install $pkg" apt_install_if_needed "$pkg"; then
       success_count=$((success_count + 1))
     fi
   done
@@ -568,7 +539,7 @@ install_network_tools(){
   )
   
   for pkg in "${network_packages[@]}"; do
-    run_with_progress "Install $pkg" 20 apt_install_if_needed "$pkg" || true
+    simple_run_with_progress "Install $pkg" apt_install_if_needed "$pkg" || true
   done
   
   return 0
@@ -581,7 +552,7 @@ install_container_support(){
   pecho "$PASTEL_PURPLE" "Installing container support..."
   
   if ! dpkg_is_installed "proot-distro"; then
-    if run_with_progress "Install proot-distro" 30 apt_install_if_needed "proot-distro"; then
+    if simple_run_with_progress "Install proot-distro" apt_install_if_needed "proot-distro"; then
       ok "Container support installed"
     else
       warn "Failed to install container support"
@@ -607,7 +578,7 @@ install_x11_packages(){
   )
   
   for pkg in "${x11_packages[@]}"; do
-    run_with_progress "Install $pkg" 35 apt_install_if_needed "$pkg" || true
+    simple_run_with_progress "Install $pkg" apt_install_if_needed "$pkg" || true
   done
   
   return 0
@@ -625,60 +596,15 @@ update_package_lists(){
   info "Updating package lists..."
   debug "Using mirror: ${SELECTED_MIRROR_URL:-default}"
   
-  # Ensure selected mirror is applied and sources file is written before updating
-  ensure_mirror_applied
-  
-  # Check if sources file exists and is readable
-  local sources_file="$PREFIX/etc/apt/sources.list"
-  if [ ! -f "$sources_file" ]; then
-    warn "Sources file missing: $sources_file"
-    debug "Creating minimal sources file"
-    echo "deb ${SELECTED_MIRROR_URL:-https://packages.termux.dev/apt/termux-main} stable main" > "$sources_file"
-  fi
-  
-  debug "Sources file content:"
-  debug "$(cat "$sources_file" 2>/dev/null || echo 'Could not read sources file')"
-  
-  # Simple approach - try pkg first, then apt
-  if command -v pkg >/dev/null 2>&1; then
-    info "Updating with pkg..."
-    debug "Running: pkg update -y"
-    local pkg_log="${TMPDIR:-$PREFIX/tmp}/pkg-update-$$.log"
-    if safe_apt_operation "pkg_update" "-y" 2>&1 | tee "$pkg_log" >/dev/null; then
-      ok "Package lists updated via pkg"
-      export PACKAGES_UPDATED=1
-      debug "pkg update: SUCCESS"
-      rm -f "$pkg_log" 2>/dev/null || true
-      return 0
-    else
-      warn "pkg update failed, trying apt..."
-      debug "pkg update: FAILED"
-      if [ -f "$pkg_log" ]; then
-        debug "pkg update error log:"
-        debug "$(cat "$pkg_log" 2>/dev/null | tail -10)"
-        rm -f "$pkg_log" 2>/dev/null || true
-      fi
-    fi
-  fi
-  
-  # Fallback to apt update
-  info "Updating with apt..."
-  debug "Running: apt update"
-  local apt_log="${TMPDIR:-$PREFIX/tmp}/apt-update-$$.log"
-  if safe_apt_operation "apt_update" 2>&1 | tee "$apt_log" >/dev/null; then
-    ok "Package lists updated via apt"
+  # Use simple update method
+  if simple_pkg_update; then
+    ok "Package lists updated successfully"
     export PACKAGES_UPDATED=1
-    debug "apt update: SUCCESS"
-    rm -f "$apt_log" 2>/dev/null || true
+    debug "Package list update: SUCCESS"
     return 0
   else
     warn "Package list update failed"
-    debug "apt update: FAILED"
-    if [ -f "$apt_log" ]; then
-      debug "apt update error log:"
-      debug "$(cat "$apt_log" 2>/dev/null | tail -10)"
-      rm -f "$apt_log" 2>/dev/null || true
-    fi
+    debug "Package list update: FAILED"
     return 1
   fi
 }
@@ -686,9 +612,6 @@ update_package_lists(){
 # Upgrade all packages using appropriate Termux commands
 upgrade_packages(){
   info "Upgrading packages..."
-  
-  # Ensure selected mirror is applied and sources file is written before upgrading
-  ensure_mirror_applied
   
   # Try to update package lists first, but continue with upgrade even if it fails
   update_package_lists || {
@@ -707,23 +630,13 @@ upgrade_packages(){
   for lib in "${essential_libs[@]}"; do
     if ! dpkg -l | grep -q "$lib" 2>/dev/null; then
       info "Installing $lib to prevent upgrade errors..."
-      run_with_progress "Install $lib (apt)" 15 bash -c "yes | DEBIAN_FRONTEND=noninteractive apt install -y '$lib' >/dev/null 2>&1 || [ \$? -eq 100 ]" || true
+      simple_run_with_progress "Install $lib" simple_pkg_install "$lib" || true
     fi
   done
   
-  # Upgrade with spinners and non-interactive flags using safe operations
-  if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Upgrading packages with pkg" 45 bash -c 'safe_apt_operation "pkg_upgrade" >/dev/null 2>&1'; then
-      ok "Packages upgraded successfully via pkg"
-      return 0
-    else
-      warn "pkg upgrade failed, trying apt upgrade..."
-    fi
-  fi
-  
-  # Fallback to apt upgrade with safe operations
-  if run_with_progress "Upgrading packages with apt" 45 bash -c 'safe_apt_operation "apt_upgrade" >/dev/null 2>&1'; then
-    ok "Packages upgraded successfully via apt"
+  # Use simple upgrade method with spinner
+  if simple_run_with_progress "Upgrading packages" simple_pkg_upgrade; then
+    ok "Packages upgraded successfully"
     return 0
   else
     warn "Package upgrade failed"
@@ -872,7 +785,7 @@ step_x11repo(){
   fi
   
   # Use apt directly as pkg is not reliable for x11-repo
-  run_with_progress "Add X11 repository (apt)" 15 bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1 || true'
+  simple_run_with_progress "Add X11 repository" bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1' || true
   mark_step_status "success"
 }
 
@@ -941,7 +854,7 @@ step_xfce_termux(){
   
   # Install X11 repo if not already installed
   if ! dpkg_is_installed "x11-repo"; then
-    run_with_progress "Add X11 repository (apt)" 15 bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1 || [ $? -eq 100 ]'
+    simple_run_with_progress "Add X11 repository" bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1' || true
     
     # Update indexes after adding X11 repo - don't need ensure_mirror_applied
     debug "Updating package indexes after X11 repo installation"
@@ -952,16 +865,23 @@ step_xfce_termux(){
   info "Installing critical runtime libraries..."
   
   # Install libpcre2 and related libraries (fixes "cut" command issues)
-  run_with_progress "Install libpcre2 libraries" 20 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils libpcre2-8 >/dev/null 2>&1 || [ $? -eq 100 ]'
+  simple_run_with_progress "Install libpcre2 libraries" simple_pkg_install "libpcre2-8-0" || true
+  simple_run_with_progress "Install pcre2-utils" simple_pkg_install "pcre2-utils" || true
+  simple_run_with_progress "Install libpcre2-8" simple_pkg_install "libpcre2-8" || true
   
   # Install OpenSSL libraries (fixes libcrypto.so.3 issues)
-  run_with_progress "Install OpenSSL libraries" 20 bash -c 'yes | apt install -y openssl libssl3 libcrypto3 openssl-tool >/dev/null 2>&1 || [ $? -eq 100 ]'
+  simple_run_with_progress "Install openssl" simple_pkg_install "openssl" || true
+  simple_run_with_progress "Install libssl3" simple_pkg_install "libssl3" || true
+  simple_run_with_progress "Install libcrypto3" simple_pkg_install "libcrypto3" || true
+  simple_run_with_progress "Install openssl-tool" simple_pkg_install "openssl-tool" || true
   
   # Install essential system libraries
-  run_with_progress "Install core system libraries" 20 bash -c 'yes | apt install -y libandroid-selinux libandroid-support >/dev/null 2>&1 || [ $? -eq 100 ]'
+  simple_run_with_progress "Install libandroid-selinux" simple_pkg_install "libandroid-selinux" || true
+  simple_run_with_progress "Install libandroid-support" simple_pkg_install "libandroid-support" || true
   
   # Install development tools that might be missing
-  run_with_progress "Install build essentials" 15 bash -c 'yes | apt install -y coreutils binutils >/dev/null 2>&1 || [ $? -eq 100 ]'
+  simple_run_with_progress "Install coreutils" simple_pkg_install "coreutils" || true
+  simple_run_with_progress "Install binutils" simple_pkg_install "binutils" || true
   
   # Detect and install any remaining missing runtime libraries
   if command -v detect_install_missing_libs >/dev/null 2>&1; then
@@ -988,9 +908,7 @@ step_xfce_termux(){
   local total=${#xfce_packages[@]}
   
   for pkg in "${xfce_packages[@]}"; do
-    local install_time
-    install_time=$(get_package_install_time "$pkg")
-    if run_with_progress "Install $pkg" "$install_time" apt_install_if_needed "$pkg"; then
+    if simple_run_with_progress "Install $pkg" apt_install_if_needed "$pkg"; then
       success_count=$((success_count + 1))
     fi
   done
@@ -1008,7 +926,7 @@ step_xfce_termux(){
   
   info "Installing desktop utilities..."
   for pkg in "${desktop_utils[@]}"; do
-    run_with_progress "Install $pkg" 25 apt_install_if_needed "$pkg" || true
+    simple_run_with_progress "Install $pkg" apt_install_if_needed "$pkg" || true
   done
   
   # Configure XFCE for Termux
