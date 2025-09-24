@@ -328,6 +328,7 @@ configure_mirror_repositories(){
     warn "Failed to write sources.list"
     return 1
   fi
+  debug "Main sources.list written: $(cat "$sources_file" 2>/dev/null)"
   
   # 2. Create apt preferences to prioritize our selected mirror
   debug "Creating apt preferences file"
@@ -349,7 +350,11 @@ EOF
   
   # 3. Set up pkg repository configuration by creating termux.list
   debug "Creating termux repository list for pkg"
-  echo "deb $mirror_url stable main" > "$sources_dir/termux.list"
+  if echo "deb $mirror_url stable main" > "$sources_dir/termux.list"; then
+    debug "Termux repository list created: $(cat "$sources_dir/termux.list" 2>/dev/null)"
+  else
+    warn "Failed to create termux repository list"
+  fi
   
   # 4. Clean up any conflicting repository files
   find "$sources_dir" -name "*.list" -type f ! -name "termux.list" ! -name "x11.list" 2>/dev/null | while read -r file; do
@@ -374,10 +379,13 @@ EOF
     configured_mirror=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
     if [ "$configured_mirror" = "$mirror_url" ]; then
       debug "Mirror configuration verified: $configured_mirror"
+      ok "Mirror configuration applied: $mirror_name"
       return 0
     else
       warn "Mirror configuration verification failed: expected $mirror_url, got $configured_mirror"
     fi
+  else
+    warn "Sources file was not created: $sources_file"
   fi
   
   debug "Sources file content: $(cat "$sources_file" 2>/dev/null || echo 'Could not read')"
@@ -396,6 +404,8 @@ ensure_mirror_applied(){
     debug "No mirror selected, using default Termux mirror"
     SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
     SELECTED_MIRROR_NAME="Default"
+    # Export default mirror settings
+    export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
   fi
   
   debug "Applying mirror configuration: ${SELECTED_MIRROR_URL}"
@@ -454,19 +464,28 @@ verify_mirror(){
       if [ -z "$SELECTED_MIRROR_NAME" ]; then
         SELECTED_MIRROR_NAME="(current)"
       fi
+      # Export the discovered mirror settings
+      export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
     else
       # Set default mirror if none configured
       SELECTED_MIRROR_NAME="Default"
       SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
+      # Export default mirror settings
+      export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
     fi
   fi
   
   # Apply comprehensive mirror configuration for both apt and pkg
   debug "Applying comprehensive mirror configuration"
+  info "Configuring mirror: $SELECTED_MIRROR_NAME"
+  
   if ! configure_mirror_repositories "$SELECTED_MIRROR_URL" "$SELECTED_MIRROR_NAME"; then
     warn "Failed to apply comprehensive mirror configuration, using basic setup"
     mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
     echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
+    debug "Applied basic mirror configuration"
+  else
+    debug "Comprehensive mirror configuration applied successfully"
   fi
   
   # Test mirror functionality with package list update (no curl dependency)
@@ -725,6 +744,9 @@ step_mirror(){
           fi
         done
         [ -z "$SELECTED_MIRROR_NAME" ] && SELECTED_MIRROR_NAME="Auto-selected"
+        # Export auto-selected mirror
+        export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
+        info "Auto-selected mirror: $SELECTED_MIRROR_NAME"
       else
         warn "Auto-selection failed, using default mirror"
         idx=0
@@ -761,6 +783,11 @@ step_mirror(){
     SELECTED_MIRROR_URL="${urls[0]}"
     debug "No mirror selected, using first available: $SELECTED_MIRROR_NAME"
   fi
+  
+  # Export mirror selection for global use
+  export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
+  info "Mirror selected: $SELECTED_MIRROR_NAME"
+  debug "Mirror URL: $SELECTED_MIRROR_URL"
   
   # Clean up sources and verify mirror (verify_mirror will handle sources.list writing)
   sanitize_sources_main_only
