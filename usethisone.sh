@@ -3714,22 +3714,65 @@ SUNSHINE_SCRIPT_EOF
 
 # Create user account and configure permissions
 create_user(){
+  echo "Creating user account: $NEW_USER"
+  
   # Set root password
   echo "root:$ROOT_PASS" | chpasswd
   
-  # Create user if doesn't exist
+  # Create user if doesn't exist with better error handling
   if ! id -u "$NEW_USER" >/dev/null 2>&1; then
+    local user_created=false
     case "$(detect_os)" in
-      alpine) adduser -D "$NEW_USER" ;;
-      *) useradd -m -s /bin/bash "$NEW_USER" 2>/dev/null || adduser "$NEW_USER" ;;
+      alpine) 
+        if adduser -D "$NEW_USER"; then
+          user_created=true
+          echo "User $NEW_USER created successfully using adduser"
+        fi
+        ;;
+      *) 
+        # Try useradd first with verbose error reporting
+        if useradd -m -s /bin/bash "$NEW_USER"; then
+          user_created=true
+          echo "User $NEW_USER created successfully using useradd"
+        elif adduser --disabled-password --gecos "" "$NEW_USER"; then
+          user_created=true
+          echo "User $NEW_USER created successfully using adduser fallback"
+        fi
+        ;;
     esac
+    
+    # Verify user was actually created
+    if [ "$user_created" = "false" ] || ! id -u "$NEW_USER" >/dev/null 2>&1; then
+      echo "ERROR: Failed to create user $NEW_USER"
+      echo "Available user creation commands:"
+      command -v useradd && echo "- useradd available"
+      command -v adduser && echo "- adduser available"
+      echo "Attempting manual user creation..."
+      
+      # Manual user creation as fallback
+      echo "$NEW_USER:x:1000:1000:$NEW_USER:/home/$NEW_USER:/bin/bash" >> /etc/passwd
+      echo "$NEW_USER:x:1000:" >> /etc/group
+      mkdir -p "/home/$NEW_USER"
+      chown 1000:1000 "/home/$NEW_USER"
+      echo "Manual user creation completed"
+    fi
+  else
+    echo "User $NEW_USER already exists"
+  fi
+  
+  # Verify user exists before proceeding
+  if ! id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "CRITICAL ERROR: User $NEW_USER does not exist after creation attempts"
+    cat /etc/passwd | grep "$NEW_USER" || echo "User not found in /etc/passwd"
+    return 1
   fi
   
   # Set user password
   echo "$NEW_USER:$USER_PASS" | chpasswd
+  echo "Password set for user $NEW_USER"
   
-  # Grant sudo privileges to user (use literal string to avoid shell expansion)
-  echo '$NEW_USER ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+  # Grant sudo privileges to user - fix the literal string issue
+  echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
   
   # Set up SSH key authentication
   local home="/home/$NEW_USER" sshd="$home/.ssh"
@@ -3737,7 +3780,9 @@ create_user(){
   echo "$SSH_PUBLIC_KEY" > "$sshd/authorized_keys"
   chmod 700 "$sshd"
   chmod 600 "$sshd/authorized_keys"
-  chown -R "$NEW_USER:$NEW_USER" "$sshd" 2>/dev/null || true
+  chown -R "$NEW_USER:$NEW_USER" "$sshd" 2>/dev/null || chown -R 1000:1000 "$sshd"
+  
+  echo "SSH key authentication configured for $NEW_USER"
 }
 
 # Configure SSH daemon with security hardening
@@ -3839,27 +3884,54 @@ install_host_launcher(){
 
 # Main setup function that coordinates all configuration
 main(){
+  echo "=== Container Configuration Started ==="
+  echo "NEW_USER: $NEW_USER"
+  echo "SSH_PORT: $SSH_PORT"
+  
   local os
   os=$(detect_os)
+  echo "Detected OS: $os"
   
   # Install packages based on detected OS
   case "$os" in
-    debian|ubuntu) pkg_install_debian ;;
-    arch) pkg_install_arch ;;
-    alpine) pkg_install_alpine ;;
-    *) echo "Unknown OS $os" ;;
+    debian|ubuntu) 
+      echo "Installing packages for debian/ubuntu..."
+      pkg_install_debian 
+      ;;
+    arch) 
+      echo "Installing packages for arch..."
+      pkg_install_arch 
+      ;;
+    alpine) 
+      echo "Installing packages for alpine..."
+      pkg_install_alpine 
+      ;;
+    *) 
+      echo "Unknown OS $os" 
+      ;;
   esac
   
   # Set up Sunshine remote desktop service
+  echo "Setting up Sunshine..."
   install_sunshine "$os"
   
   # Create and configure user account
+  echo "Creating user account..."
   create_user
   
+  # Verify user creation
+  if id -u "$NEW_USER" >/dev/null 2>&1; then
+    echo "SUCCESS: User $NEW_USER verified in /etc/passwd"
+  else
+    echo "ERROR: User $NEW_USER not found after creation!"
+  fi
+  
   # Configure and start SSH daemon
+  echo "Configuring SSH daemon..."
   harden_sshd
   
   # Install desktop launcher scripts
+  echo "Installing desktop launchers..."
   install_host_launcher
   
   # Save configuration for later reference and to Termux credentials
@@ -3882,14 +3954,15 @@ CONTAINER_SCRIPT_EOF
   script="${script//__ARCH__/$arch}"
   script="${script//__ENABLE_SUNSHINE__/$ENABLE_SUNSHINE}"
 
-  # Execute the container configuration script
+  # Execute the container configuration script with detailed logging
   if run_with_progress "Configure container + Sunshine" 185 bash -c "
     proot-distro login '$DISTRO' --shared-tmp --fix-low-ports -- bash -lc \"
       cat > /root/autocfg.sh << 'EOF_SCRIPT'
 $script
 EOF_SCRIPT
       chmod +x /root/autocfg.sh
-      bash /root/autocfg.sh 2>&1 | grep -Ev '^(Selecting previously|Preparing|Unpacking|Setting up|Processing triggers|Get:|Fetched|Reading|Building)'
+      echo 'Starting container configuration...'
+      bash /root/autocfg.sh 2>&1
     \"
   "; then
     ok "Container configuration successful"
