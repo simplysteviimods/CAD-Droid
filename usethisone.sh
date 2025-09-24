@@ -3926,9 +3926,20 @@ create_widget_shortcuts(){
   fi
   
   local shortcuts_dir="$HOME/.shortcuts"
-  mkdir -p "$shortcuts_dir" 2>/dev/null || return 1
+  
+  # Remove existing shortcuts directory to ensure clean overwrite
+  if [ -d "$shortcuts_dir" ]; then
+    info "Removing existing widget shortcuts to ensure clean installation..."
+    rm -rf "$shortcuts_dir" 2>/dev/null || true
+  fi
+  
+  # Create fresh shortcuts directory
+  if ! mkdir -p "$shortcuts_dir" 2>/dev/null; then
+    warn "Cannot create shortcuts directory"
+    return 1
+  fi
 
-  info "Creating enhanced tmux-based Termux widget shortcuts..."
+  info "Creating enhanced tmux-based Termux widget shortcuts (overwriting any existing ones)..."
   
   # CRITICAL: Phantom Process Killer shortcut (most important for system stability)
   cat > "$shortcuts_dir/phantom-killer" << 'PHANTOM_EOF'
@@ -4112,7 +4123,16 @@ fi
 LINUX_TERMINAL_EOF
   chmod +x "$shortcuts_dir/Linux Terminal"
 
-  ok "Enhanced tmux-based widget shortcuts created"
+  # Ensure all files have proper permissions
+  chmod -R 755 "$shortcuts_dir" 2>/dev/null || true
+  find "$shortcuts_dir" -type f -exec chmod +x {} \; 2>/dev/null || true
+
+  ok "Enhanced tmux-based widget shortcuts created (all existing shortcuts replaced)"
+  
+  # Count created shortcuts and provide feedback
+  local shortcut_count
+  shortcut_count=$(find "$shortcuts_dir" -type f 2>/dev/null | wc -l)
+  info "Created $shortcut_count widget shortcuts in $shortcuts_dir"
   
   # Provide detailed widget setup instructions
   printf "\n${PASTEL_YELLOW}Widget Setup Instructions:${RESET}\n"
