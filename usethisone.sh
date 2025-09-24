@@ -462,6 +462,7 @@ init_pastel_colors() {
     export PASTEL_ORANGE='\033[38;2;255;218;185m'     # Peach Puff #FFDAB9
     export PASTEL_BLUE='\033[38;2;173;216;230m'       # Light Blue #ADD8E6
     export PASTEL_RED='\033[38;2;255;192;203m'        # Light Pink (red variant) #FFC0CB
+    export PASTEL_LAVENDER='\033[38;2;230;220;255m'   # Lavender #E6DCFF
     export RESET='\033[0m'
   else
     # Use basic ANSI colors for limited terminals
@@ -473,6 +474,7 @@ init_pastel_colors() {
     export PASTEL_ORANGE='\033[91m' # Bright red
     export PASTEL_BLUE='\033[94m'   # Bright blue
     export PASTEL_RED='\033[91m'    # Bright red
+    export PASTEL_LAVENDER='\033[95m' # Bright magenta (fallback)
     export RESET='\033[0m'
   fi
 }
@@ -2624,6 +2626,120 @@ show_pairing_dialog(){
   return 1
 }
 
+# Pair ADB device with IP, port, and pairing code
+pair_adb_device(){
+  local ip="$1"
+  local port="$2"
+  local pairing_code="$3"
+  
+  if [ -z "$ip" ] || [ -z "$port" ] || [ -z "$pairing_code" ]; then
+    err "Missing parameters for ADB pairing"
+    return 1
+  fi
+  
+  info "Attempting to pair with $ip:$port using code: $pairing_code"
+  
+  # Attempt pairing with timeout
+  local pair_result
+  if pair_result=$(timeout 30 adb pair "$ip:$port" 2>&1 <<< "$pairing_code"); then
+    if echo "$pair_result" | grep -qi "successfully paired"; then
+      return 0
+    else
+      warn "Pairing failed: $pair_result"
+      return 1
+    fi
+  else
+    warn "Pairing timed out or failed"
+    return 1
+  fi
+}
+
+# Connect to ADB device
+connect_adb_device(){
+  local ip="$1"
+  local port="$2"
+  
+  if [ -z "$ip" ] || [ -z "$port" ]; then
+    err "Missing parameters for ADB connection"
+    return 1
+  fi
+  
+  info "Connecting to ADB device at $ip:$port"
+  
+  # Attempt connection
+  if adb connect "$ip:$port" >/dev/null 2>&1; then
+    # Verify connection
+    if adb devices 2>/dev/null | grep -q "$ip:$port"; then
+      ok "ADB connection established!"
+      return 0
+    else
+      warn "Connection failed - device not visible"
+      return 1
+    fi
+  else
+    warn "Failed to connect to ADB device"
+    return 1
+  fi
+}
+
+# Manual ADB wireless setup (replacing the automatic approach)
+manual_adb_wireless_setup(){
+  if [ "$ENABLE_ADB" != "1" ]; then
+    return 0
+  fi
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "Enter the pairing information from the wireless debugging screen:"
+    echo ""
+    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip "192.168.1.100"
+    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831"  
+    read_nonempty "Enter the 6-digit pairing code" pairing_code "123456"
+    
+    # Basic validation
+    if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      warn "Invalid IP address format"
+      return 1
+    fi
+    
+    if ! [[ "$pairing_port" =~ ^[0-9]+$ ]] || [ "$pairing_port" -lt 1 ] || [ "$pairing_port" -gt 65535 ]; then
+      warn "Invalid port number"
+      return 1
+    fi
+    
+    if ! [[ "$pairing_code" =~ ^[0-9]{6}$ ]]; then
+      warn "Pairing code should be exactly 6 digits"
+      return 1  
+    fi
+    
+    # Attempt pairing
+    info "Attempting to pair with $ip:$pairing_port..."
+    if pair_adb_device "$ip" "$pairing_port" "$pairing_code"; then
+      ok "Device paired successfully!"
+      
+      # Prompt for debugging port
+      echo ""
+      local debug_port
+      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "37832"
+      
+      if connect_adb_device "$ip" "$debug_port"; then
+        ok "ADB wireless debugging setup complete!"
+        info "Device connected at: $ip:$debug_port"
+        return 0
+      else
+        warn "Failed to connect to debugging port"
+      fi
+    else
+      err "Device pairing failed. Please check the code and try again."
+    fi
+  else
+    info "Non-interactive mode: manual ADB setup required"
+    info "Run: adb pair <ip:port> then adb connect <ip:debug_port>"
+  fi
+  
+  return 1
+}
+
 # NEW: Enhanced ADB wireless setup with smart port detection
 adb_wireless_helper(){
   if [ "$ENABLE_ADB" != "1" ]; then
@@ -3268,6 +3384,13 @@ configure_linux_env(){
   
   # Get user configuration
   read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+  
+  # Confirm Linux username
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    if ! ask_yes_no "Confirm Linux username: $UBUNTU_USERNAME" "y"; then
+      read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    fi
+  fi
   
   if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
     err "User password setup failed"
@@ -4045,8 +4168,8 @@ pkg_available(){
 apt_install_if_needed(){
   local p="$1"
   
-  # Update package lists first
-  run_with_progress "Update package lists" 3 bash -c "apt-get update >/dev/null 2>&1"
+  # Update package lists first for this specific package
+  run_with_progress "Updating package lists for $p" 3 bash -c "apt-get update >/dev/null 2>&1"
   
   # Skip if already installed
   if dpkg_is_installed "$p"; then
@@ -4482,6 +4605,12 @@ step_apk(){
     failed=$(add_int "${failed:-0}" 1)
   fi
   
+  # Install Termux:Widget (home screen widget support)
+  if ! fetch_termux_addon "Termux-Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:Widget")
+    failed=$(add_int "${failed:-0}" 1)
+  fi
+  
   # Show results and instructions
   if [ "$failed" -eq 0 ]; then
     ok "All APKs downloaded successfully to: $USER_SELECTED_APK_DIR"
@@ -4574,6 +4703,19 @@ step_adb(){
   echo ""
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    printf "${PASTEL_YELLOW}IMPORTANT: Enter split-screen mode for easier setup${RESET}\n"
+    printf "${PASTEL_YELLOW}Otherwise the pairing code and port will change!${RESET}\n"
+    echo ""
+    
+    info "Follow these steps in Android Settings:"
+    info "1. Go to Settings > About phone"
+    info "2. Tap 'Build number' 7 times to enable Developer Options"
+    info "3. Go back to Settings > System > Developer Options"
+    info "4. Enable 'Wireless debugging'"
+    info "5. Tap 'Pair device with pairing code'"
+    echo ""
+    
     pecho "$PASTEL_CYAN" "Press Enter to open Android Developer Settings..."
     read -r || true
   fi
@@ -4596,27 +4738,15 @@ step_adb(){
     fi
   fi
   
-  # Method 3: Termux API notification if available
-  if have_termux_api; then
-    termux-notification --title "CAD-Droid Setup" --content "Enable Developer Options > Wireless Debugging in Android Settings" 2>/dev/null || true
-  fi
-  
   if [ "$settings_opened" = true ]; then
     info "Android Settings opened"
   else
     info "Unable to open settings automatically"
+    info "Please manually navigate to: Settings > System > Developer Options"
   fi
   
-  echo ""
-  info "Follow these steps in Android Settings:"
-  info "1. Go to Settings > About phone"
-  info "2. Tap 'Build number' 7 times to enable Developer Options"
-  info "3. Go back to Settings > System > Developer Options"
-  info "4. Enable 'Wireless debugging'"
-  info "5. Tap 'Pair device with pairing code'"
-  
-  # Now run the actual ADB helper with enhanced detection
-  if adb_wireless_helper; then
+  # Now run the manual ADB setup with enhanced instructions
+  if manual_adb_wireless_setup; then
     # CRITICAL: Disable phantom process killer for system stability
     echo ""
     printf "${PASTEL_YELLOW}Now disabling phantom process killer for better app stability...${RESET}\n"
