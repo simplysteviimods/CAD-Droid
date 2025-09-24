@@ -2865,6 +2865,80 @@ count_successful_steps(){
   echo "$count"
 }
 
+# Basic cleanup function for previous installations
+run_cleanup(){
+  draw_card "CAD-Droid Cleanup" "Remove previous installation files"
+  
+  printf "${PASTEL_YELLOW}This will remove CAD-Droid installation files and configuration.${RESET}\n"
+  printf "${PASTEL_CYAN}Files that will be removed:${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.shortcuts/ (Termux widget shortcuts)${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.termux/termux.properties (if created by CAD-Droid)${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.bashrc (CAD-Droid sections)${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.nanorc (if created by CAD-Droid)${RESET}\n"
+  printf "${PASTEL_CYAN}• Installation markers and logs${RESET}\n"
+  echo
+  
+  if ! ask_yes_no "Proceed with cleanup?" "n"; then
+    info "Cleanup cancelled"
+    return 0
+  fi
+  
+  local cleaned=0
+  
+  # Remove widget shortcuts
+  if [ -d "$HOME/.shortcuts" ]; then
+    if rm -rf "$HOME/.shortcuts" 2>/dev/null; then
+      ok "Removed Termux widget shortcuts"
+      cleaned=$((cleaned + 1))
+    fi
+  fi
+  
+  # Remove CAD-Droid sections from .bashrc
+  if [ -f "$HOME/.bashrc" ]; then
+    if grep -q "CAD-Droid" "$HOME/.bashrc" 2>/dev/null; then
+      if sed -i '/# CAD-Droid/,/^$/d' "$HOME/.bashrc" 2>/dev/null; then
+        ok "Cleaned CAD-Droid configuration from .bashrc"
+        cleaned=$((cleaned + 1))
+      fi
+    fi
+  fi
+  
+  # Remove .nanorc if it contains CAD-Droid theme
+  if [ -f "$HOME/.nanorc" ] && grep -q "CAD-Droid nano theme" "$HOME/.nanorc" 2>/dev/null; then
+    if rm -f "$HOME/.nanorc" 2>/dev/null; then
+      ok "Removed CAD-Droid nano configuration"
+      cleaned=$((cleaned + 1))
+    fi
+  fi
+  
+  # Remove nano backup directory
+  if [ -d "$HOME/.nano" ]; then
+    if rm -rf "$HOME/.nano" 2>/dev/null; then
+      ok "Removed nano backup directory"
+      cleaned=$((cleaned + 1))
+    fi
+  fi
+  
+  # Remove installation markers
+  for marker in "$HOME/.cad-droid-installed" "$PWD/.cad-setup-complete" "$HOME/.cad-restart-indicator"; do
+    if [ -f "$marker" ] && rm -f "$marker" 2>/dev/null; then
+      cleaned=$((cleaned + 1))
+    fi
+  done
+  
+  # Remove termux boot scripts if they exist
+  if [ -d "$HOME/.termux/boot" ]; then
+    find "$HOME/.termux/boot" -name "*phantom-killer*" -delete 2>/dev/null && cleaned=$((cleaned + 1))
+  fi
+  
+  if [ "$cleaned" -gt 0 ]; then
+    ok "Cleanup completed - removed $cleaned item(s)"
+    info "You may need to restart Termux to see all changes"
+  else
+    info "No CAD-Droid files found to clean up"
+  fi
+}
+
 # Show completion summary with enhanced post-completion card
 show_completion_summary(){
   local successful=0 failed=0 total_steps="${TOTAL_STEPS:-0}"
@@ -3133,6 +3207,7 @@ OPTIONS:
   --non-interactive         Run without asking questions
   --only-step <N|name>      Run just one specific step
   --doctor                  Check your system for problems
+  --cleanup                 Clean up previous installations
 
 ENVIRONMENT VARIABLES:
   NON_INTERACTIVE=1         Answer yes to everything automatically
@@ -5386,30 +5461,6 @@ NANO_CONFIG_EOF
   
   ok "Nano editor configured with enhanced pastel colors"
 }
-set functioncolor magenta
-set stringscolor yellow
-set commentcolor brightblack
-
-# Advanced color customization (if supported)
-# These work with newer versions of nano
-set selectedcolor white,magenta
-set errorcolor white,red
-set spotlightcolor black,yellow
-
-# ===== ADDITIONAL FEATURES =====
-# Show whitespace characters
-set whitespace "»·"
-# Enable word wrapping at word boundaries  
-set wordchars "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-# Enable undo functionality
-set undo
-NANO_CONFIG_EOF
-
-  # Create backup directory for nano
-  mkdir -p "$HOME/.nano/backups" 2>/dev/null || true
-  
-  ok "Enhanced Nano editor with pastel theme configured"
-}
 
 # Main execution function with completely safe array operations
 main_execution(){
@@ -5626,6 +5677,7 @@ while [ $# -gt 0 ]; do
     --non-interactive) NON_INTERACTIVE=1 ;;
     --only-step) shift; ONLY_STEP="$1" ;;
     --doctor) run_diagnostics; exit 0 ;;
+    --cleanup) run_cleanup; exit 0 ;;
     --self-test) run_self_tests; exit $? ;;
     --snapshot-create) shift; create_snapshot "$1"; exit $? ;;
     --snapshot-restore) shift; restore_snapshot "$1"; exit $? ;;
