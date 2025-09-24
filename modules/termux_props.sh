@@ -281,7 +281,7 @@ if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
   
   echo ""
   if [ -f "$HOME/.cad/cad_droid_installed" ]; then
-    printf "\033[38;2;195;245;195m✓\033[0m CAD-Droid installation \033[38;2;195;245;195mcomplete\033[0m\n"
+    printf "\033[38;2;195;245;195mOK\033[0m CAD-Droid installation \033[38;2;195;245;195mcomplete\033[0m\n"
     echo ""
     printf "\033[38;2;175;238;238mAvailable shortcuts:\033[0m\n"
     if [ -x "$HOME/.local/bin/Linux Desktop" ]; then
@@ -296,7 +296,7 @@ if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
     printf "  \033[38;2;230;220;255m•\033[0m file-manager - Open file browser\n"
     printf "  \033[38;2;230;220;255m•\033[0m system-info - Show system information\n"
   else
-    printf "\033[38;2;255;235;169m⚠\033[0m CAD-Droid installation \033[38;2;255;235;169mnot detected\033[0m\n"
+    printf "\033[38;2;255;235;169mWARN\033[0m CAD-Droid installation \033[38;2;255;235;169mnot detected\033[0m\n"
     printf "Run \033[38;2;230;220;255m./setup.sh\033[0m to install CAD-Droid\n"
   fi
   echo ""

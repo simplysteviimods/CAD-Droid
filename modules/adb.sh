@@ -495,7 +495,7 @@ disable_phantom_process_killer(){
     return 1
   fi
   
-  printf "${PASTEL_GREEN}✓${RESET} ADB connection verified\n"
+  printf "${PASTEL_GREEN}OK${RESET} ADB connection verified\n"
   printf "${PASTEL_YELLOW}Disabling phantom process killer...${RESET}\n"
   
   # Execute the critical command

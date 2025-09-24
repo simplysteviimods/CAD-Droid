@@ -329,7 +329,7 @@ update_repository_indexes(){
     fi
     
     if run_with_progress "Update package lists" 25 bash -c '
-      apt-get update >/dev/null 2>&1 || [ $? -eq 100 ]
+      apt update >/dev/null 2>&1 || [ $? -eq 100 ]
     '; then
       ok "Package indexes updated successfully"
       return 0
@@ -340,7 +340,7 @@ update_repository_indexes(){
       if [ "$attempt" -le "$max_attempts" ]; then
         # Clean cache and retry
         run_with_progress "Clean package cache" 8 bash -c '
-          apt-get clean >/dev/null 2>&1 || true
+          apt clean >/dev/null 2>&1 || true
           rm -rf "$PREFIX/var/lib/apt/lists"/* 2>/dev/null || true
         '
         sleep 2

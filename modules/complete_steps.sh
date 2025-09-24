@@ -521,11 +521,11 @@ case "\$1" in
         echo "======================================="
         echo ""
         echo "Installed components:"
-        [ -d "$HOME/.local/bin" ] && echo "  ✓ System launchers"
-        [ -f "$HOME/.bashrc" ] && echo "  ✓ Bash configuration"
-        [ -f "$HOME/.termux/termux.properties" ] && echo "  ✓ Termux properties"
-        [ -d "$HOME/.local/share/applications" ] && echo "  ✓ Productivity widgets"
-        command -v proot-distro >/dev/null && echo "  ✓ Linux container"
+        [ -d "$HOME/.local/bin" ] && echo "  - System launchers"
+        [ -f "$HOME/.bashrc" ] && echo "  - Bash configuration"
+        [ -f "$HOME/.termux/termux.properties" ] && echo "  - Termux properties"
+        [ -d "$HOME/.local/share/applications" ] && echo "  - Productivity widgets"
+        command -v proot-distro >/dev/null && echo "  - Linux container"
         echo ""
         echo "Available commands:"
         echo "  container, c    - Access Linux container"
@@ -572,17 +572,17 @@ Installation completed: $(date)
 
 Installed Components:
 --------------------
-✓ Modular setup system with 10+ specialized modules
-✓ Package management with intelligent mirror fallback
-✓ Enhanced color interface with pastel themes
-✓ Linux container environment (${DISTRO:-ubuntu})
-✓ Development tools and editors
-✓ Network utilities and diagnostics
-✓ APK management with friendly naming
-✓ ADB wireless debugging setup
-$([ "$ENABLE_WIDGETS" = "1" ] && echo "✓ Productivity widgets and shortcuts")
-$([ "$ENABLE_SUNSHINE" = "1" ] && echo "✓ Sunshine remote desktop streaming")
-$([ "$ENABLE_SNAPSHOTS" = "1" ] && echo "✓ System backup and restore")
+- Modular setup system with 10+ specialized modules
+- Package management with intelligent mirror fallback
+- Enhanced color interface with pastel themes
+- Linux container environment (${DISTRO:-ubuntu})
+- Development tools and editors
+- Network utilities and diagnostics
+- APK management with friendly naming
+- ADB wireless debugging setup
+$([ "$ENABLE_WIDGETS" = "1" ] && echo "- Productivity widgets and shortcuts")
+$([ "$ENABLE_SUNSHINE" = "1" ] && echo "- Sunshine remote desktop streaming")
+$([ "$ENABLE_SNAPSHOTS" = "1" ] && echo "- System backup and restore")
 
 Quick Start:
 -----------

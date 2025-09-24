@@ -1241,6 +1241,7 @@ check_previous_install(){
             ;;
           3|*)
             info "No cleanup selected - continuing with existing files"
+            return 0  # Exit early to prevent any accidental cleanup
             ;;
         esac
       else
@@ -1299,7 +1300,8 @@ check_previous_install(){
             esac
             ;;
           3|*)
-            info "Continuing with existing installation state"
+            info "No cleanup selected - continuing with existing installation"
+            return 0  # Exit early to prevent any accidental cleanup
             ;;
         esac
       else
@@ -1546,11 +1548,11 @@ cleanup_previous_install(){
     done
     
     # Clean apt caches and update indexes
-    if apt-get clean 2>/dev/null; then
+    if apt clean 2>/dev/null; then
       debug "Cleaned apt cache"
     fi
     
-    if apt-get update >/dev/null 2>&1; then
+    if apt update >/dev/null 2>&1; then
       debug "Updated package indexes after cleanup"
     fi
     

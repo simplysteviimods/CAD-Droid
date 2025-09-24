@@ -52,7 +52,7 @@ install_termux_xfce(){
   
   # Update repositories first (silent if already done)
   if [ "${PACKAGES_UPDATED:-0}" != "1" ]; then
-    if ! run_with_progress "Update package lists" 15 bash -c 'apt-get update >/dev/null 2>&1'; then
+    if ! run_with_progress "Update package lists" 15 bash -c 'apt update >/dev/null 2>&1 || [ $? -eq 100 ]'; then
       warn "Package list update had issues, continuing anyway"
     fi
   fi
