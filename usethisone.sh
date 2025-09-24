@@ -1527,7 +1527,7 @@ validate_input(){
 
 # Read non-empty input from user with validation
 # Parameters: prompt_text, variable_name, default_value (optional), validation_type (optional)
-# validation_type can be: "username" (default), "email", "filename"
+# validation_type can be: "username" (default), "email", "filename", "ip", "port", "code"
 read_nonempty(){
   local prompt="${1:-Enter value}" var_name="${2:-TEMP_VAR}" def="${3:-}" validation_type="${4:-username}"
   local attempts=0 max_attempts=3
@@ -1551,6 +1551,9 @@ read_nonempty(){
   case "$validation_type" in
     email) validation_regex="$ALLOWED_EMAIL_REGEX" ;;
     filename) validation_regex="$ALLOWED_FILENAME_REGEX" ;;
+    ip) validation_regex="^[a-zA-Z0-9.-]+$" ;;  # Allow hostnames, IPs, localhost
+    port) validation_regex="^[0-9]+$" ;;        # Numbers only
+    code) validation_regex="^[0-9]+$" ;;        # Numbers only
     username|*) validation_regex="$ALLOWED_USERNAME_REGEX" ;;
   esac
   
@@ -1577,27 +1580,70 @@ read_nonempty(){
         GIT_USERNAME) GIT_USERNAME="$def" ;;
         GIT_EMAIL) GIT_EMAIL="$def" ;;
         UBUNTU_USERNAME) UBUNTU_USERNAME="$def" ;;
-        *) 
+        ip) ip="$def" ;;
+        pairing_port) pairing_port="$def" ;;
+        pairing_code) pairing_code="$def" ;;
+        debug_port) debug_port="$def" ;;
+        *)
           warn "Unknown variable for assignment: $var_name"
           return 1
           ;;
       esac
       return 0
     elif [ -n "$v" ]; then
-      # Validate the input based on type
-      if validate_input "$v" "$validation_regex" "Input"; then
+      # For IP, port, and code types, skip regex validation and do custom validation
+      local valid=0
+      case "$validation_type" in
+        ip)
+          # Allow any reasonable IP format or hostname
+          if [[ "$v" =~ ^[a-zA-Z0-9.-]+$ ]] && [ ${#v} -ge 1 ] && [ ${#v} -le 253 ]; then
+            valid=1
+          fi
+          ;;
+        port)
+          # Allow any numeric port
+          if [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ]; then
+            valid=1
+          fi
+          ;;
+        code)
+          # Allow any numeric code (flexible length for pairing codes)
+          if [[ "$v" =~ ^[0-9]+$ ]] && [ ${#v} -ge 4 ] && [ ${#v} -le 8 ]; then
+            valid=1
+          fi
+          ;;
+        *)
+          # Use original validation for other types
+          if validate_input "$v" "$validation_regex" "Input"; then
+            valid=1
+          fi
+          ;;
+      esac
+      
+      if [ $valid -eq 1 ]; then
         # Direct assignment for known variable names
         case "$var_name" in
           TERMUX_USERNAME) TERMUX_USERNAME="$v" ;;
           GIT_USERNAME) GIT_USERNAME="$v" ;;
           GIT_EMAIL) GIT_EMAIL="$v" ;;
           UBUNTU_USERNAME) UBUNTU_USERNAME="$v" ;;
+          ip) ip="$v" ;;
+          pairing_port) pairing_port="$v" ;;
+          pairing_code) pairing_code="$v" ;;
+          debug_port) debug_port="$v" ;;
           *) 
             warn "Unknown variable for assignment: $var_name"
             return 1
             ;;
         esac
         return 0
+      else
+        case "$validation_type" in
+          ip) warn "Invalid IP address format. Use IPv4 (192.168.1.100), hostname, or localhost." ;;
+          port) warn "Invalid port number. Use 1-65535." ;;
+          code) warn "Invalid code format. Use 4-8 digit numeric code." ;;
+          *) warn "Invalid input format" ;;
+        esac
       fi
     else
       warn "Value cannot be empty"
@@ -1613,6 +1659,10 @@ read_nonempty(){
       GIT_USERNAME) GIT_USERNAME="$def" ;;
       GIT_EMAIL) GIT_EMAIL="$def" ;;
       UBUNTU_USERNAME) UBUNTU_USERNAME="$def" ;;
+      ip) ip="$def" ;;
+      pairing_port) pairing_port="$def" ;;
+      pairing_code) pairing_code="$def" ;;
+      debug_port) debug_port="$def" ;;
       *) 
         warn "Unknown variable for fallback assignment: $var_name"
         return 1
@@ -2723,47 +2773,9 @@ manual_adb_wireless_setup(){
     echo ""
     pecho "$PASTEL_YELLOW" "Enter the pairing information from the wireless debugging screen:"
     echo ""
-    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip "192.168.1.100"
-    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831"  
-    read_nonempty "Enter the 6-digit pairing code" pairing_code "123456"
-    
-    # Enhanced IP validation supporting various formats
-    local ip_valid=0
-    
-    # Check for standard IPv4 format (192.168.1.100)
-    if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-      ip_valid=1
-    # Check for localhost/loopback formats
-    elif [[ "$ip" =~ ^(localhost|127\.0\.0\.1)$ ]]; then
-      ip_valid=1
-    # Check for hostname formats (android-device, pixel-7, etc.)
-    elif [[ "$ip" =~ ^[a-zA-Z][a-zA-Z0-9.-]*$ ]] && [ ${#ip} -le 253 ]; then
-      ip_valid=1
-    # Check for IP:port format and extract IP part
-    elif [[ "$ip" =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}):[0-9]+$ ]]; then
-      # Extract IP part only
-      ip="${ip%:*}"
-      ip_valid=1
-    fi
-    
-    if [ $ip_valid -eq 0 ]; then
-      warn "Invalid IP address format. Supported formats:"
-      warn "  - Standard IPv4: 192.168.1.100"
-      warn "  - Localhost: 127.0.0.1 or localhost" 
-      warn "  - Hostname: android-device, pixel-7"
-      warn "  - IP with port: 192.168.1.100:5555"
-      return 1
-    fi
-    
-    if ! [[ "$pairing_port" =~ ^[0-9]+$ ]] || [ "$pairing_port" -lt 1 ] || [ "$pairing_port" -gt 65535 ]; then
-      warn "Invalid port number"
-      return 1
-    fi
-    
-    if ! [[ "$pairing_code" =~ ^[0-9]{6}$ ]]; then
-      warn "Pairing code should be exactly 6 digits"
-      return 1  
-    fi
+    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip "192.168.1.100" "ip"
+    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831" "port"  
+    read_nonempty "Enter the 6-digit pairing code" pairing_code "123456" "code"
     
     # Attempt pairing
     info "Attempting to pair with $ip:$pairing_port..."
@@ -2773,7 +2785,7 @@ manual_adb_wireless_setup(){
       # Prompt for debugging port
       echo ""
       local debug_port
-      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "37832"
+      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "37832" "port"
       
       if connect_adb_device "$ip" "$debug_port"; then
         ok "ADB wireless debugging setup complete!"
@@ -3541,6 +3553,18 @@ pkg_install_debian(){
   apt-get -y upgrade >/dev/null 2>&1 || true
   # Install essential packages for productivity environment
   apt-get -y install sudo openssh-server wget curl jq nano dbus-x11 ffmpeg ca-certificates >/dev/null 2>&1 || true
+  
+  # Install Wine and compatibility layers
+  apt-get -y install wine winetricks >/dev/null 2>&1 || true
+  
+  # Try to install Box64/Box86 if available (architecture dependent)
+  if [ "$(uname -m)" = "aarch64" ]; then
+    # Box64 for ARM64
+    apt-get -y install box64 >/dev/null 2>&1 || true
+  elif [ "$(uname -m)" = "armv7l" ]; then
+    # Box86 for ARM32
+    apt-get -y install box86 >/dev/null 2>&1 || true
+  fi
 }
 
 # Install packages for Arch Linux
@@ -3549,6 +3573,18 @@ pkg_install_arch(){
   pacman -Syu --noconfirm >/dev/null 2>&1 || true
   # Install essential packages
   pacman -S --noconfirm sudo openssh wget curl jq nano ffmpeg dbus >/dev/null 2>&1 || true
+  
+  # Install Wine and compatibility layers
+  pacman -S --noconfirm wine winetricks >/dev/null 2>&1 || true
+  
+  # Box64/Box86 might be available in AUR (attempt install)
+  if command -v yay >/dev/null 2>&1; then
+    if [ "$(uname -m)" = "aarch64" ]; then
+      yay -S --noconfirm box64-bin >/dev/null 2>&1 || true
+    elif [ "$(uname -m)" = "armv7l" ]; then
+      yay -S --noconfirm box86-bin >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 # Install packages for Alpine Linux
@@ -3557,6 +3593,9 @@ pkg_install_alpine(){
   apk update >/dev/null 2>&1 || true
   # Install essential packages
   apk add sudo openssh wget curl jq nano ffmpeg dbus >/dev/null 2>&1 || true
+  
+  # Wine is available on Alpine (might need additional repositories)
+  apk add wine >/dev/null 2>&1 || true
 }
 
 # Install Sunshine remote desktop streaming service
@@ -4761,8 +4800,8 @@ step_apk(){
     safe_sleep "${APK_PAUSE_TIMEOUT:-45}"
   fi
   
-  # Wait for Termux:API to become available
-  wait_for_termux_api || warn "Termux:API setup may be incomplete"
+  # Wait for Termux:API to become available (silent check)
+  wait_for_termux_api
   
   mark_step_status "success"
 }
