@@ -4104,41 +4104,23 @@ am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 # Clean up any existing tmux sessions first
 tmux kill-session -t rootlog 2>/dev/null || true
 
-# Create temporary script for SSH daemon setup
-cat > /tmp/ssh_setup.sh << 'SSH_SETUP_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-echo "Starting SSH daemon setup..."
-sleep 1
-
-# Start SSH daemon if available
-if [ -f /usr/sbin/sshd ]; then
-    /usr/sbin/sshd -D -p SSH_PORT_PLACEHOLDER &
-    echo "SSH daemon started on port SSH_PORT_PLACEHOLDER"
-    sleep 2
-else
-    echo "SSH daemon not available"
-fi
-
-echo "SSH setup complete"
-SSH_SETUP_EOF
-
-# Replace placeholder with actual SSH port
-sed -i "s/SSH_PORT_PLACEHOLDER/$SSH_PORT/g" /tmp/ssh_setup.sh
-chmod +x /tmp/ssh_setup.sh
-
-# Create new tmux session and run the setup script in container
+# Create new tmux session and connect to container
 tmux new -s rootlog -d
-tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports -- bash /tmp/ssh_setup.sh" enter
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+sleep 2
 
-# Wait for setup to complete
-sleep 6
+# Start SSH daemon in the container using simple commands
+tmux send-keys "/usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+sleep 3
+
+# Wait for SSH to be ready
+echo "SSH daemon should now be running..."
 
 # Connect to the container via SSH with X11 forwarding and start XFCE
 ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:1 && termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"'
 
-# Clean up tmux session and temporary files when done
+# Clean up tmux session when done
 tmux kill-session -t rootlog 2>/dev/null || true
-rm -f /tmp/ssh_setup.sh 2>/dev/null || true
 LINUX_DESKTOP_EOF
   chmod +x "$shortcuts_dir/Linux Desktop"
 
@@ -4177,47 +4159,19 @@ am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 # Clean up any existing tmux sessions first
 tmux kill-session -t sunshine_session 2>/dev/null || true
 
-# Create new tmux session for container setup
+# Create new tmux session and connect to container
 tmux new -s sunshine_session -d
-
-# Create temporary script for services setup
-cat > /tmp/services_setup.sh << 'SERVICES_SETUP_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-echo "Starting services setup..."
-sleep 1
-
-# Start SSH daemon if available
-if [ -f /usr/sbin/sshd ]; then
-    /usr/sbin/sshd -D -p SSH_PORT_PLACEHOLDER &
-    echo "SSH daemon started on port SSH_PORT_PLACEHOLDER"
-else
-    echo "SSH daemon not available"
-fi
-
-sleep 1
-
-# Start Sunshine if available
-if command -v sunshine >/dev/null 2>&1; then
-    sunshine --config-dir ~/.config/sunshine &
-    echo "Sunshine started"
-else
-    echo "Sunshine not available"
-fi
-
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
 sleep 2
-echo "Services setup complete"
-SERVICES_SETUP_EOF
 
-# Replace placeholder with actual SSH port
-sed -i "s/SSH_PORT_PLACEHOLDER/$SSH_PORT/g" /tmp/services_setup.sh
-chmod +x /tmp/services_setup.sh
-
-# Create new tmux session and run the setup script in container
-tmux new -s sunshine_session -d
-tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports -- bash /tmp/services_setup.sh" enter
+# Start SSH daemon and Sunshine in the container using simple commands
+tmux send-keys "/usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+sleep 2
+tmux send-keys "command -v sunshine >/dev/null 2>&1 && sunshine --config-dir ~/.config/sunshine & echo 'Sunshine started' || echo 'Sunshine not available'" enter
+sleep 3
 
 # Wait for services to be ready
-sleep 7
+echo "Services should now be running..."
 
 # Connect with X11 forwarding and start XFCE with Sunshine
 ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" '
@@ -4226,9 +4180,8 @@ sunshine --config-dir ~/.config/sunshine &
 termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"
 '
 
-# Clean up tmux session and temporary files when done
+# Clean up tmux session when done
 tmux kill-session -t sunshine_session 2>/dev/null || true
-rm -f /tmp/services_setup.sh 2>/dev/null || true
 LINUX_SUNSHINE_EOF
   chmod +x "$shortcuts_dir/Linux Sunshine"
 
