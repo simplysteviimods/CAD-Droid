@@ -455,13 +455,15 @@ init_pastel_colors() {
   if init_color_support; then
     # Define comprehensive pastel color palette
     export PASTEL_CYAN='\033[38;2;175;238;238m'       # Pale Turquoise #AFEEEE
-    export PASTEL_PINK='\033[38;2;255;182;193m'       # Light Pink #FFB6C1
+    export PASTEL_PINK='\033[38;2;223;176;215m'       # Cool Pink #DFB0D7
     export PASTEL_GREEN='\033[38;2;144;238;144m'      # Light Green #90EE90
     export PASTEL_YELLOW='\033[38;2;255;255;224m'     # Light Yellow #FFFFE0
     export PASTEL_PURPLE='\033[38;2;221;160;221m'     # Plum #DDA0DD
     export PASTEL_ORANGE='\033[38;2;255;218;185m'     # Peach Puff #FFDAB9
     export PASTEL_BLUE='\033[38;2;173;216;230m'       # Light Blue #ADD8E6
     export PASTEL_RED='\033[38;2;255;192;203m'        # Light Pink (red variant) #FFC0CB
+    export PASTEL_LAVENDER='\033[38;2;230;220;255m'   # Lavender #E6DCFF
+    export PASTEL_MINT='\033[38;2;189;252;201m'       # Mint Green #BDFCC9
     export RESET='\033[0m'
   else
     # Use basic ANSI colors for limited terminals
@@ -473,6 +475,8 @@ init_pastel_colors() {
     export PASTEL_ORANGE='\033[91m' # Bright red
     export PASTEL_BLUE='\033[94m'   # Bright blue
     export PASTEL_RED='\033[91m'    # Bright red
+    export PASTEL_LAVENDER='\033[95m' # Bright magenta (fallback)
+    export PASTEL_MINT='\033[92m'     # Bright green (fallback)
     export RESET='\033[0m'
   fi
 }
@@ -990,13 +994,21 @@ draw_phase_header(){
   # Draw top border
   gradient_line "$start" "$end" "="
   
-  # Handle multi-line text by centering each line separately (like intro cards handle title/subtitle)
+  # Split text into first line and second line (same as draw_card title/subtitle)
   if [ -n "$text" ]; then
-    while IFS= read -r line; do
-      if [ -n "$line" ]; then
-        printf "%b%s%b\n" "$mid" "$(center_text "$line")" '\033[0m'
-      fi
-    done <<< "$text"
+    local first_line second_line
+    first_line=$(echo "$text" | head -1)
+    second_line=$(echo "$text" | tail -n +2 | head -1)
+    
+    # Display first line (like title)
+    if [ -n "$first_line" ]; then
+      printf "%b%s%b\n" "$mid" "$(center_text "$first_line")" '\033[0m'
+    fi
+    
+    # Display second line (like subtitle)
+    if [ -n "$second_line" ]; then
+      printf "%b%s%b\n" "$mid" "$(center_text "$second_line")" '\033[0m'
+    fi
   fi
   
   # Draw bottom border
@@ -1015,11 +1027,12 @@ pecho(){
   printf "%b%s%b\n" "$c" "$*" '\033[0m'
 }
 
-# Print informational message in cyan (title cards never wrap, body text wraps appropriately)
+# Print informational message in cyan (title cards and phase headers never wrap)
 info(){ 
   local message="$*"
-  # Simple approach: wrap if message is very long (over 100 chars) and not a title/header
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  # Never wrap titles, phase headers, or card text - only wrap very long body text
+  # Skip wrapping for any message that looks like a title, header, or is reasonably short
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;175;238;238m' "$line"
     done < <(format_body_text "$message")
@@ -1029,10 +1042,10 @@ info(){
   log_event info "${CURRENT_STEP_INDEX:-unknown}" info "$*"
 }
 
-# Print warning message in yellow (same logic as info)
+# Print warning message in yellow (no wrapping for titles/headers)
 warn(){ 
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge|WARNING|IMPORTANT|ERROR|FAIL) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;255;255;224m' "$line"
     done < <(format_body_text "$message")
@@ -1042,10 +1055,10 @@ warn(){
   log_event warn "${CURRENT_STEP_INDEX:-unknown}" warn "$*"
 }
 
-# Print success message in green (same logic as info)
+# Print success message in green (no wrapping for titles/headers)
 ok(){ 
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge|OK|SUCCESS|DONE) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;152;251;152m' "$line"
     done < <(format_body_text "$message")
@@ -1055,10 +1068,10 @@ ok(){
   log_event success "${CURRENT_STEP_INDEX:-unknown}" success "$*"
 }
 
-# Print error message in pink/red (same logic as info)
+# Print error message in pink/red (no wrapping for titles/headers)
 err(){ 
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge|ERROR|FAIL|CRITICAL) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;255;192;203m' "$line"
     done < <(format_body_text "$message")
@@ -1514,7 +1527,7 @@ validate_input(){
 
 # Read non-empty input from user with validation
 # Parameters: prompt_text, variable_name, default_value (optional), validation_type (optional)
-# validation_type can be: "username" (default), "email", "filename"
+# validation_type can be: "username" (default), "email", "filename", "ip", "port", "code"
 read_nonempty(){
   local prompt="${1:-Enter value}" var_name="${2:-TEMP_VAR}" def="${3:-}" validation_type="${4:-username}"
   local attempts=0 max_attempts=3
@@ -1538,6 +1551,9 @@ read_nonempty(){
   case "$validation_type" in
     email) validation_regex="$ALLOWED_EMAIL_REGEX" ;;
     filename) validation_regex="$ALLOWED_FILENAME_REGEX" ;;
+    ip) validation_regex="^[a-zA-Z0-9.-]+$" ;;  # Allow hostnames, IPs, localhost
+    port) validation_regex="^[0-9]+$" ;;        # Numbers only
+    code) validation_regex="^[0-9]+$" ;;        # Numbers only
     username|*) validation_regex="$ALLOWED_USERNAME_REGEX" ;;
   esac
   
@@ -1564,27 +1580,70 @@ read_nonempty(){
         GIT_USERNAME) GIT_USERNAME="$def" ;;
         GIT_EMAIL) GIT_EMAIL="$def" ;;
         UBUNTU_USERNAME) UBUNTU_USERNAME="$def" ;;
-        *) 
+        ip) ip="$def" ;;
+        pairing_port) pairing_port="$def" ;;
+        pairing_code) pairing_code="$def" ;;
+        debug_port) debug_port="$def" ;;
+        *)
           warn "Unknown variable for assignment: $var_name"
           return 1
           ;;
       esac
       return 0
     elif [ -n "$v" ]; then
-      # Validate the input based on type
-      if validate_input "$v" "$validation_regex" "Input"; then
+      # For IP, port, and code types, skip regex validation and do custom validation
+      local valid=0
+      case "$validation_type" in
+        ip)
+          # Allow any reasonable IP format or hostname
+          if [[ "$v" =~ ^[a-zA-Z0-9.-]+$ ]] && [ ${#v} -ge 1 ] && [ ${#v} -le 253 ]; then
+            valid=1
+          fi
+          ;;
+        port)
+          # Allow any numeric port
+          if [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ]; then
+            valid=1
+          fi
+          ;;
+        code)
+          # Allow any numeric code (flexible length for pairing codes)
+          if [[ "$v" =~ ^[0-9]+$ ]] && [ ${#v} -ge 4 ] && [ ${#v} -le 8 ]; then
+            valid=1
+          fi
+          ;;
+        *)
+          # Use original validation for other types
+          if validate_input "$v" "$validation_regex" "Input"; then
+            valid=1
+          fi
+          ;;
+      esac
+      
+      if [ $valid -eq 1 ]; then
         # Direct assignment for known variable names
         case "$var_name" in
           TERMUX_USERNAME) TERMUX_USERNAME="$v" ;;
           GIT_USERNAME) GIT_USERNAME="$v" ;;
           GIT_EMAIL) GIT_EMAIL="$v" ;;
           UBUNTU_USERNAME) UBUNTU_USERNAME="$v" ;;
+          ip) ip="$v" ;;
+          pairing_port) pairing_port="$v" ;;
+          pairing_code) pairing_code="$v" ;;
+          debug_port) debug_port="$v" ;;
           *) 
             warn "Unknown variable for assignment: $var_name"
             return 1
             ;;
         esac
         return 0
+      else
+        case "$validation_type" in
+          ip) warn "Invalid IP address format. Use IPv4 (192.168.1.100), hostname, or localhost." ;;
+          port) warn "Invalid port number. Use 1-65535." ;;
+          code) warn "Invalid code format. Use 4-8 digit numeric code." ;;
+          *) warn "Invalid input format" ;;
+        esac
       fi
     else
       warn "Value cannot be empty"
@@ -1600,6 +1659,10 @@ read_nonempty(){
       GIT_USERNAME) GIT_USERNAME="$def" ;;
       GIT_EMAIL) GIT_EMAIL="$def" ;;
       UBUNTU_USERNAME) UBUNTU_USERNAME="$def" ;;
+      ip) ip="$def" ;;
+      pairing_port) pairing_port="$def" ;;
+      pairing_code) pairing_code="$def" ;;
+      debug_port) debug_port="$def" ;;
       *) 
         warn "Unknown variable for fallback assignment: $var_name"
         return 1
@@ -1850,54 +1913,24 @@ random_port(){
 
 # --- Termux:API Detection and Interaction ---
 
-# Wait for Termux:API app to be available with safe arithmetic
-# Returns: 0 if available, 1 if not available after timeout
+# Wait for Termux:API app to be available (simplified without user prompts)
 wait_for_termux_api(){
   if [ "${TERMUX_API_FORCE_SKIP:-0}" = "1" ]; then
     TERMUX_API_VERIFIED="skipped"
     return 0
   fi
   
-  local max_attempts="${TERMUX_API_WAIT_MAX:-4}" 
-  local delay_seconds="${TERMUX_API_WAIT_DELAY:-3}"
-  local current_attempt=1  # Initialize counter safely
-  
-  # Validate max_attempts is numeric
-  case "$max_attempts" in *[!0-9]*) max_attempts=4 ;; esac
-  case "$delay_seconds" in *[!0-9]*) delay_seconds=3 ;; esac
-  
-  # Try multiple times to detect Termux:API
-  while [ "$current_attempt" -le "$max_attempts" ] 2>/dev/null; do
-    # Test if termux-battery-status command works (indicates API is available)
-    if command -v termux-battery-status >/dev/null 2>&1; then
-      local test_result
-      test_result=$(timeout 5 termux-battery-status 2>/dev/null | head -1 || echo "")
-      if echo "$test_result" | grep -qi '"percentage"'; then
-        TERMUX_API_VERIFIED="yes"
-        return 0
-      fi
+  # Single quick check for Termux:API availability
+  if command -v termux-battery-status >/dev/null 2>&1; then
+    local test_result
+    test_result=$(timeout 5 termux-battery-status 2>/dev/null | head -1 || echo "")
+    if echo "$test_result" | grep -qi '"percentage"'; then
+      TERMUX_API_VERIFIED="yes"
+      return 0
     fi
-    
-    # Wait between attempts (except on last attempt)
-    if [ "$current_attempt" -lt "$max_attempts" ] 2>/dev/null; then
-      info "Termux:API not found (attempt $current_attempt/$max_attempts). Enter to retry or wait ${delay_seconds}s."
-      if [ "$NON_INTERACTIVE" != "1" ]; then
-        read -r -t "$delay_seconds" || true
-      else
-        safe_sleep "$delay_seconds"
-      fi
-    fi
-    
-    # Safe counter increment
-    if [ "$current_attempt" -lt 1000 ] 2>/dev/null; then
-      current_attempt=$(add_int "${current_attempt:-0}" 1)
-    else
-      break  # Safety break to prevent infinite loops
-    fi
-  done
+  fi
   
   TERMUX_API_VERIFIED="no"
-  warn "Termux:API unavailable."
   return 1
 }
 
@@ -2360,7 +2393,7 @@ fetch_github_release(){
   fi
 }
 
-# NEW: Enhanced Termux add-on fetch that preserves original APK names and prioritizes GitHub
+# NEW: Enhanced Termux add-on fetch with unique temp folders for guaranteed renaming
 # Parameters: addon_name, package_id, github_repo, filename_pattern, output_directory
 # Returns: 0 if successful, 1 if failed
 fetch_termux_addon(){
@@ -2371,8 +2404,15 @@ fetch_termux_addon(){
     return 1
   fi
   
+  # Create unique temporary directory for this APK
+  local temp_dir="$TMPDIR/temp-$name"
+  if ! mkdir -p "$temp_dir" 2>/dev/null; then
+    return 1
+  fi
+  
   # Ensure output directory exists
   if ! mkdir -p "$outdir" 2>/dev/null; then
+    rm -rf "$temp_dir" 2>/dev/null
     return 1
   fi
   
@@ -2388,13 +2428,13 @@ fetch_termux_addon(){
   # Always prioritize GitHub unless F-Droid is explicitly preferred
   if [ "$prefer" = "1" ]; then
     # Try F-Droid first if preferred
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if fetch_fdroid_api "$pkg" "$temp_dir/${name}.apk" || fetch_fdroid_page "$pkg" "$temp_dir/${name}.apk"; then
       success=1
     fi
   else
     # Try GitHub first by default (preserves original names)
     if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+      if fetch_github_release "$repo" "$patt" "$temp_dir" "$name"; then
         success=1
       fi
     fi
@@ -2405,16 +2445,54 @@ fetch_termux_addon(){
     if [ "$prefer" = "1" ]; then
       # F-Droid was preferred but failed, try GitHub
       if [ -n "$repo" ] && [ -n "$patt" ]; then
-        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+        if fetch_github_release "$repo" "$patt" "$temp_dir" "$name"; then
           success=1
         fi
       fi
     else
       # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      if fetch_fdroid_api "$pkg" "$temp_dir/${name}.apk" || fetch_fdroid_page "$pkg" "$temp_dir/${name}.apk"; then
         success=1
       fi
     fi
+  fi
+  
+  # Rename and move APK to final location if download was successful
+  if [ $success -eq 1 ]; then
+    # Handle special renaming cases first
+    local proper_name
+    case "$name" in
+      "Termux-API"|"Termux:API") proper_name="Termux-API" ;;
+      "Termux-X11"|"Termux:X11") proper_name="Termux-X11" ;;
+      "Termux-GUI"|"Termux:GUI") proper_name="Termux-GUI" ;;
+      "Termux-Widget"|"Termux:Widget") proper_name="Termux-Widget" ;;
+      *) proper_name="$name" ;;
+    esac
+    
+    local target_name="${proper_name}.apk"
+    local target_path="$outdir/$target_name"
+    
+    # Find the downloaded APK in temp directory and move it to final location
+    local found_file
+    found_file=$(find "$temp_dir" -name "*.apk" -type f | head -1)
+    
+    if [ -n "$found_file" ] && [ -f "$found_file" ]; then
+      if mv "$found_file" "$target_path" 2>/dev/null; then
+        success=1
+      else
+        success=0
+      fi
+    else
+      success=0
+    fi
+  fi
+  
+  # Clean up temp directory
+  rm -rf "$temp_dir" 2>/dev/null
+  
+  # Ensure downloaded APK has proper permissions
+  if [ $success -eq 1 ]; then
+    find "$outdir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
   fi
   
   return $((1 - success))
@@ -2613,6 +2691,109 @@ show_pairing_dialog(){
   fi
   
   warn "No pairing code provided or dialog cancelled"
+  return 1
+}
+
+# Pair ADB device with IP, port, and pairing code
+pair_adb_device(){
+  local ip="$1"
+  local port="$2"
+  local pairing_code="$3"
+  
+  if [ -z "$ip" ] || [ -z "$port" ] || [ -z "$pairing_code" ]; then
+    err "Missing parameters for ADB pairing"
+    return 1
+  fi
+  
+  info "Attempting to pair with $ip:$port using code: $pairing_code"
+  
+  # Attempt pairing with timeout
+  local pair_result
+  if pair_result=$(timeout 30 adb pair "$ip:$port" 2>&1 <<< "$pairing_code"); then
+    if echo "$pair_result" | grep -qi "successfully paired"; then
+      return 0
+    else
+      warn "Pairing failed: $pair_result"
+      return 1
+    fi
+  else
+    warn "Pairing timed out or failed"
+    return 1
+  fi
+}
+
+# Connect to ADB device
+connect_adb_device(){
+  local ip="$1"
+  local port="$2"
+  
+  if [ -z "$ip" ] || [ -z "$port" ]; then
+    err "Missing parameters for ADB connection"
+    return 1
+  fi
+  
+  info "Connecting to ADB device at $ip:$port"
+  
+  # Attempt connection
+  if adb connect "$ip:$port" >/dev/null 2>&1; then
+    # Verify connection
+    if adb devices 2>/dev/null | grep -q "$ip:$port"; then
+      ok "ADB connection established!"
+      return 0
+    else
+      warn "Connection failed - device not visible"
+      return 1
+    fi
+  else
+    warn "Failed to connect to ADB device"
+    return 1
+  fi
+}
+
+# Manual ADB wireless setup (replacing the automatic approach)
+manual_adb_wireless_setup(){
+  if [ "$ENABLE_ADB" != "1" ]; then
+    return 0
+  fi
+  
+  # Initialize variables with defaults to prevent unbound variable errors
+  local ip="192.168.1.100"
+  local pairing_port="37831"
+  local pairing_code="123456"
+  
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    pecho "$PASTEL_YELLOW" "Enter the pairing information from the wireless debugging screen:"
+    echo ""
+    read_nonempty "Enter the IP address shown (e.g., 192.168.1.100)" ip "192.168.1.100" "ip"
+    read_nonempty "Enter the pairing port (e.g., 37831)" pairing_port "37831" "port"  
+    read_nonempty "Enter the 6-digit pairing code" pairing_code "123456" "code"
+    
+    # Attempt pairing
+    info "Attempting to pair with $ip:$pairing_port..."
+    if pair_adb_device "$ip" "$pairing_port" "$pairing_code"; then
+      ok "Device paired successfully!"
+      
+      # Prompt for debugging port
+      echo ""
+      local debug_port
+      read_nonempty "Enter the wireless debugging port (usually different from pairing port)" debug_port "37832" "port"
+      
+      if connect_adb_device "$ip" "$debug_port"; then
+        ok "ADB wireless debugging setup complete!"
+        info "Device connected at: $ip:$debug_port"
+        return 0
+      else
+        warn "Failed to connect to debugging port"
+      fi
+    else
+      err "Device pairing failed. Please check the code and try again."
+    fi
+  else
+    info "Non-interactive mode: manual ADB setup required"
+    info "Run: adb pair <ip:port> then adb connect <ip:debug_port>"
+  fi
+  
   return 1
 }
 
@@ -2857,7 +3038,81 @@ count_successful_steps(){
   echo "$count"
 }
 
-# Show completion summary with statistics using safe array operations
+# Basic cleanup function for previous installations
+run_cleanup(){
+  draw_card "CAD-Droid Cleanup" "Remove previous installation files"
+  
+  printf "${PASTEL_YELLOW}This will remove CAD-Droid installation files and configuration.${RESET}\n"
+  printf "${PASTEL_CYAN}Files that will be removed:${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.shortcuts/ (Termux widget shortcuts)${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.termux/termux.properties (if created by CAD-Droid)${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.bashrc (CAD-Droid sections)${RESET}\n"
+  printf "${PASTEL_CYAN}• ~/.nanorc (if created by CAD-Droid)${RESET}\n"
+  printf "${PASTEL_CYAN}• Installation markers and logs${RESET}\n"
+  echo
+  
+  if ! ask_yes_no "Proceed with cleanup?" "n"; then
+    info "Cleanup cancelled"
+    return 0
+  fi
+  
+  local cleaned=0
+  
+  # Remove widget shortcuts
+  if [ -d "$HOME/.shortcuts" ]; then
+    if rm -rf "$HOME/.shortcuts" 2>/dev/null; then
+      ok "Removed Termux widget shortcuts"
+      cleaned=$((cleaned + 1))
+    fi
+  fi
+  
+  # Remove CAD-Droid sections from .bashrc
+  if [ -f "$HOME/.bashrc" ]; then
+    if grep -q "CAD-Droid" "$HOME/.bashrc" 2>/dev/null; then
+      if sed -i '/# CAD-Droid/,/^$/d' "$HOME/.bashrc" 2>/dev/null; then
+        ok "Cleaned CAD-Droid configuration from .bashrc"
+        cleaned=$((cleaned + 1))
+      fi
+    fi
+  fi
+  
+  # Remove .nanorc if it contains CAD-Droid theme
+  if [ -f "$HOME/.nanorc" ] && grep -q "CAD-Droid nano theme" "$HOME/.nanorc" 2>/dev/null; then
+    if rm -f "$HOME/.nanorc" 2>/dev/null; then
+      ok "Removed CAD-Droid nano configuration"
+      cleaned=$((cleaned + 1))
+    fi
+  fi
+  
+  # Remove nano backup directory
+  if [ -d "$HOME/.nano" ]; then
+    if rm -rf "$HOME/.nano" 2>/dev/null; then
+      ok "Removed nano backup directory"
+      cleaned=$((cleaned + 1))
+    fi
+  fi
+  
+  # Remove installation markers
+  for marker in "$HOME/.cad-droid-installed" "$PWD/.cad-setup-complete" "$HOME/.cad-restart-indicator"; do
+    if [ -f "$marker" ] && rm -f "$marker" 2>/dev/null; then
+      cleaned=$((cleaned + 1))
+    fi
+  done
+  
+  # Remove termux boot scripts if they exist
+  if [ -d "$HOME/.termux/boot" ]; then
+    find "$HOME/.termux/boot" -name "*phantom-killer*" -delete 2>/dev/null && cleaned=$((cleaned + 1))
+  fi
+  
+  if [ "$cleaned" -gt 0 ]; then
+    ok "Cleanup completed - removed $cleaned item(s)"
+    info "You may need to restart Termux to see all changes"
+  else
+    info "No CAD-Droid files found to clean up"
+  fi
+}
+
+# Show completion summary with enhanced post-completion card
 show_completion_summary(){
   local successful=0 failed=0 total_steps="${TOTAL_STEPS:-0}"
   
@@ -2881,10 +3136,113 @@ show_completion_summary(){
     failed=0
   fi
   
-  draw_card "Setup Complete!" "Successfully completed $successful/$total_steps steps"
+  # Use enhanced completion card from modular approach
+  draw_card "CAD-Droid Setup Complete!" "Your Android device is now a powerful development workstation"
+  
+  printf "${PASTEL_CYAN}What's been installed:${RESET}\n"
+  printf "${PASTEL_GREEN}OK${RESET} Core system packages and development tools\n"
+  printf "${PASTEL_GREEN}OK${RESET} Optimized repository mirrors for your region\n"
+  printf "${PASTEL_GREEN}OK${RESET} Enhanced Termux configuration and themes\n"
+  printf "${PASTEL_GREEN}OK${RESET} Essential Termux APKs downloaded and ready\n"
+  if [ "$ENABLE_ADB" = "1" ]; then
+    printf "${PASTEL_GREEN}OK${RESET} ADB wireless debugging setup\n"
+  fi
+  printf "${PASTEL_GREEN}OK${RESET} Git configuration and user setup\n"
+  if [ "$ENABLE_WIDGETS" = "1" ]; then
+    printf "${PASTEL_GREEN}OK${RESET} Productivity widgets and shortcuts\n"
+  fi
+  printf "${PASTEL_GREEN}OK${RESET} Pastel-themed configurations throughout\n\n"
+  
+  printf "${PASTEL_CYAN}Quick Start Commands:${RESET}\n"
+  printf "${PASTEL_LAVENDER}CAD Manager:${RESET} cad-droid\n"
+  printf "${PASTEL_LAVENDER}System Info:${RESET} cad-droid info\n"
+  printf "${PASTEL_LAVENDER}Update System:${RESET} cad-droid update\n"
+  if [ "$ENABLE_WIDGETS" = "1" ]; then
+    printf "${PASTEL_LAVENDER}Widget Shortcuts:${RESET} widgets\n"
+  fi
+  printf "${PASTEL_LAVENDER}Configuration:${RESET} ~/.termux/\n\n"
+  
+  printf "${PASTEL_YELLOW}System Information:${RESET}\n"
+  printf "${PASTEL_CYAN}• Termux Username: ${TERMUX_USERNAME:-user}${RESET}\n"
+  printf "${PASTEL_CYAN}• Phone Type: ${TERMUX_PHONETYPE:-unknown}${RESET}\n"
+  printf "${PASTEL_CYAN}• Git User: ${GIT_USERNAME:-not set}${RESET}\n"
+  printf "${PASTEL_CYAN}• Steps Completed: $successful/$total_steps${RESET}\n\n"
   
   if [ "$failed" -gt 0 ] 2>/dev/null; then
     warn "$failed steps had issues - check logs for details"
+  fi
+  
+  printf "${PASTEL_YELLOW}IMPORTANT: Termux restart recommended to apply all changes${RESET}\n"
+}
+
+# Add post-completion Termux environment intro card
+show_post_completion_intro(){
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo
+    draw_card "Termux Environment Setup Guide" "Quick start tips for your new development environment"
+    
+    printf "${PASTEL_CYAN}Getting Started:${RESET}\n"
+    printf "${PASTEL_GREEN}1.${RESET} Restart Termux now to activate all configurations\n"
+    printf "${PASTEL_GREEN}2.${RESET} Your prompt should now show pastel colors\n"
+    printf "${PASTEL_GREEN}3.${RESET} Type 'cad-droid info' to see system status\n"
+    if [ "$ENABLE_WIDGETS" = "1" ]; then
+      printf "${PASTEL_GREEN}4.${RESET} Add Termux widgets to your home screen for quick access\n"
+    fi
+    echo
+    
+    printf "${PASTEL_CYAN}Essential Commands:${RESET}\n"
+    printf "${PASTEL_LAVENDER}pkg update && pkg upgrade${RESET} - Update all packages\n"
+    printf "${PASTEL_LAVENDER}termux-setup-storage${RESET} - Access phone storage\n"
+    printf "${PASTEL_LAVENDER}nano ~/.bashrc${RESET} - Customize your shell\n"
+    printf "${PASTEL_LAVENDER}git config --list${RESET} - Check git configuration\n"
+    echo
+    
+    printf "${PASTEL_YELLOW}Next Steps:${RESET}\n"
+    printf "${PASTEL_PINK}• Install the APKs you downloaded earlier${RESET}\n"
+    printf "${PASTEL_PINK}• Explore the ~/.termux/ configuration directory${RESET}\n"
+    printf "${PASTEL_PINK}• Set up your development projects in ~/projects/${RESET}\n"
+    if [ "$ENABLE_ADB" = "1" ]; then
+      printf "${PASTEL_PINK}• Test ADB connection: adb devices${RESET}\n"
+    fi
+    echo
+    
+    printf "${PASTEL_LAVENDER}Press Enter to restart Termux and complete setup...${RESET} "
+    read -r || true
+    
+    # Perform Termux restart
+    perform_termux_restart
+  else
+    printf "${PASTEL_LAVENDER}Run 'exit' and restart Termux to complete setup${RESET}\n"
+  fi
+}
+
+# Enhanced Termux restart functionality from modular approach
+perform_termux_restart(){
+  info "Restarting Termux to apply all changes..."
+  
+  # Create restart indicator
+  touch "$HOME/.cad-restart-indicator" 2>/dev/null || true
+  
+  # Show countdown
+  printf "\n${PASTEL_YELLOW}Restarting Termux in...${RESET}\n"
+  for i in 3 2 1; do
+    printf "${PASTEL_CYAN}$i${RESET}..."
+    sleep 1
+  done
+  printf "${PASTEL_GREEN}GO!${RESET}\n\n"
+  
+  # Try to restart Termux using Android intents
+  if command -v am >/dev/null 2>&1; then
+    info "Closing and reopening Termux for clean environment reload..."
+    # Close Termux
+    am force-stop com.termux 2>/dev/null || true
+    sleep 2
+    # Reopen Termux
+    am start -n com.termux/com.termux.app.TermuxActivity 2>/dev/null || true
+  else
+    # Fallback to bash restart
+    info "Restarting bash session..."
+    exec "$PREFIX/bin/bash" -l
   fi
 }
 
@@ -3022,6 +3380,7 @@ OPTIONS:
   --non-interactive         Run without asking questions
   --only-step <N|name>      Run just one specific step
   --doctor                  Check your system for problems
+  --cleanup                 Clean up previous installations
 
 ENVIRONMENT VARIABLES:
   NON_INTERACTIVE=1         Answer yes to everything automatically
@@ -3082,6 +3441,13 @@ configure_linux_env(){
   
   # Get user configuration
   read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+  
+  # Confirm Linux username
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    if ! ask_yes_no "Confirm Linux username: $UBUNTU_USERNAME" "y"; then
+      read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
+    fi
+  fi
   
   if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
     err "User password setup failed"
@@ -3179,6 +3545,18 @@ pkg_install_debian(){
   apt-get -y upgrade >/dev/null 2>&1 || true
   # Install essential packages for productivity environment
   apt-get -y install sudo openssh-server wget curl jq nano dbus-x11 ffmpeg ca-certificates >/dev/null 2>&1 || true
+  
+  # Install Wine and compatibility layers
+  apt-get -y install wine winetricks >/dev/null 2>&1 || true
+  
+  # Try to install Box64/Box86 if available (architecture dependent)
+  if [ "$(uname -m)" = "aarch64" ]; then
+    # Box64 for ARM64
+    apt-get -y install box64 >/dev/null 2>&1 || true
+  elif [ "$(uname -m)" = "armv7l" ]; then
+    # Box86 for ARM32
+    apt-get -y install box86 >/dev/null 2>&1 || true
+  fi
 }
 
 # Install packages for Arch Linux
@@ -3187,6 +3565,18 @@ pkg_install_arch(){
   pacman -Syu --noconfirm >/dev/null 2>&1 || true
   # Install essential packages
   pacman -S --noconfirm sudo openssh wget curl jq nano ffmpeg dbus >/dev/null 2>&1 || true
+  
+  # Install Wine and compatibility layers
+  pacman -S --noconfirm wine winetricks >/dev/null 2>&1 || true
+  
+  # Box64/Box86 might be available in AUR (attempt install)
+  if command -v yay >/dev/null 2>&1; then
+    if [ "$(uname -m)" = "aarch64" ]; then
+      yay -S --noconfirm box64-bin >/dev/null 2>&1 || true
+    elif [ "$(uname -m)" = "armv7l" ]; then
+      yay -S --noconfirm box86-bin >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 # Install packages for Alpine Linux
@@ -3195,6 +3585,9 @@ pkg_install_alpine(){
   apk update >/dev/null 2>&1 || true
   # Install essential packages
   apk add sudo openssh wget curl jq nano ffmpeg dbus >/dev/null 2>&1 || true
+  
+  # Wine is available on Alpine (might need additional repositories)
+  apk add wine >/dev/null 2>&1 || true
 }
 
 # Install Sunshine remote desktop streaming service
@@ -3297,65 +3690,66 @@ harden_sshd(){
 
 # Install launcher script for host desktop environment
 install_host_launcher(){
-  cat > /usr/local/bin/launch_host_desktop.sh <<'HOST_DESKTOP_SCRIPT_EOF'
-#!/usr/bin/env bash
-# Launch desktop in portrait mode for productivity
-export DISPLAY=:0
-
-# Termux installation prefix
-TP="/data/data/com.termux/files/usr"
-
-# Start X11 server in portrait mode if not running
-if ! pgrep -f termux-x11 >/dev/null 2>&1; then 
-  "$TP/bin/termux-x11" :0 -geometry 1080x1920 >/dev/null 2>&1 & 
-  sleep 2
-fi
-
-# Start XFCE desktop session if not running
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 & 
-  sleep 2
-fi
-
-# Start D-Bus session for inter-process communication
-dbus-daemon --session --fork >/dev/null 2>&1 || true
-
-echo "Desktop environment active (Portrait Mode)."
-HOST_DESKTOP_SCRIPT_EOF
+  # Create desktop launcher using printf to avoid here-document conflicts in container script
+  printf '%s\n' \
+    "#!/usr/bin/env bash" \
+    "# Launch desktop in portrait mode for productivity" \
+    "export DISPLAY=:0" \
+    "" \
+    "# Termux installation prefix" \
+    "TP=\"/data/data/com.termux/files/usr\"" \
+    "" \
+    "# Start X11 server in portrait mode if not running" \
+    "if ! pgrep -f termux-x11 >/dev/null 2>&1; then" \
+    "  \"\$TP/bin/termux-x11\" :0 -geometry 1080x1920 >/dev/null 2>&1 &" \
+    "  sleep 2" \
+    "fi" \
+    "" \
+    "# Start XFCE desktop session if not running" \
+    "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
+    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  sleep 2" \
+    "fi" \
+    "" \
+    "# Start D-Bus session for inter-process communication" \
+    "dbus-daemon --session --fork >/dev/null 2>&1 || true" \
+    "" \
+    "echo \"Desktop environment active (Portrait Mode).\"" \
+    > /usr/local/bin/launch_host_desktop.sh
   chmod +x /usr/local/bin/launch_host_desktop.sh
 
-  # Also create landscape version for Sunshine streaming
-  cat > /usr/local/bin/launch_sunshine_desktop.sh <<'LANDSCAPE_DESKTOP_SCRIPT_EOF'
-#!/usr/bin/env bash
-# Launch desktop in landscape mode for remote streaming
-export DISPLAY=:0
-
-# Termux installation prefix  
-TP="/data/data/com.termux/files/usr"
-
-# Stop existing X11 server
-pkill -f termux-x11 2>/dev/null || true
-sleep 1
-
-# Start X11 server in landscape mode for streaming
-"$TP/bin/termux-x11" :0 -geometry 1920x1080 >/dev/null 2>&1 &
-sleep 3
-
-# Configure display resolution
-export DISPLAY=:0
-xrandr --output default --mode 1920x1080 2>/dev/null || true
-
-# Start XFCE desktop session if not running
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 & 
-  sleep 3
-fi
-
-# Start D-Bus session
-dbus-daemon --session --fork >/dev/null 2>&1 || true
-
-echo "Desktop environment active (Landscape Mode for Streaming)."
-LANDSCAPE_DESKTOP_SCRIPT_EOF
+  # Create landscape version for Sunshine streaming
+  printf '%s\n' \
+    "#!/usr/bin/env bash" \
+    "# Launch desktop in landscape mode for remote streaming" \
+    "export DISPLAY=:0" \
+    "" \
+    "# Termux installation prefix" \
+    "TP=\"/data/data/com.termux/files/usr\"" \
+    "" \
+    "# Stop existing X11 server" \
+    "pkill -f termux-x11 2>/dev/null || true" \
+    "sleep 1" \
+    "" \
+    "# Start X11 server in landscape mode for streaming" \
+    "\"\$TP/bin/termux-x11\" :0 -geometry 1920x1080 >/dev/null 2>&1 &" \
+    "sleep 3" \
+    "" \
+    "# Configure display resolution" \
+    "export DISPLAY=:0" \
+    "xrandr --output default --mode 1920x1080 2>/dev/null || true" \
+    "" \
+    "# Start XFCE desktop session if not running" \
+    "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
+    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  sleep 3" \
+    "fi" \
+    "" \
+    "# Start D-Bus session" \
+    "dbus-daemon --session --fork >/dev/null 2>&1 || true" \
+    "" \
+    "echo \"Desktop environment active (Landscape Mode for Streaming).\"" \
+    > /usr/local/bin/launch_sunshine_desktop.sh
   chmod +x /usr/local/bin/launch_sunshine_desktop.sh
 }
 
@@ -3384,7 +3778,7 @@ main(){
   # Install desktop launcher scripts
   install_host_launcher
   
-  # Save configuration for later reference
+  # Save configuration for later reference and to Termux credentials
   echo "$SSH_PORT" > /root/port.txt
   echo "$NEW_USER" > /root/username.txt
 }
@@ -3435,6 +3829,25 @@ Host cad-container
   ServerAliveCountMax 2
 SSH_CONFIG_EOF
   fi
+  
+  # Save credentials for widget shortcuts in Termux environment  
+  save_ssh_credentials_for_widgets
+}
+
+# Save SSH credentials for widget shortcuts
+save_ssh_credentials_for_widgets(){
+  # Create credentials directory in Termux
+  local cred_dir="$HOME/.cad/credentials"
+  mkdir -p "$cred_dir" 2>/dev/null || true
+  
+  # Save SSH port and username for widgets
+  echo "${LINUX_SSH_PORT:-8022}" > "$cred_dir/ssh_port.cred" 2>/dev/null || true
+  echo "${UBUNTU_USERNAME:-caduser}" > "$cred_dir/ssh_username.cred" 2>/dev/null || true
+  
+  # Set proper permissions
+  chmod 600 "$cred_dir"/*.cred 2>/dev/null || true
+  
+  info "SSH credentials saved for widget shortcuts"
 }
 
 # Ensure SSH daemon is running in container
@@ -3469,128 +3882,224 @@ create_widget_shortcuts(){
   fi
   
   local shortcuts_dir="$HOME/.shortcuts"
-  mkdir -p "$shortcuts_dir" 2>/dev/null || return 1
-
-  # Create Linux Desktop shortcut (Portrait Mode for Productivity)
-  cat > "$shortcuts_dir/Linux Desktop.sh" <<'DESKTOP_WIDGET_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "Starting Linux Desktop (Portrait Mode)..."
-
-# Start X11 server in portrait orientation for productive vertical screen space
-if ! pgrep -f termux-x11 >/dev/null 2>&1; then 
-  termux-x11 :0 -geometry 1080x1920 >/dev/null 2>&1 & 
-  sleep 2
-fi
-
-# Start XFCE desktop environment optimized for portrait productivity
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 xfce4-session >/dev/null 2>&1 & 
-  sleep 2
-fi
-
-echo "Desktop started in Portrait Mode for optimal productivity."
-DESKTOP_WIDGET_EOF
-
-  # Create Professional Workspace shortcut (Landscape Mode for Presentations/Streaming)
-  cat > "$shortcuts_dir/Professional Workspace.sh" <<'WORKSPACE_WIDGET_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "Starting Professional Workspace (Landscape Mode)..."
-
-# Stop existing X11 server to change orientation
-pkill -f termux-x11 2>/dev/null || true
-sleep 1
-
-# Start X11 server in landscape mode for presentations and streaming
-DISPLAY=:0 termux-x11 :0 -geometry 1920x1080 >/dev/null 2>&1 &
-sleep 3
-
-# Configure display resolution for professional use
-export DISPLAY=:0
-xrandr --output default --mode 1920x1080 2>/dev/null || true
-
-# Start XFCE desktop optimized for presentations
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 xfce4-session >/dev/null 2>&1 & 
-  sleep 3
-fi
-
-pecho "$PASTEL_GREEN" "Professional Workspace Ready (Landscape Mode for presentations and streaming)!"
-WORKSPACE_WIDGET_EOF
-
-  # Create Linux Terminal shortcut
-  cat > "$shortcuts_dir/Linux Terminal.sh" <<'TERMINAL_WIDGET_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "Connecting to Linux container..."
-
-# Try to connect to available Linux distributions
-proot-distro login ubuntu || proot-distro login debian || proot-distro login archlinux || proot-distro login alpine
-TERMINAL_WIDGET_EOF
-
-  # Create System Status shortcut
-  cat > "$shortcuts_dir/System Status.sh" <<'STATUS_WIDGET_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "CAD-Droid Productivity System Status"
-echo "===================================="
-
-PREFIX="/data/data/com.termux/files/usr"
-
-# Check X11 desktop status
-if pgrep -f termux-x11 >/dev/null 2>&1; then 
-  pecho "$PASTEL_GREEN" "✓ Termux-X11: Running"
-else 
-  echo "✗ Termux-X11: Not running"
-fi
-
-# Check XFCE desktop status
-if pgrep -f xfce4-session >/dev/null 2>&1; then 
-  pecho "$PASTEL_GREEN" "✓ XFCE Desktop: Running"
-else 
-  echo "✗ XFCE Desktop: Not running"
-fi
-
-echo ""
-echo "Linux Containers:"
-
-# Check status of each possible Linux distribution
-for d in ubuntu debian archlinux alpine; do
-  if [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$d" ]; then
-    pecho "$PASTEL_GREEN" "✓ $d: Installed"
-    
-    # Check SSH status if configured
-    if [ -f "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/port.txt" ]; then
-      p=$(cat "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/port.txt")
-      if ss -ltn 2>/dev/null | grep -q ":$p "; then 
-        echo "  ✓ SSH: Listening on port $p"
-      else 
-        echo "  ✗ SSH: Not listening"
-      fi
-    fi
+  
+  # Remove existing shortcuts directory to ensure clean overwrite
+  if [ -d "$shortcuts_dir" ]; then
+    info "Removing existing widget shortcuts to ensure clean installation..."
+    rm -rf "$shortcuts_dir" 2>/dev/null || true
   fi
-done
+  
+  # Create fresh shortcuts directory
+  if ! mkdir -p "$shortcuts_dir" 2>/dev/null; then
+    warn "Cannot create shortcuts directory"
+    return 1
+  fi
 
-# Check Sunshine remote desktop status
-if pgrep -f sunshine >/dev/null 2>&1; then 
-  pecho "$PASTEL_GREEN" "✓ Sunshine: Running"
-else 
-  echo "✗ Sunshine: Not running"
+  info "Creating enhanced tmux-based Termux widget shortcuts (overwriting any existing ones)..."
+  
+  # CRITICAL: Phantom Process Killer shortcut (most important for system stability)
+  cat > "$shortcuts_dir/phantom-killer" << 'PHANTOM_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Phantom Process Killer - Critical for system stability
+echo "Disabling phantom process killer..."
+adb shell "settings put global settings_enable_monitor_phantom_procs false"
+echo "Phantom process killer disabled!"
+echo "Your apps should now run more reliably"
+PHANTOM_EOF
+  chmod +x "$shortcuts_dir/phantom-killer"
+
+  # ADB Connect shortcut
+  cat > "$shortcuts_dir/adb-connect" << 'ADB_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# ADB Wireless Connection
+echo "Connecting ADB wirelessly..."
+adb connect 127.0.0.1:5555
+adb devices
+echo "ADB connection status shown above"
+ADB_EOF
+  chmod +x "$shortcuts_dir/adb-connect"
+  
+  # System Info shortcut
+  cat > "$shortcuts_dir/system-info" << 'SYSINFO_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# System Information Display
+echo -e "\033[1;36mCAD-Droid System Info\033[0m"
+echo "Battery: $(termux-battery-status | jq -r '.percentage')%"
+echo "Network: $(termux-wifi-connectioninfo | jq -r '.ssid')"
+echo "Storage: $(df -h $HOME | tail -1 | awk '{print $4}') free"
+echo "Location: $(termux-location -p gps -r once | jq -r '.latitude, .longitude' | tr '\n' ',' | sed 's/,$//')"
+SYSINFO_EOF
+  chmod +x "$shortcuts_dir/system-info"
+  
+  # File Manager shortcut
+  cat > "$shortcuts_dir/file-manager" << 'FM_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Quick File Manager
+echo "Opening file manager..."
+if command -v termux-open >/dev/null 2>&1; then
+    termux-open $HOME
+else
+    ls -la $HOME
 fi
+FM_EOF
+  chmod +x "$shortcuts_dir/file-manager"
+  
+  # Package Manager shortcut
+  cat > "$shortcuts_dir/pkg-update" << 'PKG_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Quick Package Update
+echo "Updating packages..."
+pkg update -y && pkg upgrade -y
+echo "Packages updated successfully!"
+PKG_EOF
+  chmod +x "$shortcuts_dir/pkg-update"
 
-echo ""
+  # Linux Desktop shortcut (portrait mode, X11 focus) with tmux and SSH
+  cat > "$shortcuts_dir/Linux Desktop" << 'LINUX_DESKTOP_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Linux Desktop - X11 XFCE Desktop Environment with SSH Key Authentication
 
-# Display storage usage information
-df -h "$PREFIX" 2>/dev/null | tail -1 | awk '{print "Termux Storage: "$3"/"$2" ("$5" used)"}'
+# Simple credential reader function
+read_credential() {
+    local name="$1"
+    local cred_file="$HOME/.cad/credentials/$name.cred"
+    if [ -f "$cred_file" ]; then
+        cat "$cred_file" 2>/dev/null
+    else
+        return 1
+    fi
+}
 
-# Show shared storage if available
-[ -d "$HOME/storage/shared" ] && df -h "$HOME/storage/shared" 2>/dev/null | tail -1 | awk '{print "Shared Storage: "$3"/"$2" ("$5" used)"}'
-STATUS_WIDGET_EOF
+# Get SSH credentials with fallbacks
+SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_KEY="$HOME/.ssh/id_ed25519"
 
-  # Make all shortcuts executable
-  chmod +x "$shortcuts_dir"/*.sh 2>/dev/null || true
-  ok "Productivity widget shortcuts created"
+# Display connection info
+echo "Connecting to Linux Desktop..."
+echo "SSH Port: $SSH_PORT"
+echo "Username: $SSH_USERNAME"
+
+# Kill any existing X11 sessions
+pkill -f "termux-x11" 2>/dev/null || true
+
+# Start Termux:X11
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+
+# Create new tmux session for container setup
+tmux new -s rootlog -d
+
+# Send commands to tmux session to setup SSH daemon
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started' && tmux wait -S ssh_ready" enter
+
+# Wait for SSH daemon to be ready
+tmux wait ssh_ready
+
+# Connect to the container via SSH with X11 forwarding and start XFCE
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:0 && termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
+
+# Clean up tmux session when done
+tmux kill-session -t rootlog 2>/dev/null || true
+LINUX_DESKTOP_EOF
+  chmod +x "$shortcuts_dir/Linux Desktop"
+
+  # Linux Sunshine shortcut (landscape mode, includes Sunshine for remote access) with tmux
+  cat > "$shortcuts_dir/Linux Sunshine" << 'LINUX_SUNSHINE_EOF'
+#!/data/data/com.termux/files/usr/bin/bash  
+# Linux Sunshine - X11 Desktop with Remote Streaming and SSH Key Authentication
+
+# Force landscape orientation for better streaming experience
+am start -a android.intent.action.MAIN -c android.intent.category.HOME
+
+# Simple credential reader function
+read_credential() {
+    local name="$1"
+    local cred_file="$HOME/.cad/credentials/$name.cred"
+    if [ -f "$cred_file" ]; then
+        cat "$cred_file" 2>/dev/null
+    else
+        return 1
+    fi
+}
+
+# Get SSH credentials with fallbacks
+SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Display connection info
+echo "Starting Linux Sunshine Desktop..."
+echo "SSH Port: $SSH_PORT"
+echo "Username: $SSH_USERNAME"
+
+# Start Termux:X11
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+
+# Create new tmux session for container setup
+tmux new -s sunshine_session -d
+
+# Setup SSH daemon and Sunshine in the container
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+tmux send-keys "sudo systemctl start sunshine || sudo sunshine --service & echo 'Sunshine started'" enter
+tmux send-keys "echo 'Services ready' && tmux wait -S services_ready" enter
+
+# Wait for services to be ready
+tmux wait services_ready
+
+# Connect with X11 forwarding and start XFCE with Sunshine
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" '
+export DISPLAY=:0
+sunshine --config-dir ~/.config/sunshine &
+termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"
+'
+
+# Clean up tmux session when done
+tmux kill-session -t sunshine_session 2>/dev/null || true
+LINUX_SUNSHINE_EOF
+  chmod +x "$shortcuts_dir/Linux Sunshine"
+
+  # Create Linux Terminal shortcut with tmux session management
+  cat > "$shortcuts_dir/Linux Terminal" << 'LINUX_TERMINAL_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Linux Terminal - Direct container access with tmux session management
+
+echo "Starting Linux Terminal session..."
+
+# Check if tmux session already exists
+if tmux has-session -t linux_terminal 2>/dev/null; then
+    echo "Attaching to existing Linux terminal session..."
+    tmux attach -t linux_terminal
+else
+    echo "Creating new Linux terminal session..."
+    # Create new tmux session and connect to Ubuntu container
+    tmux new -s linux_terminal -d "proot-distro login ubuntu --shared-tmp --fix-low-ports"
+    
+    # Attach to the session
+    tmux attach -t linux_terminal
+fi
+LINUX_TERMINAL_EOF
+  chmod +x "$shortcuts_dir/Linux Terminal"
+
+  # Ensure all files have proper permissions
+  chmod -R 755 "$shortcuts_dir" 2>/dev/null || true
+  find "$shortcuts_dir" -type f -exec chmod +x {} \; 2>/dev/null || true
+
+  ok "Enhanced tmux-based widget shortcuts created (all existing shortcuts replaced)"
+  
+  # Count created shortcuts and provide feedback
+  local shortcut_count
+  shortcut_count=$(find "$shortcuts_dir" -type f 2>/dev/null | wc -l)
+  info "Created $shortcut_count widget shortcuts in $shortcuts_dir"
+  
+  # Provide detailed widget setup instructions
+  printf "\n${PASTEL_YELLOW}Widget Setup Instructions:${RESET}\n"
+  printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to your home screen\n"
+  printf "${PASTEL_CYAN}2.${RESET} ${PASTEL_RED}CRITICAL:${RESET} ${PASTEL_YELLOW}Add 'phantom-killer' widget first - essential for app stability!${RESET}\n"  
+  printf "${PASTEL_CYAN}3.${RESET} Available widgets: phantom-killer, adb-connect, system-info, file-manager, pkg-update\n"
+  printf "${PASTEL_CYAN}4.${RESET} Linux shortcuts: 'Linux Desktop', 'Linux Sunshine', 'Linux Terminal'\n"
+  printf "${PASTEL_CYAN}5.${RESET} Long press home screen → Widgets → Termux:Widget → Select shortcut\n\n"
 }
 
 # --- System Snapshot Functions ---
@@ -3839,8 +4348,8 @@ pkg_available(){
 apt_install_if_needed(){
   local p="$1"
   
-  # Update package lists first
-  run_with_progress "Update package lists" 3 bash -c "apt-get update >/dev/null 2>&1"
+  # Update package lists first for this specific package
+  run_with_progress "Updating package lists for $p" 3 bash -c "apt-get update >/dev/null 2>&1"
   
   # Skip if already installed
   if dpkg_is_installed "$p"; then
@@ -4179,19 +4688,36 @@ step_aptni(){
   mkdir -p "$d" 2>/dev/null || return 1
   
   # Create configuration file for automated installations
-  run_with_progress "Apply apt NI config" 4 bash -c "cat > '$d/99cad-noninteractive' <<'APT_CONFIG_EOF'
-APT::Get::Assume-Yes \"true\";
-APT::Color \"0\";
-Acquire::Retries \"4\";
-Dpkg::Progress-Fancy \"0\";
-Dpkg::Options { \"--force-confdef\"; \"--force-confold\"; }
+  run_with_progress "Apply apt NI config" 4 bash -c '
+cat > "'"$d"'/99cad-noninteractive" << '\''APT_CONFIG_EOF'\''
+APT::Get::Assume-Yes "true";
+APT::Color "0";
+Acquire::Retries "4";
+Dpkg::Progress-Fancy "0";
+Dpkg::Options { "--force-confdef"; "--force-confold"; }
 APT_CONFIG_EOF
-"
+'
   mark_step_status "success"
 }
 
 # Step 6: System update and maintenance
 step_systemup(){ 
+  # Update and upgrade Termux packages first
+  if command -v pkg >/dev/null 2>&1; then
+    if run_with_progress "Termux pkg update" 15 bash -c 'pkg update -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      warn "Termux package update failed"
+    fi
+    
+    if run_with_progress "Termux pkg upgrade" 45 bash -c 'pkg upgrade -y >/dev/null 2>&1 || true'; then
+      :
+    else
+      warn "Termux package upgrade failed"
+    fi
+  fi
+  
+  # Update and upgrade system apt packages
   if run_with_progress "System apt update" 28 bash -c 'apt-get update >/dev/null 2>&1 || true'; then
     :
   else
@@ -4276,6 +4802,12 @@ step_apk(){
     failed=$(add_int "${failed:-0}" 1)
   fi
   
+  # Install Termux:Widget (home screen widget support)
+  if ! fetch_termux_addon "Termux-Widget" "com.termux.widget" "termux/termux-widget" ".*widget.*\.apk" "$USER_SELECTED_APK_DIR"; then
+    APK_MISSING+=("Termux:Widget")
+    failed=$(add_int "${failed:-0}" 1)
+  fi
+  
   # Show results and instructions
   if [ "$failed" -eq 0 ]; then
     ok "All APKs downloaded successfully to: $USER_SELECTED_APK_DIR"
@@ -4302,8 +4834,8 @@ step_apk(){
     safe_sleep "${APK_PAUSE_TIMEOUT:-45}"
   fi
   
-  # Wait for Termux:API to become available
-  wait_for_termux_api || warn "Termux:API setup may be incomplete"
+  # Wait for Termux:API to become available (silent check)
+  wait_for_termux_api
   
   mark_step_status "success"
 }
@@ -4329,7 +4861,7 @@ step_usercfg(){
   mark_step_status "success"
 }
 
-# Step 10: Enhanced ADB Wireless Setup with skip option
+# Step 10: Enhanced ADB Wireless Setup with phantom process killer support
 step_adb(){
   # Check if ADB is completely disabled or skipped
   if [ "$ENABLE_ADB" != "1" ] || [ "$SKIP_ADB" = "1" ]; then
@@ -4342,15 +4874,21 @@ step_adb(){
     return 0
   fi
   
-  # Ask user if they want to skip ADB setup (unless in non-interactive mode)
+  # Enhanced intro emphasizing phantom process killer importance
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
+    draw_phase_header "ADB SETUP - CRITICAL FOR SYSTEM STABILITY"
+    echo ""
+    printf "${PASTEL_RED}IMPORTANT:${RESET} ${PASTEL_YELLOW}ADB setup is essential for disabling the phantom process killer!${RESET}\n"
+    printf "Without this step, your apps may be randomly terminated by Android.\n\n"
+    
     info "Android Debug Bridge (ADB) Wireless Setup"
-    format_body_text "ADB allows you to connect wirelessly to your device for development and debugging. This is useful for advanced development workflows but is optional for basic usage."
+    format_body_text "ADB allows wireless connection to your device for development and debugging. Most importantly, it lets us disable Android's phantom process killer, which can randomly terminate background apps including Termux processes."
     echo ""
     
-    if ! ask_yes_no "Set up ADB wireless debugging?" "y"; then
-      info "Skipping ADB wireless setup"
+    if ! ask_yes_no "Set up ADB wireless debugging? (HIGHLY RECOMMENDED)" "y"; then
+      warn "Skipping ADB setup - phantom process killer will remain active"
+      warn "Your apps may be unexpectedly terminated by Android"
       mark_step_status "skipped"
       return 0
     fi
@@ -4358,10 +4896,23 @@ step_adb(){
   
   info "Setting up Android Debug Bridge (ADB) wireless connection..."
   echo ""
-  format_body_text "This allows you to connect wirelessly to your device for development. You'll need to enable Developer Options and Wireless Debugging on your Android device."
+  format_body_text "This setup will enable wireless debugging and disable the phantom process killer for better app stability."
   echo ""
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo ""
+    printf "${PASTEL_YELLOW}IMPORTANT: Enter split-screen mode for easier setup${RESET}\n"
+    printf "${PASTEL_YELLOW}Otherwise the pairing code and port will change!${RESET}\n"
+    echo ""
+    
+    info "Follow these steps in Android Settings:"
+    info "1. Go to Settings > About phone"
+    info "2. Tap 'Build number' 7 times to enable Developer Options"
+    info "3. Go back to Settings > System > Developer Options"
+    info "4. Enable 'Wireless debugging'"
+    info "5. Tap 'Pair device with pairing code'"
+    echo ""
+    
     pecho "$PASTEL_CYAN" "Press Enter to open Android Developer Settings..."
     read -r || true
   fi
@@ -4384,28 +4935,100 @@ step_adb(){
     fi
   fi
   
-  # Method 3: Termux API notification if available
-  if have_termux_api; then
-    termux-notification --title "CAD-Droid Setup" --content "Enable Developer Options > Wireless Debugging in Android Settings" 2>/dev/null || true
-  fi
-  
   if [ "$settings_opened" = true ]; then
     info "Android Settings opened"
   else
     info "Unable to open settings automatically"
+    info "Please manually navigate to: Settings > System > Developer Options"
   fi
   
-  echo ""
-  info "Follow these steps in Android Settings:"
-  info "1. Go to Settings > About phone"
-  info "2. Tap 'Build number' 7 times to enable Developer Options"
-  info "3. Go back to Settings > System > Developer Options"
-  info "4. Enable 'Wireless debugging'"
-  info "5. Tap 'Pair device with pairing code'"
+  # Now run the manual ADB setup with enhanced instructions
+  if manual_adb_wireless_setup; then
+    # CRITICAL: Disable phantom process killer for system stability
+    echo ""
+    printf "${PASTEL_YELLOW}Now disabling phantom process killer for better app stability...${RESET}\n"
+    sleep 2
+    
+    if disable_phantom_process_killer; then
+      ok "Phantom process killer disabled - your apps should run more reliably!"
+    else
+      warn "Could not disable phantom process killer - apps may still be terminated randomly"
+      warn "You can use the 'phantom-killer' widget later to disable it manually"
+    fi
+    
+    # Set up automatic phantom killer disable for future reboots
+    setup_phantom_killer_auto_disable
+  else
+    warn "ADB setup incomplete - phantom process killer remains active"
+  fi
   
-  # Now run the actual ADB helper with enhanced detection
-  adb_wireless_helper
   mark_step_status "success"
+}
+
+# Disable Android phantom process killer via ADB
+disable_phantom_process_killer(){
+  info "Attempting to disable phantom process killer..."
+  
+  # Check if ADB is connected to any devices
+  if ! adb devices 2>/dev/null | grep -q "device$"; then
+    warn "No ADB devices connected - cannot disable phantom process killer"
+    return 1
+  fi
+  
+  # Try to disable phantom process killer
+  if adb shell "settings put global settings_enable_monitor_phantom_procs false" 2>/dev/null; then
+    # Verify the setting was applied
+    local setting_value
+    setting_value=$(adb shell "settings get global settings_enable_monitor_phantom_procs" 2>/dev/null | tr -d '\r')
+    
+    if [ "$setting_value" = "false" ] || [ "$setting_value" = "0" ]; then
+      printf "${PASTEL_GREEN}SUCCESS:${RESET} Phantom process killer disabled\n"
+      return 0
+    else
+      printf "${PASTEL_YELLOW}WARNING:${RESET} Setting may not have applied correctly (got: $setting_value)\n"
+      return 1
+    fi
+  else
+    printf "${PASTEL_RED}FAILED${RESET} to disable phantom process killer\n"
+    printf "This may be due to insufficient ADB permissions.\n"
+    printf "Try: Settings → Developer Options → Disable 'Remove background activities'\n"
+    return 1
+  fi
+}
+
+# Set up automatic phantom process killer disable
+setup_phantom_killer_auto_disable(){
+  info "Setting up automatic phantom process killer disable..."
+  
+  # Create boot directory for Termux:Boot integration
+  local boot_dir="$HOME/.termux/boot"
+  mkdir -p "$boot_dir" 2>/dev/null || true
+  
+  # Create boot script for phantom process killer disable
+  local boot_script="$boot_dir/disable-phantom-killer.sh"
+  cat > "$boot_script" << 'BOOT_SCRIPT_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Auto-disable phantom process killer on device boot
+# This ensures the phantom process killer stays disabled
+
+# Wait for system to be ready
+sleep 30
+
+# Check if ADB is available and connected
+if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -q "device$"; then
+    # Try to disable phantom process killer
+    if adb shell "settings put global settings_enable_monitor_phantom_procs false" 2>/dev/null; then
+        echo "$(date): Phantom process killer disabled via boot script" >> ~/.termux/boot/phantom-killer.log
+    else
+        echo "$(date): Failed to disable phantom process killer - ADB not ready" >> ~/.termux/boot/phantom-killer.log
+    fi
+else
+    echo "$(date): ADB not available for phantom process killer disable" >> ~/.termux/boot/phantom-killer.log
+fi
+BOOT_SCRIPT_EOF
+
+  chmod +x "$boot_script" 2>/dev/null || true
+  ok "Automatic phantom process killer disable configured"
 }
 
 # Step 11: Pre-download core packages for faster installation
@@ -4559,6 +5182,7 @@ step_final(){
   
   # Configure Bash environment
   configure_bash_environment
+  configure_enhanced_bash_prompt
   
   # Configure Nano editor
   configure_nano_editor
@@ -4769,6 +5393,103 @@ setup_github_ssh_key_with_timeout(){
   fi
 }
 
+# Configure enhanced Bash prompt with modular improvements
+configure_enhanced_bash_prompt(){
+  local bashrc="$HOME/.bashrc"
+  
+  # Check if enhanced prompt is already configured
+  if grep -q "# CAD-Droid enhanced prompt theme" "$bashrc" 2>/dev/null; then
+    debug "Enhanced bash prompt theme already configured"
+    return 0
+  fi
+  
+  info "Configuring enhanced pink username and purple input theme..."
+  
+  # Persist current TERMUX_USERNAME/PHONETYPE to environment
+  if ! grep -q '^export TERMUX_USERNAME=' "$bashrc" 2>/dev/null; then
+    printf "export TERMUX_USERNAME=%q\n" "${TERMUX_USERNAME:-}" >> "$bashrc"
+  fi
+  if ! grep -q '^export TERMUX_PHONETYPE=' "$bashrc" 2>/dev/null; then
+    printf "export TERMUX_PHONETYPE=%q\n" "${TERMUX_PHONETYPE:-}" >> "$bashrc"
+  fi
+
+  # Add enhanced prompt configuration to ~/.bashrc
+  cat >> "$bashrc" << 'ENHANCED_BASH_PROMPT_EOF'
+
+# CAD-Droid enhanced prompt theme
+# Pastel pink username, pastel purple typed text with welcome screen
+cad_reset='\[\e[0m\]'
+cad_pastel_pink='\[\e[38;5;217m\]'    # Pastel pink for username
+cad_pastel_cyan='\[\e[38;5;159m\]'    # Pastel cyan for path
+cad_pastel_purple='\[\e[38;5;183m\]'  # Pastel purple for input text
+
+# Compose display name from TERMUX_USERNAME or fallback to \u@\h
+if [ -n "${TERMUX_USERNAME:-}" ]; then
+  cad_name="${TERMUX_USERNAME}"
+else
+  cad_name='\u@\h'
+fi
+
+# CAD-Droid intro screen (shown once per session)
+if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
+  export CAD_INTRO_SHOWN=1
+  echo ""
+  
+  # Create a gradient-style title card
+  card_width=55
+  title="Welcome to CAD-Droid"
+  subtitle="Your Android development environment"
+  
+  # Create gradient border using equal signs
+  border_chars=""
+  i=0
+  while [ $i -lt $card_width ]; do
+    border_chars="${border_chars}="
+    i=$((i + 1))
+  done
+  
+  # Top border with gradient color (cyan)
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
+  
+  # Title - centered with lavender color
+  title_padding=$(( (card_width - ${#title}) / 2 ))
+  printf "%*s\033[38;2;230;220;255m%s\033[0m\n" $title_padding "" "$title"
+  
+  # Subtitle - centered with gradient mid-tone
+  subtitle_padding=$(( (card_width - ${#subtitle}) / 2 ))
+  printf "%*s\033[38;2;175;238;238m%s\033[0m\n" $subtitle_padding "" "$subtitle"
+  
+  # Bottom border with gradient color
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
+  
+  echo ""
+  if [ -f "$HOME/.cad-droid-installed" ] || [ -f "$PWD/.cad-setup-complete" ]; then
+    printf "\033[38;2;195;245;195mOK\033[0m CAD-Droid installation \033[38;2;195;245;195mcomplete\033[0m\n"
+    echo ""
+    printf "\033[38;2;175;238;238mAvailable commands:\033[0m\n"
+    printf "  \033[38;2;230;220;255m•\033[0m cad-droid - System management\n"
+    printf "  \033[38;2;230;220;255m•\033[0m pkg update - Update packages\n"
+    printf "  \033[38;2;230;220;255m•\033[0m nano ~/.bashrc - Customize shell\n"
+  else
+    printf "\033[38;2;255;235;169mWARN\033[0m CAD-Droid installation \033[38;2;255;235;169mnot detected\033[0m\n"
+    printf "Run \033[38;2;230;220;255m./usethisone.sh\033[0m to install CAD-Droid\n"
+  fi
+  echo ""
+fi
+
+# Enhanced prompt: <pastel_pink>name</pastel_pink>:<pastel_cyan>cwd</pastel_cyan> and leave pastel purple color active for typed text
+PS1="${cad_pastel_pink}\${cad_name}${cad_reset}:${cad_pastel_cyan}\w${cad_reset} ${cad_pastel_purple}"
+
+# Reset color after each command so output returns to normal
+PROMPT_COMMAND="echo -ne '\033[0m'"
+ENHANCED_BASH_PROMPT_EOF
+  
+  # Set proper permissions
+  chmod 644 "$bashrc" 2>/dev/null || true
+  
+  ok "Enhanced bash prompt theme configured in ~/.bashrc"
+}
+
 # Configure Bash environment with useful settings
 configure_bash_environment(){
   info "Setting up your custom Bash environment..."
@@ -4899,7 +5620,7 @@ export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
 # ===== PROGRAMMABLE COMPLETION =====
 if [ -f /data/data/com.termux/files/usr/etc/bash_completion ] && ! shopt -oq posix; then
-    . /data/data/com.termux/files/usr/etc/bash_completion
+    . /data/data/com.termux/files/usr/etc/bash_completion 2>/dev/null || true
 fi
 
 # ===== READLINE BINDINGS =====
@@ -5006,90 +5727,66 @@ PERSONAL_CONFIG_EOF
 
 # Configure Nano editor with useful settings
 configure_nano_editor(){
-  info "Setting up a nice text editor for you..."
+  info "Configuring nano editor with enhanced pastel colors..."
   
-  # Make Nano much more pleasant to use
-  cat > "$HOME/.nanorc" << 'NANO_CONFIG_EOF'
-# Your personal Nano editor configuration
-# This makes editing files much more enjoyable
-#
-# Load all the built-in syntax highlighting
+  local nanorc="$HOME/.nanorc"
+  
+  # Check if nano color configuration is already present
+  if grep -q "# CAD-Droid nano theme" "$nanorc" 2>/dev/null; then
+    debug "Nano color theme already configured"
+    return 0
+  fi
+  
+  # Create comprehensive nano configuration with pastel theme
+  cat > "$nanorc" << 'NANO_CONFIG_EOF'
+# CAD-Droid nano configuration - Enhanced development editor
+# This configuration provides a beautiful, functional editing experience
+
+# CAD-Droid nano theme
+# Unified purple pastel colors for better readability
+set titlecolor brightwhite,magenta
+set statuscolor brightwhite,lightcyan
+set selectedcolor brightwhite,lightblue
+set stripecolor yellow
+set numbercolor lightcyan
+set keycolor lightcyan
+set functioncolor lightgreen
+
+# Syntax highlighting with pastel colors
 include "/data/data/com.termux/files/usr/share/nano/*.nanorc"
 
-# Interface improvements that make editing easier
+# Enhanced editor behavior
+set tabsize 2
+set autoindent
+set smooth
+set mouse
+set linenumbers
+set constantshow
+
+# Additional productivity features
 set titlebar        # Show the filename at the top
 set statusbar       # Show helpful info at the bottom  
-set linenumbers     # Show line numbers on the left
 set softwrap        # Wrap long lines nicely
-set softwrap
-# Show cursor position constantly
-set constantshow
-# Enable smooth scrolling
-set smooth
+set tabstospaces    # Convert tabs to spaces
+set smarthome       # Smart home key behavior
+set cutfromcursor   # Cut from cursor to end of line
+set multibuffer     # Enable multi-file buffer editing
 
-# ===== EDITING BEHAVIOR =====
-# Set tab size to 2 spaces (common for development)
-set tabsize 2
-# Convert tabs to spaces
-set tabstospaces
-# Enable auto-indentation
-set autoindent
-# Enable smart home key
-set smarthome
-# Use cut-to-end-of-line by default
-set cutfromcursor
-
-# ===== MOUSE AND INPUT =====
-# Enable mouse support for selections and positioning
-set mouse
-# Enable multi-file buffer editing
-set multibuffer
-
-# ===== SEARCH SETTINGS =====
-# Case-sensitive search by default
-set casesensitive
-# Enable regular expression search
-set regexp
-
-# ===== FILE HANDLING =====
-# Create backup files
-set backup
-# Store backups in dedicated directory
+# Search and file handling
+set casesensitive   # Case-sensitive search by default
+set regexp          # Enable regular expression search
+set backup          # Create backup files
 set backupdir "~/.nano/backups"
-# Automatically save on exit
-set tempfile
-
-# ===== PASTEL COLOR THEME =====
-# Main interface colors (pastel cyan theme)
-set titlecolor white,cyan
-set statuscolor white,green
-set numbercolor cyan,black
-set keycolor white,blue
-
-# Text colors (enhanced readability)
-set functioncolor magenta
-set stringscolor yellow
-set commentcolor brightblack
-
-# Advanced color customization (if supported)
-# These work with newer versions of nano
-set selectedcolor white,magenta
-set errorcolor white,red
-set spotlightcolor black,yellow
-
-# ===== ADDITIONAL FEATURES =====
-# Show whitespace characters
-set whitespace "»·"
-# Enable word wrapping at word boundaries  
-set wordchars "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-# Enable undo functionality
-set undo
+set tempfile        # Automatically save on exit
 NANO_CONFIG_EOF
-
-  # Create backup directory for nano
+  
+  # Create backup directory
   mkdir -p "$HOME/.nano/backups" 2>/dev/null || true
   
-  ok "Enhanced Nano editor with pastel theme configured"
+  # Set proper permissions
+  chmod 644 "$nanorc" 2>/dev/null || true
+  
+  ok "Nano editor configured with enhanced pastel colors"
 }
 
 # Main execution function with completely safe array operations
@@ -5180,7 +5877,7 @@ main_execution(){
   
   # Show final completion message
   show_completion_summary
-  show_final_completion
+  show_post_completion_intro
 }
 
 # Error handling for the main script
@@ -5307,6 +6004,7 @@ while [ $# -gt 0 ]; do
     --non-interactive) NON_INTERACTIVE=1 ;;
     --only-step) shift; ONLY_STEP="$1" ;;
     --doctor) run_diagnostics; exit 0 ;;
+    --cleanup) run_cleanup; exit 0 ;;
     --self-test) run_self_tests; exit $? ;;
     --snapshot-create) shift; create_snapshot "$1"; exit $? ;;
     --snapshot-restore) shift; restore_snapshot "$1"; exit $? ;;
