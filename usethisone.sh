@@ -3644,65 +3644,66 @@ harden_sshd(){
 
 # Install launcher script for host desktop environment
 install_host_launcher(){
-  cat > /usr/local/bin/launch_host_desktop.sh <<'HOST_DESKTOP_SCRIPT_EOF'
-#!/usr/bin/env bash
-# Launch desktop in portrait mode for productivity
-export DISPLAY=:0
-
-# Termux installation prefix
-TP="/data/data/com.termux/files/usr"
-
-# Start X11 server in portrait mode if not running
-if ! pgrep -f termux-x11 >/dev/null 2>&1; then 
-  "$TP/bin/termux-x11" :0 -geometry 1080x1920 >/dev/null 2>&1 & 
-  sleep 2
-fi
-
-# Start XFCE desktop session if not running
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 & 
-  sleep 2
-fi
-
-# Start D-Bus session for inter-process communication
-dbus-daemon --session --fork >/dev/null 2>&1 || true
-
-echo "Desktop environment active (Portrait Mode)."
-HOST_DESKTOP_SCRIPT_EOF
+  # Create desktop launcher using printf to avoid here-document conflicts in container script
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    '# Launch desktop in portrait mode for productivity' \
+    'export DISPLAY=:0' \
+    '' \
+    '# Termux installation prefix' \
+    'TP="/data/data/com.termux/files/usr"' \
+    '' \
+    '# Start X11 server in portrait mode if not running' \
+    'if ! pgrep -f termux-x11 >/dev/null 2>&1; then' \
+    '  "$TP/bin/termux-x11" :0 -geometry 1080x1920 >/dev/null 2>&1 &' \
+    '  sleep 2' \
+    'fi' \
+    '' \
+    '# Start XFCE desktop session if not running' \
+    'if ! pgrep -f xfce4-session >/dev/null 2>&1; then' \
+    '  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 &' \
+    '  sleep 2' \
+    'fi' \
+    '' \
+    '# Start D-Bus session for inter-process communication' \
+    'dbus-daemon --session --fork >/dev/null 2>&1 || true' \
+    '' \
+    'echo "Desktop environment active (Portrait Mode)."' \
+    > /usr/local/bin/launch_host_desktop.sh
   chmod +x /usr/local/bin/launch_host_desktop.sh
 
-  # Also create landscape version for Sunshine streaming
-  cat > /usr/local/bin/launch_sunshine_desktop.sh <<'LANDSCAPE_DESKTOP_SCRIPT_EOF'
-#!/usr/bin/env bash
-# Launch desktop in landscape mode for remote streaming
-export DISPLAY=:0
-
-# Termux installation prefix  
-TP="/data/data/com.termux/files/usr"
-
-# Stop existing X11 server
-pkill -f termux-x11 2>/dev/null || true
-sleep 1
-
-# Start X11 server in landscape mode for streaming
-"$TP/bin/termux-x11" :0 -geometry 1920x1080 >/dev/null 2>&1 &
-sleep 3
-
-# Configure display resolution
-export DISPLAY=:0
-xrandr --output default --mode 1920x1080 2>/dev/null || true
-
-# Start XFCE desktop session if not running
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 & 
-  sleep 3
-fi
-
-# Start D-Bus session
-dbus-daemon --session --fork >/dev/null 2>&1 || true
-
-echo "Desktop environment active (Landscape Mode for Streaming)."
-LANDSCAPE_DESKTOP_SCRIPT_EOF
+  # Create landscape version for Sunshine streaming
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    '# Launch desktop in landscape mode for remote streaming' \
+    'export DISPLAY=:0' \
+    '' \
+    '# Termux installation prefix' \
+    'TP="/data/data/com.termux/files/usr"' \
+    '' \
+    '# Stop existing X11 server' \
+    'pkill -f termux-x11 2>/dev/null || true' \
+    'sleep 1' \
+    '' \
+    '# Start X11 server in landscape mode for streaming' \
+    '"$TP/bin/termux-x11" :0 -geometry 1920x1080 >/dev/null 2>&1 &' \
+    'sleep 3' \
+    '' \
+    '# Configure display resolution' \
+    'export DISPLAY=:0' \
+    'xrandr --output default --mode 1920x1080 2>/dev/null || true' \
+    '' \
+    '# Start XFCE desktop session if not running' \
+    'if ! pgrep -f xfce4-session >/dev/null 2>&1; then' \
+    '  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 &' \
+    '  sleep 3' \
+    'fi' \
+    '' \
+    '# Start D-Bus session' \
+    'dbus-daemon --session --fork >/dev/null 2>&1 || true' \
+    '' \
+    'echo "Desktop environment active (Landscape Mode for Streaming)."' \
+    > /usr/local/bin/launch_sunshine_desktop.sh
   chmod +x /usr/local/bin/launch_sunshine_desktop.sh
 }
 
