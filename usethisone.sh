@@ -455,7 +455,7 @@ init_pastel_colors() {
   if init_color_support; then
     # Define comprehensive pastel color palette
     export PASTEL_CYAN='\033[38;2;175;238;238m'       # Pale Turquoise #AFEEEE
-    export PASTEL_PINK='\033[38;2;255;182;193m'       # Light Pink #FFB6C1
+    export PASTEL_PINK='\033[38;2;223;176;215m'       # Cool Pink #DFB0D7
     export PASTEL_GREEN='\033[38;2;144;238;144m'      # Light Green #90EE90
     export PASTEL_YELLOW='\033[38;2;255;255;224m'     # Light Yellow #FFFFE0
     export PASTEL_PURPLE='\033[38;2;221;160;221m'     # Plum #DDA0DD
@@ -1025,11 +1025,12 @@ pecho(){
   printf "%b%s%b\n" "$c" "$*" '\033[0m'
 }
 
-# Print informational message in cyan (title cards never wrap, body text wraps appropriately)
+# Print informational message in cyan (title cards and phase headers never wrap)
 info(){ 
   local message="$*"
-  # Simple approach: wrap if message is very long (over 100 chars) and not a title/header
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  # Never wrap titles, phase headers, or card text - only wrap very long body text
+  # Skip wrapping for any message that looks like a title, header, or is reasonably short
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;175;238;238m' "$line"
     done < <(format_body_text "$message")
@@ -1039,10 +1040,10 @@ info(){
   log_event info "${CURRENT_STEP_INDEX:-unknown}" info "$*"
 }
 
-# Print warning message in yellow (same logic as info)
+# Print warning message in yellow (no wrapping for titles/headers)
 warn(){ 
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge|WARNING|IMPORTANT|ERROR|FAIL) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;255;255;224m' "$line"
     done < <(format_body_text "$message")
@@ -1052,10 +1053,10 @@ warn(){
   log_event warn "${CURRENT_STEP_INDEX:-unknown}" warn "$*"
 }
 
-# Print success message in green (same logic as info)
+# Print success message in green (no wrapping for titles/headers)
 ok(){ 
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge|OK|SUCCESS|DONE) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;152;251;152m' "$line"
     done < <(format_body_text "$message")
@@ -1065,10 +1066,10 @@ ok(){
   log_event success "${CURRENT_STEP_INDEX:-unknown}" success "$*"
 }
 
-# Print error message in pink/red (same logic as info)
+# Print error message in pink/red (no wrapping for titles/headers)
 err(){ 
   local message="$*"
-  if [ "${#message}" -gt 100 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting) ]]; then
+  if [ "${#message}" -gt 120 ] && [[ ! "$message" =~ ^(Phase|Step|Installing|Configuring|Setting|CAD-Droid|Welcome|Setup|Complete|Linux|Termux|ADB|Android|Debug|Bridge|ERROR|FAIL|CRITICAL) ]]; then
     while IFS= read -r line; do
       pecho '\033[38;2;255;192;203m' "$line"
     done < <(format_body_text "$message")
@@ -2427,6 +2428,38 @@ fetch_termux_addon(){
     fi
   fi
   
+  # Rename APK to proper name if download was successful
+  if [ $success -eq 1 ]; then
+    # Find the downloaded APK and rename it to proper format
+    local downloaded_apk
+    downloaded_apk=$(find "$outdir" -name "*.apk" -type f -newer . 2>/dev/null | head -1)
+    
+    # Handle special renaming cases
+    local proper_name
+    case "$name" in
+      "Termux-API"|"Termux:API") proper_name="Termux-API" ;;
+      "Termux-X11"|"Termux:X11") proper_name="Termux-X11" ;;
+      "Termux-GUI"|"Termux:GUI") proper_name="Termux-GUI" ;;
+      "Termux-Widget"|"Termux:Widget") proper_name="Termux-Widget" ;;
+      *) proper_name="$name" ;;
+    esac
+    
+    local target_name="${proper_name}.apk"
+    local target_path="$outdir/$target_name"
+    
+    # Rename if the file exists and name needs changing
+    if [ -f "$downloaded_apk" ] && [ "$(basename "$downloaded_apk")" != "$target_name" ]; then
+      if mv "$downloaded_apk" "$target_path" 2>/dev/null; then
+        debug "Renamed APK to: $target_name"
+      else
+        warn "Failed to rename APK to: $target_name"
+      fi
+    fi
+    
+    # Ensure proper permissions
+    find "$outdir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
+  fi
+  
   return $((1 - success))
 }
 
@@ -2687,6 +2720,11 @@ manual_adb_wireless_setup(){
   if [ "$ENABLE_ADB" != "1" ]; then
     return 0
   fi
+  
+  # Initialize variables with defaults to prevent unbound variable errors
+  local ip="192.168.1.100"
+  local pairing_port="37831"
+  local pairing_code="123456"
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
@@ -4508,14 +4546,15 @@ step_aptni(){
   mkdir -p "$d" 2>/dev/null || return 1
   
   # Create configuration file for automated installations
-  run_with_progress "Apply apt NI config" 4 bash -c "cat > '$d/99cad-noninteractive' <<'APT_CONFIG_EOF'
-APT::Get::Assume-Yes \"true\";
-APT::Color \"0\";
-Acquire::Retries \"4\";
-Dpkg::Progress-Fancy \"0\";
-Dpkg::Options { \"--force-confdef\"; \"--force-confold\"; }
+  run_with_progress "Apply apt NI config" 4 bash -c '
+cat > "'"$d"'/99cad-noninteractive" << '\''APT_CONFIG_EOF'\''
+APT::Get::Assume-Yes "true";
+APT::Color "0";
+Acquire::Retries "4";
+Dpkg::Progress-Fancy "0";
+Dpkg::Options { "--force-confdef"; "--force-confold"; }
 APT_CONFIG_EOF
-"
+'
   mark_step_status "success"
 }
 
@@ -5423,7 +5462,7 @@ export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
 # ===== PROGRAMMABLE COMPLETION =====
 if [ -f /data/data/com.termux/files/usr/etc/bash_completion ] && ! shopt -oq posix; then
-    . /data/data/com.termux/files/usr/etc/bash_completion
+    . /data/data/com.termux/files/usr/etc/bash_completion 2>/dev/null || true
 fi
 
 # ===== READLINE BINDINGS =====
