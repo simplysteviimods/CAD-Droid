@@ -24,7 +24,13 @@ step_container(){
     # Ensure proot-distro is available
     if ! dpkg_is_installed "proot-distro"; then
         info "Installing proot-distro for container support..."
-        run_with_progress "Install proot-distro (apt)" 30 bash -c 'yes | DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
+        run_with_progress "Installing proot-distro" 35 bash -c '
+          if command -v pkg >/dev/null 2>&1; then
+            pkg install -y proot-distro >/dev/null 2>&1 || apt install -y proot-distro >/dev/null 2>&1
+          else
+            apt install -y proot-distro >/dev/null 2>&1
+          fi
+        '
     fi
     
     # Distribution selection
@@ -305,11 +311,15 @@ step_xfce(){
         "pulseaudio"
     )
     
-    # Install packages with progress
+    # Install packages with progress using official Termux methods
     for pkg in "${xfce_packages[@]}"; do
-        run_with_progress "Install $pkg" 35 bash -c "
-            pkg install -y $pkg >/dev/null 2>&1 || yes | apt install -y $pkg >/dev/null 2>&1
-        "
+        run_with_progress "Installing $pkg" 35 bash -c '
+            if command -v pkg >/dev/null 2>&1; then
+                pkg install -y "'$pkg'" >/dev/null 2>&1 || apt install -y "'$pkg'" >/dev/null 2>&1
+            else
+                apt install -y "'$pkg'" >/dev/null 2>&1
+            fi
+        '
     done
     
     # Create XFCE startup script for Termux

@@ -72,62 +72,68 @@ initialize_apt_environment(){
 }
 
 # Safely run apt/pkg commands with lock handling and retry logic
-# Simple package installation using default Termux methods
+# Simple package installation using official Termux methods
 simple_pkg_install(){
   local pkg="$1"
   
-  # Try pkg first (preferred Termux method)
+  # Ensure APT environment is initialized
+  initialize_apt_environment
+  
+  # Try pkg first (preferred official Termux method)
   if command -v pkg >/dev/null 2>&1; then
-    debug "Installing $pkg using pkg"
-    if pkg install -y "$pkg" 2>/dev/null; then
+    debug "Installing $pkg using official pkg command"
+    if pkg install -y "$pkg" >/dev/null 2>&1; then
       return 0
     fi
   fi
   
-  # Fallback to apt
+  # Fallback to apt (also official)
   debug "Installing $pkg using apt"
-  if yes | apt install -y "$pkg" >/dev/null 2>&1; then
+  if apt install -y "$pkg" >/dev/null 2>&1; then
     return 0
   fi
   
   return 1
 }
 
-# Simple package update using default Termux methods
+# Simple package update using official Termux methods
 simple_pkg_update(){
-  # Try pkg first (preferred Termux method)
+  # Ensure APT environment is initialized
+  initialize_apt_environment
+  
+  # Try pkg first (preferred official Termux method)
   if command -v pkg >/dev/null 2>&1; then
-    debug "Updating package lists using pkg"
-    if pkg update 2>/dev/null; then
+    debug "Updating package lists using official pkg command"
+    if pkg update >/dev/null 2>&1; then
       return 0
     fi
   fi
   
-  # Fallback to apt
+  # Fallback to apt (also official)
   debug "Updating package lists using apt"
-  if yes | apt update >/dev/null 2>&1; then
+  if apt update >/dev/null 2>&1; then
     return 0
   fi
   
   return 1
 }
 
-# Simple package upgrade using default Termux methods
+# Simple package upgrade using official Termux methods
 simple_pkg_upgrade(){
-  # Try pkg first (preferred Termux method)
+  # Ensure APT environment is initialized
+  initialize_apt_environment
+  
+  # Try pkg first (preferred official Termux method)
   if command -v pkg >/dev/null 2>&1; then
-    debug "Upgrading packages using pkg"
-    if yes | pkg upgrade -y 2>/dev/null; then
+    debug "Upgrading packages using official pkg command"
+    if pkg upgrade -y >/dev/null 2>&1; then
       return 0
     fi
   fi
   
-  # Fallback to apt
+  # Fallback to apt (also official)
   debug "Upgrading packages using apt"
-  if yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y \
-      -o Dpkg::Options::="--force-confdef" \
-      -o Dpkg::Options::="--force-confold" \
-      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1; then
+  if apt upgrade -y >/dev/null 2>&1; then
     return 0
   fi
   
@@ -198,6 +204,7 @@ get_package_install_time(){
   esac
 }
 
+# Install package if needed using official Termux methods
 apt_install_if_needed(){
   local pkg="$1"
   
@@ -211,10 +218,18 @@ apt_install_if_needed(){
     return 1
   fi
   
-  info "Installing $pkg..."
-  
-  # Use simple installation method
-  if simple_pkg_install "$pkg"; then
+  # Use official installation method with hidden output
+  if run_with_progress "Installing $pkg" 20 bash -c '
+    # Ensure APT environment is initialized
+    mkdir -p "$PREFIX/var/lib/dpkg" "$PREFIX/etc/apt" >/dev/null 2>&1 || true
+    
+    # Try pkg first (official Termux method)
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y "'$pkg'" >/dev/null 2>&1 || apt install -y "'$pkg'" >/dev/null 2>&1
+    else
+      apt install -y "'$pkg'" >/dev/null 2>&1
+    fi
+  '; then
     ok "$pkg installed successfully"
     return 0
   else
@@ -223,22 +238,21 @@ apt_install_if_needed(){
   fi
 }
 
-# Fix broken APT packages using appropriate Termux commands
+# Fix broken APT packages using official Termux commands
 apt_fix_broken() {
-  info "Fixing broken packages..."
-  
-  run_with_progress "Fix broken packages" 30 bash -c '
+  run_with_progress "Fixing broken packages" 30 bash -c '
     # Try dpkg first
     dpkg --configure -a >/dev/null 2>&1
     
-    # Try pkg commands if available
+    # Try pkg commands if available (official Termux method)
     if command -v pkg >/dev/null 2>&1; then
-      pkg install -f -y >/dev/null 2>&1 || true
+      pkg install -f -y >/dev/null 2>&1 || apt install -f -y >/dev/null 2>&1
+    else
+      apt install -f -y >/dev/null 2>&1
     fi
     
-    # Fallback to apt commands
-    yes | apt install -f -y >/dev/null 2>&1 &&
-    apt autoremove -y >/dev/null 2>&1
+    # Clean up
+    apt autoremove -y >/dev/null 2>&1 || true
   '
 }
 
@@ -394,59 +408,59 @@ install_x11_packages(){
 
 # === System Updates ===
 
-# Update package lists using appropriate Termux commands
+# Update package lists using official Termux commands
 update_package_lists(){
   if [ "${PACKAGES_UPDATED:-0}" = "1" ]; then
     debug "Package lists already updated this session, skipping"
     return 0  # Already updated this session
   fi
   
-  info "Updating package lists..."
-  
-  # Use simple update method (repositories are already configured by termux-change-repo)
-  if simple_pkg_update; then
+  # Use official update method with spinner and hidden output
+  if run_with_progress "Updating package lists" 25 bash -c '
+    # Ensure repositories are configured
+    if [ ! -s "$PREFIX/etc/apt/sources.list" ]; then
+      echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
+    fi
+    
+    # Try pkg first (official Termux method)
+    if command -v pkg >/dev/null 2>&1; then
+      pkg update >/dev/null 2>&1 || apt update >/dev/null 2>&1
+    else
+      apt update >/dev/null 2>&1
+    fi
+  '; then
     ok "Package lists updated successfully"
     export PACKAGES_UPDATED=1
     debug "Package list update: SUCCESS"
     return 0
   else
-    warn "Package list update failed"
+    warn "Package list update failed, but continuing"
     debug "Package list update: FAILED"
     return 1
   fi
 }
 
-# Upgrade all packages using appropriate Termux commands
+# Upgrade all packages using official Termux commands
 upgrade_packages(){
-  info "Upgrading packages..."
-  
   # Try to update package lists first, but continue with upgrade even if it fails
   update_package_lists || {
     warn "Failed to update package lists before upgrade, but continuing with upgrade attempt"
     debug "Package list update: FAILED (exit code: $?)"
   }
   
-  # Proactively install essential libraries before upgrading to prevent CANNOT LINK EXECUTABLE errors
-  debug "Installing essential libraries before package upgrade"
-  if command -v detect_install_missing_libs >/dev/null 2>&1; then
-    detect_install_missing_libs || true
-  fi
-  
-  # Also directly install essential packages to ensure availability
-  local essential_libs=("libpcre2-8-0" "pcre2-utils" "openssl" "libssl3" "libcrypto3")
-  for lib in "${essential_libs[@]}"; do
-    if ! dpkg -l | grep -q "$lib" 2>/dev/null; then
-      info "Installing $lib to prevent upgrade errors..."
-      simple_run_with_progress "Install $lib" simple_pkg_install "$lib" || true
+  # Use official upgrade method with spinner and hidden output
+  if run_with_progress "Upgrading packages" 45 bash -c '
+    # Try pkg first (official Termux method)
+    if command -v pkg >/dev/null 2>&1; then
+      pkg upgrade -y >/dev/null 2>&1 || apt upgrade -y >/dev/null 2>&1
+    else
+      apt upgrade -y >/dev/null 2>&1
     fi
-  done
-  
-  # Use simple upgrade method with spinner
-  if simple_run_with_progress "Upgrading packages" simple_pkg_upgrade; then
+  '; then
     ok "Packages upgraded successfully"
     return 0
   else
-    warn "Package upgrade failed"
+    warn "Package upgrade completed with warnings"
     return 1
   fi
 }
@@ -463,28 +477,46 @@ step_mirror(){
     
     if [ "$NON_INTERACTIVE" = "1" ]; then
       # In non-interactive mode, let termux-change-repo auto-select
-      run_with_progress "Auto-selecting fastest mirror" 15 termux-change-repo
+      if run_with_progress "Auto-selecting fastest mirror" 15 termux-change-repo >/dev/null 2>&1; then
+        ok "Repository mirror configured successfully"
+        return 0
+      else
+        warn "termux-change-repo failed, setting up default configuration"
+      fi
     else
       # Interactive mode - let user choose via termux-change-repo interface
       pecho "$PASTEL_CYAN" "The official Termux mirror selection tool will now start."
       info "• Choose your preferred mirror or let it auto-select"
       info "• This will configure both main and X11 repositories"
       echo ""
-      termux-change-repo
-    fi
-    
-    if [ $? -eq 0 ]; then
-      ok "Repository mirror configured successfully"
-      return 0
-    else
-      warn "Mirror configuration failed, continuing with defaults"
-      return 1
+      if termux-change-repo; then
+        ok "Repository mirror configured successfully"
+        return 0
+      else
+        warn "termux-change-repo failed, setting up default configuration"
+      fi
     fi
   else
-    warn "termux-change-repo not available, using default repository configuration"
-    return 1
+    info "termux-change-repo not available, setting up default repository configuration"
   fi
   
+  # Fallback: Ensure basic repository configuration exists
+  run_with_progress "Setting up default repository configuration" 10 bash -c '
+    # Initialize APT environment
+    mkdir -p "$PREFIX/etc/apt/sources.list.d" 2>/dev/null || true
+    mkdir -p "$PREFIX/var/lib/apt/lists" 2>/dev/null || true
+    mkdir -p "$PREFIX/var/cache/apt/archives" 2>/dev/null || true
+    
+    # Create basic sources.list if it doesn'\''t exist or is empty
+    if [ ! -s "$PREFIX/etc/apt/sources.list" ]; then
+      echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
+    fi
+    
+    # Ensure we have a basic package list
+    pkg update >/dev/null 2>&1 || apt update >/dev/null 2>&1 || true
+  '
+  
+  ok "Default repository configuration applied"
   mark_step_status "success"
 }
 
@@ -499,8 +531,16 @@ step_bootstrap(){
 step_x11repo(){
   # Repository configuration is already handled by termux-change-repo in step_mirror
   
-  # Use apt directly as pkg is not reliable for x11-repo
-  simple_run_with_progress "Add X11 repository" bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1' || true
+  # Use official method to add X11 repository with spinner and hidden output
+  run_with_progress "Adding X11 repository" 15 bash -c '
+    # Install x11-repo using official methods
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y x11-repo >/dev/null 2>&1 || apt install -y x11-repo >/dev/null 2>&1
+    else
+      apt install -y x11-repo >/dev/null 2>&1
+    fi
+  ' || true
+  
   mark_step_status "success"
 }
 

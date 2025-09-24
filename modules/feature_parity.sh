@@ -16,11 +16,17 @@ readonly _CAD_FEATURE_PARITY_LOADED=1
 setup_proot_containers(){
   info "Setting up Linux container support..."
   
-  # Repository configuration is handled by termux-change-repo
+  # Repository configuration is already handled by termux-change-repo
   
-  # Install proot-distro using apt (more reliable than pkg)
+  # Install proot-distro using official Termux methods with spinner and hidden output
   if ! command -v proot-distro >/dev/null 2>&1; then
-    run_with_progress "Install proot-distro (apt)" 30 bash -c 'yes | DEBIAN_FRONTEND=noninteractive apt install -y proot-distro >/dev/null 2>&1 || [ $? -eq 100 ]'
+    run_with_progress "Installing proot-distro" 35 bash -c '
+      if command -v pkg >/dev/null 2>&1; then
+        pkg install -y proot-distro >/dev/null 2>&1 || apt install -y proot-distro >/dev/null 2>&1
+      else
+        apt install -y proot-distro >/dev/null 2>&1
+      fi
+    '
   fi
   
   if ! command -v proot-distro >/dev/null 2>&1; then
@@ -189,26 +195,40 @@ display_feature_parity_options(){
 install_additional_features(){
   info "Installing additional development features..."
   
-  # Build tools
-  if command -v pkg >/dev/null 2>&1; then
-    run_with_progress "Install build tools" 60 bash -c '
-      pkg install -y build-essential clang cmake ninja git >/dev/null 2>&1 || [ $? -eq 100 ]
-    '
-  fi
-  
-  # Python development environment  
-  run_with_progress "Install Python environment" 45 bash -c '
-    pkg install -y python python-pip >/dev/null 2>&1 || [ $? -eq 100 ]
+  # Build tools using official Termux methods
+  run_with_progress "Installing build tools" 60 bash -c '
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y build-essential clang cmake ninja git >/dev/null 2>&1 || apt install -y build-essential clang cmake ninja git >/dev/null 2>&1 || true
+    else
+      apt install -y build-essential clang cmake ninja git >/dev/null 2>&1 || true
+    fi
   '
   
-  # Node.js for web development
-  run_with_progress "Install Node.js" 30 bash -c '
-    pkg install -y nodejs npm >/dev/null 2>&1 || [ $? -eq 100 ]
+  # Python development environment using official methods
+  run_with_progress "Installing Python environment" 45 bash -c '
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y python python-pip >/dev/null 2>&1 || apt install -y python python-pip >/dev/null 2>&1 || true
+    else
+      apt install -y python python-pip >/dev/null 2>&1 || true
+    fi
   '
   
-  # Additional utilities
-  run_with_progress "Install utilities" 30 bash -c '
-    pkg install -y htop neofetch tree zip unzip >/dev/null 2>&1 || [ $? -eq 100 ]
+  # Node.js for web development using official methods
+  run_with_progress "Installing Node.js" 30 bash -c '
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y nodejs npm >/dev/null 2>&1 || apt install -y nodejs npm >/dev/null 2>&1 || true
+    else
+      apt install -y nodejs npm >/dev/null 2>&1 || true
+    fi
+  '
+  
+  # Additional utilities using official methods
+  run_with_progress "Installing utilities" 30 bash -c '
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y htop neofetch tree zip unzip >/dev/null 2>&1 || apt install -y htop neofetch tree zip unzip >/dev/null 2>&1 || true
+    else
+      apt install -y htop neofetch tree zip unzip >/dev/null 2>&1 || true
+    fi
   '
   
   ok "Additional features installed"

@@ -817,13 +817,31 @@ install_runtime_library() {
   
   case "$lib" in
     "pcre2")
-      run_with_progress "Install libpcre2 (apt)" 15 bash -c 'yes | apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || [ $? -eq 100 ]'
+      run_with_progress "Installing libpcre2" 20 bash -c '
+        if command -v pkg >/dev/null 2>&1; then
+          pkg install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1 || apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1
+        else
+          apt install -y libpcre2-8-0 pcre2-utils >/dev/null 2>&1
+        fi
+      '
       ;;
     "libgmp")
-      run_with_progress "Install libgmp (apt)" 15 bash -c 'yes | apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || [ $? -eq 100 ]'
+      run_with_progress "Installing libgmp" 20 bash -c '
+        if command -v pkg >/dev/null 2>&1; then
+          pkg install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1 || apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1
+        else
+          apt install -y libgmp10 libgmpxx4ldbl >/dev/null 2>&1
+        fi
+      '
       ;;
     "openssl")
-      run_with_progress "Install openssl (apt)" 15 bash -c 'yes | apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || [ $? -eq 100 ]'
+      run_with_progress "Installing OpenSSL" 20 bash -c '
+        if command -v pkg >/dev/null 2>&1; then
+          pkg install -y openssl libssl3 libssl-dev >/dev/null 2>&1 || apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1
+        else
+          apt install -y openssl libssl3 libssl-dev >/dev/null 2>&1
+        fi
+      '
       ;;
     *)
       warn "Unknown library: $lib"
