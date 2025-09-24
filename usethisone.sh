@@ -3742,20 +3742,20 @@ install_host_launcher(){
   printf '%s\n' \
     "#!/usr/bin/env bash" \
     "# Launch desktop in portrait mode for productivity" \
-    "export DISPLAY=:0" \
+    "export DISPLAY=:1" \
     "" \
     "# Termux installation prefix" \
     "TP=\"/data/data/com.termux/files/usr\"" \
     "" \
     "# Start X11 server in portrait mode if not running" \
     "if ! pgrep -f termux-x11 >/dev/null 2>&1; then" \
-    "  \"\$TP/bin/termux-x11\" :0 -geometry 1080x1920 >/dev/null 2>&1 &" \
+    "  \"\$TP/bin/termux-x11\" :1 -geometry 1080x1920 >/dev/null 2>&1 &" \
     "  sleep 2" \
     "fi" \
     "" \
     "# Start XFCE desktop session if not running" \
     "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
-    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  DISPLAY=:1 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
     "  sleep 2" \
     "fi" \
     "" \
@@ -3780,16 +3780,16 @@ install_host_launcher(){
     "sleep 1" \
     "" \
     "# Start X11 server in landscape mode for streaming" \
-    "\"\$TP/bin/termux-x11\" :0 -geometry 1920x1080 >/dev/null 2>&1 &" \
+    "\"\$TP/bin/termux-x11\" :1 -geometry 1920x1080 >/dev/null 2>&1 &" \
     "sleep 3" \
     "" \
     "# Configure display resolution" \
-    "export DISPLAY=:0" \
+    "export DISPLAY=:1" \
     "xrandr --output default --mode 1920x1080 2>/dev/null || true" \
     "" \
     "# Start XFCE desktop session if not running" \
     "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
-    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  DISPLAY=:1 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
     "  sleep 3" \
     "fi" \
     "" \
@@ -4076,7 +4076,7 @@ tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & 
 tmux wait ssh_ready
 
 # Connect to the container via SSH with X11 forwarding and start XFCE
-ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:0 && termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:1 && termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"'
 
 # Clean up tmux session when done
 tmux kill-session -t rootlog 2>/dev/null || true
@@ -4129,9 +4129,9 @@ tmux wait services_ready
 
 # Connect with X11 forwarding and start XFCE with Sunshine
 ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" '
-export DISPLAY=:0
+export DISPLAY=:1
 sunshine --config-dir ~/.config/sunshine &
-termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"
+termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"
 '
 
 # Clean up tmux session when done
@@ -4718,8 +4718,8 @@ step_bootstrap(){
 
 # Step 4: Enable X11 repository for desktop packages with safe retry logic
 step_x11repo(){ 
-  local commands=("apt-get update || true" "apt-get -y install x11-repo || [ \$? -eq 100 ] || false" "apt-get update || true") 
-  local labels=("Update apt lists" "Install x11-repo" "Refresh lists") 
+  local commands=("apt-get update || true" "apt-get -y install x11-repo || [ \$? -eq 100 ] || false" "apt-get update || true" "apt-get -y install termux-x11-nightly || true") 
+  local labels=("Update apt lists" "Install x11-repo" "Refresh lists" "Install termux-x11-nightly") 
   local cmd_index=0
   local max_attempts=3
   
@@ -5176,6 +5176,20 @@ step_coreinst(){
       break  # Safety break
     fi
   done
+  
+  # After git is installed, clone termux-x11 repository with submodules
+  if dpkg_is_installed git; then
+    info "Cloning termux-x11 repository with submodules..."
+    local termux_x11_dir="$HOME/termux-x11"
+    if [ ! -d "$termux_x11_dir" ]; then
+      run_with_progress "Clone termux-x11" 15 bash -c "
+        cd \$HOME && 
+        git clone --recurse-submodules https://github.com/termux/termux-x11 >/dev/null 2>&1 || true
+      "
+    else
+      info "termux-x11 repository already exists - skipping clone"
+    fi
+  fi
   
   mark_step_status "success"
 }
