@@ -4065,12 +4065,22 @@ pkill -f "termux-x11" 2>/dev/null || true
 # Start Termux:X11
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 
+# Clean up any existing tmux sessions first
+tmux kill-session -t rootlog 2>/dev/null || true
+
 # Create new tmux session for container setup
 tmux new -s rootlog -d
 
 # Send commands to tmux session to setup SSH daemon
 tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
-tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started' && tmux wait -S ssh_ready" enter
+tmux send-keys "# Check if SSH is configured and start daemon" enter 
+tmux send-keys "if [ -f /etc/ssh/sshd_config ] && [ -f /usr/sbin/sshd ]; then" enter
+tmux send-keys "  /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started on port $SSH_PORT'" enter
+tmux send-keys "else" enter
+tmux send-keys "  echo 'SSH not configured, attempting basic start...'" enter
+tmux send-keys "  /usr/sbin/sshd -D -p $SSH_PORT 2>/dev/null & echo 'SSH daemon started (basic)'" enter
+tmux send-keys "fi" enter
+tmux send-keys "tmux wait -S ssh_ready" enter
 
 # Wait for SSH daemon to be ready
 tmux wait ssh_ready
@@ -4115,13 +4125,22 @@ echo "Username: $SSH_USERNAME"
 # Start Termux:X11
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 
+# Clean up any existing tmux sessions first
+tmux kill-session -t sunshine_session 2>/dev/null || true
+
 # Create new tmux session for container setup
 tmux new -s sunshine_session -d
 
 # Setup SSH daemon and Sunshine in the container
 tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
-tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
-tmux send-keys "sudo systemctl start sunshine || sudo sunshine --service & echo 'Sunshine started'" enter
+tmux send-keys "# Check if SSH is configured and start daemon" enter
+tmux send-keys "if [ -f /etc/ssh/sshd_config ] && [ -f /usr/sbin/sshd ]; then" enter
+tmux send-keys "  /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started on port $SSH_PORT'" enter
+tmux send-keys "else" enter
+tmux send-keys "  echo 'SSH not configured, attempting basic start...'" enter
+tmux send-keys "  /usr/sbin/sshd -D -p $SSH_PORT 2>/dev/null & echo 'SSH daemon started (basic)'" enter
+tmux send-keys "fi" enter
+tmux send-keys "sunshine --config-dir ~/.config/sunshine & echo 'Sunshine started'" enter
 tmux send-keys "echo 'Services ready' && tmux wait -S services_ready" enter
 
 # Wait for services to be ready
