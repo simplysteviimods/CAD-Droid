@@ -990,13 +990,21 @@ draw_phase_header(){
   # Draw top border
   gradient_line "$start" "$end" "="
   
-  # Handle multi-line text by centering each line separately (like intro cards handle title/subtitle)
+  # Split text into first line and second line (same as draw_card title/subtitle)
   if [ -n "$text" ]; then
-    while IFS= read -r line; do
-      if [ -n "$line" ]; then
-        printf "%b%s%b\n" "$mid" "$(center_text "$line")" '\033[0m'
-      fi
-    done <<< "$text"
+    local first_line second_line
+    first_line=$(echo "$text" | head -1)
+    second_line=$(echo "$text" | tail -n +2 | head -1)
+    
+    # Display first line (like title)
+    if [ -n "$first_line" ]; then
+      printf "%b%s%b\n" "$mid" "$(center_text "$first_line")" '\033[0m'
+    fi
+    
+    # Display second line (like subtitle)
+    if [ -n "$second_line" ]; then
+      printf "%b%s%b\n" "$mid" "$(center_text "$second_line")" '\033[0m'
+    fi
   fi
   
   # Draw bottom border
@@ -2857,7 +2865,7 @@ count_successful_steps(){
   echo "$count"
 }
 
-# Show completion summary with statistics using safe array operations
+# Show completion summary with enhanced post-completion card
 show_completion_summary(){
   local successful=0 failed=0 total_steps="${TOTAL_STEPS:-0}"
   
@@ -2881,10 +2889,113 @@ show_completion_summary(){
     failed=0
   fi
   
-  draw_card "Setup Complete!" "Successfully completed $successful/$total_steps steps"
+  # Use enhanced completion card from modular approach
+  draw_card "CAD-Droid Setup Complete!" "Your Android device is now a powerful development workstation"
+  
+  printf "${PASTEL_CYAN}What's been installed:${RESET}\n"
+  printf "${PASTEL_GREEN}OK${RESET} Core system packages and development tools\n"
+  printf "${PASTEL_GREEN}OK${RESET} Optimized repository mirrors for your region\n"
+  printf "${PASTEL_GREEN}OK${RESET} Enhanced Termux configuration and themes\n"
+  printf "${PASTEL_GREEN}OK${RESET} Essential Termux APKs downloaded and ready\n"
+  if [ "$ENABLE_ADB" = "1" ]; then
+    printf "${PASTEL_GREEN}OK${RESET} ADB wireless debugging setup\n"
+  fi
+  printf "${PASTEL_GREEN}OK${RESET} Git configuration and user setup\n"
+  if [ "$ENABLE_WIDGETS" = "1" ]; then
+    printf "${PASTEL_GREEN}OK${RESET} Productivity widgets and shortcuts\n"
+  fi
+  printf "${PASTEL_GREEN}OK${RESET} Pastel-themed configurations throughout\n\n"
+  
+  printf "${PASTEL_CYAN}Quick Start Commands:${RESET}\n"
+  printf "${PASTEL_LAVENDER}CAD Manager:${RESET} cad-droid\n"
+  printf "${PASTEL_LAVENDER}System Info:${RESET} cad-droid info\n"
+  printf "${PASTEL_LAVENDER}Update System:${RESET} cad-droid update\n"
+  if [ "$ENABLE_WIDGETS" = "1" ]; then
+    printf "${PASTEL_LAVENDER}Widget Shortcuts:${RESET} widgets\n"
+  fi
+  printf "${PASTEL_LAVENDER}Configuration:${RESET} ~/.termux/\n\n"
+  
+  printf "${PASTEL_YELLOW}System Information:${RESET}\n"
+  printf "${PASTEL_CYAN}• Termux Username: ${TERMUX_USERNAME:-user}${RESET}\n"
+  printf "${PASTEL_CYAN}• Phone Type: ${TERMUX_PHONETYPE:-unknown}${RESET}\n"
+  printf "${PASTEL_CYAN}• Git User: ${GIT_USERNAME:-not set}${RESET}\n"
+  printf "${PASTEL_CYAN}• Steps Completed: $successful/$total_steps${RESET}\n\n"
   
   if [ "$failed" -gt 0 ] 2>/dev/null; then
     warn "$failed steps had issues - check logs for details"
+  fi
+  
+  printf "${PASTEL_YELLOW}IMPORTANT: Termux restart recommended to apply all changes${RESET}\n"
+}
+
+# Add post-completion Termux environment intro card
+show_post_completion_intro(){
+  if [ "$NON_INTERACTIVE" != "1" ]; then
+    echo
+    draw_card "Termux Environment Setup Guide" "Quick start tips for your new development environment"
+    
+    printf "${PASTEL_CYAN}Getting Started:${RESET}\n"
+    printf "${PASTEL_GREEN}1.${RESET} Restart Termux now to activate all configurations\n"
+    printf "${PASTEL_GREEN}2.${RESET} Your prompt should now show pastel colors\n"
+    printf "${PASTEL_GREEN}3.${RESET} Type 'cad-droid info' to see system status\n"
+    if [ "$ENABLE_WIDGETS" = "1" ]; then
+      printf "${PASTEL_GREEN}4.${RESET} Add Termux widgets to your home screen for quick access\n"
+    fi
+    echo
+    
+    printf "${PASTEL_CYAN}Essential Commands:${RESET}\n"
+    printf "${PASTEL_LAVENDER}pkg update && pkg upgrade${RESET} - Update all packages\n"
+    printf "${PASTEL_LAVENDER}termux-setup-storage${RESET} - Access phone storage\n"
+    printf "${PASTEL_LAVENDER}nano ~/.bashrc${RESET} - Customize your shell\n"
+    printf "${PASTEL_LAVENDER}git config --list${RESET} - Check git configuration\n"
+    echo
+    
+    printf "${PASTEL_YELLOW}Next Steps:${RESET}\n"
+    printf "${PASTEL_PINK}• Install the APKs you downloaded earlier${RESET}\n"
+    printf "${PASTEL_PINK}• Explore the ~/.termux/ configuration directory${RESET}\n"
+    printf "${PASTEL_PINK}• Set up your development projects in ~/projects/${RESET}\n"
+    if [ "$ENABLE_ADB" = "1" ]; then
+      printf "${PASTEL_PINK}• Test ADB connection: adb devices${RESET}\n"
+    fi
+    echo
+    
+    printf "${PASTEL_LAVENDER}Press Enter to restart Termux and complete setup...${RESET} "
+    read -r || true
+    
+    # Perform Termux restart
+    perform_termux_restart
+  else
+    printf "${PASTEL_LAVENDER}Run 'exit' and restart Termux to complete setup${RESET}\n"
+  fi
+}
+
+# Enhanced Termux restart functionality from modular approach
+perform_termux_restart(){
+  info "Restarting Termux to apply all changes..."
+  
+  # Create restart indicator
+  touch "$HOME/.cad-restart-indicator" 2>/dev/null || true
+  
+  # Show countdown
+  printf "\n${PASTEL_YELLOW}Restarting Termux in...${RESET}\n"
+  for i in 3 2 1; do
+    printf "${PASTEL_CYAN}$i${RESET}..."
+    sleep 1
+  done
+  printf "${PASTEL_GREEN}GO!${RESET}\n\n"
+  
+  # Try to restart Termux using Android intents
+  if command -v am >/dev/null 2>&1; then
+    info "Closing and reopening Termux for clean environment reload..."
+    # Close Termux
+    am force-stop com.termux 2>/dev/null || true
+    sleep 2
+    # Reopen Termux
+    am start -n com.termux/com.termux.app.TermuxActivity 2>/dev/null || true
+  else
+    # Fallback to bash restart
+    info "Restarting bash session..."
+    exec "$PREFIX/bin/bash" -l
   fi
 }
 
@@ -3471,6 +3582,103 @@ create_widget_shortcuts(){
   local shortcuts_dir="$HOME/.shortcuts"
   mkdir -p "$shortcuts_dir" 2>/dev/null || return 1
 
+  info "Creating enhanced Termux widget shortcuts..."
+  
+  # CRITICAL: Phantom Process Killer shortcut (most important for system stability)
+  cat > "$shortcuts_dir/phantom-killer" << 'PHANTOM_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Phantom Process Killer - Critical for system stability
+echo -e "\033[1;33mDisabling phantom process killer...\033[0m"
+adb shell "settings put global settings_enable_monitor_phantom_procs false"
+echo -e "\033[1;32mPhantom process killer disabled!\033[0m"
+echo "Your apps should now run more reliably"
+echo "Press any key to continue..."
+read -n 1
+PHANTOM_EOF
+  chmod +x "$shortcuts_dir/phantom-killer"
+
+  # ADB Connect shortcut
+  cat > "$shortcuts_dir/adb-connect" << 'ADB_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# ADB Wireless Connection
+echo -e "\033[1;36mConnecting ADB wirelessly...\033[0m"
+adb connect 127.0.0.1:5555 2>/dev/null || echo "ADB connection failed - ensure wireless debugging is enabled"
+echo ""
+echo -e "\033[1;33mADB device status:\033[0m"
+adb devices
+echo "Press any key to continue..."
+read -n 1
+ADB_EOF
+  chmod +x "$shortcuts_dir/adb-connect"
+  
+  # Enhanced System Info shortcut with fallbacks
+  cat > "$shortcuts_dir/system-info" << 'SYSINFO_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# System Information Display
+echo -e "\033[1;36mCAD-Droid System Info\033[0m"
+echo "========================"
+
+# Battery info with fallback
+if command -v termux-battery-status >/dev/null 2>&1; then
+  echo "Battery: $(termux-battery-status 2>/dev/null | jq -r '.percentage' 2>/dev/null || echo 'N/A')%"
+else
+  echo "Battery: Termux:API not available"
+fi
+
+# Network info with fallback
+if command -v termux-wifi-connectioninfo >/dev/null 2>&1; then
+  echo "Network: $(termux-wifi-connectioninfo 2>/dev/null | jq -r '.ssid' 2>/dev/null || echo 'N/A')"
+else
+  echo "Network: Termux:API not available"
+fi
+
+# Storage info
+echo "Storage: $(df -h $HOME 2>/dev/null | tail -1 | awk '{print $4}' || echo 'N/A') free"
+
+# System load
+echo "Uptime: $(uptime | awk -F',' '{print $1}' | awk '{print $3,$4}' || echo 'N/A')"
+
+echo ""
+echo "Termux Username: ${TERMUX_USERNAME:-unknown}"
+echo "Git User: ${GIT_USERNAME:-not set}"
+echo "Press any key to continue..."
+read -n 1
+SYSINFO_EOF
+  chmod +x "$shortcuts_dir/system-info"
+  
+  # File Manager shortcut
+  cat > "$shortcuts_dir/file-manager" << 'FM_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Quick File Manager
+echo -e "\033[1;36mOpening file manager...\033[0m"
+if command -v termux-open >/dev/null 2>&1; then
+    termux-open $HOME
+    echo "File manager opened"
+else
+    echo -e "\033[1;33mTermux:API not available, showing directory listing:\033[0m"
+    ls -la $HOME
+fi
+echo "Press any key to continue..."
+read -n 1
+FM_EOF
+  chmod +x "$shortcuts_dir/file-manager"
+  
+  # Package Update shortcut
+  cat > "$shortcuts_dir/pkg-update" << 'PKG_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Quick Package Update
+echo -e "\033[1;36mUpdating packages...\033[0m"
+if command -v pkg >/dev/null 2>&1; then
+    pkg update -y && pkg upgrade -y
+else
+    apt update && apt upgrade -y
+fi
+echo -e "\033[1;32mPackages updated successfully!\033[0m"
+echo "Press any key to continue..."
+read -n 1
+PKG_EOF
+  chmod +x "$shortcuts_dir/pkg-update"
+
   # Create Linux Desktop shortcut (Portrait Mode for Productivity)
   cat > "$shortcuts_dir/Linux Desktop.sh" <<'DESKTOP_WIDGET_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -3491,33 +3699,7 @@ fi
 
 echo "Desktop started in Portrait Mode for optimal productivity."
 DESKTOP_WIDGET_EOF
-
-  # Create Professional Workspace shortcut (Landscape Mode for Presentations/Streaming)
-  cat > "$shortcuts_dir/Professional Workspace.sh" <<'WORKSPACE_WIDGET_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "Starting Professional Workspace (Landscape Mode)..."
-
-# Stop existing X11 server to change orientation
-pkill -f termux-x11 2>/dev/null || true
-sleep 1
-
-# Start X11 server in landscape mode for presentations and streaming
-DISPLAY=:0 termux-x11 :0 -geometry 1920x1080 >/dev/null 2>&1 &
-sleep 3
-
-# Configure display resolution for professional use
-export DISPLAY=:0
-xrandr --output default --mode 1920x1080 2>/dev/null || true
-
-# Start XFCE desktop optimized for presentations
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 xfce4-session >/dev/null 2>&1 & 
-  sleep 3
-fi
-
-pecho "$PASTEL_GREEN" "Professional Workspace Ready (Landscape Mode for presentations and streaming)!"
-WORKSPACE_WIDGET_EOF
+  chmod +x "$shortcuts_dir/Linux Desktop.sh"
 
   # Create Linux Terminal shortcut
   cat > "$shortcuts_dir/Linux Terminal.sh" <<'TERMINAL_WIDGET_EOF'
@@ -3528,69 +3710,18 @@ echo "Connecting to Linux container..."
 # Try to connect to available Linux distributions
 proot-distro login ubuntu || proot-distro login debian || proot-distro login archlinux || proot-distro login alpine
 TERMINAL_WIDGET_EOF
+  chmod +x "$shortcuts_dir/Linux Terminal.sh"
 
-  # Create System Status shortcut
-  cat > "$shortcuts_dir/System Status.sh" <<'STATUS_WIDGET_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "CAD-Droid Productivity System Status"
-echo "===================================="
+  ok "Enhanced productivity widget shortcuts created"
+  
+  # Provide detailed widget setup instructions
+  printf "\n${PASTEL_YELLOW}Widget Setup Instructions:${RESET}\n"
+  printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to your home screen\n"
+  printf "${PASTEL_CYAN}2.${RESET} ${PASTEL_RED}CRITICAL:${RESET} ${PASTEL_YELLOW}Add 'phantom-killer' widget first - essential for app stability!${RESET}\n"  
+  printf "${PASTEL_CYAN}3.${RESET} Available widgets: phantom-killer, adb-connect, system-info, file-manager, pkg-update\n"
+  printf "${PASTEL_CYAN}4.${RESET} Long press home screen → Widgets → Termux:Widget → Select shortcut\n"
+  printf "${PASTEL_CYAN}5.${RESET} Desktop shortcuts: 'Linux Desktop.sh', 'Linux Terminal.sh'\n\n"
 
-PREFIX="/data/data/com.termux/files/usr"
-
-# Check X11 desktop status
-if pgrep -f termux-x11 >/dev/null 2>&1; then 
-  pecho "$PASTEL_GREEN" "✓ Termux-X11: Running"
-else 
-  echo "✗ Termux-X11: Not running"
-fi
-
-# Check XFCE desktop status
-if pgrep -f xfce4-session >/dev/null 2>&1; then 
-  pecho "$PASTEL_GREEN" "✓ XFCE Desktop: Running"
-else 
-  echo "✗ XFCE Desktop: Not running"
-fi
-
-echo ""
-echo "Linux Containers:"
-
-# Check status of each possible Linux distribution
-for d in ubuntu debian archlinux alpine; do
-  if [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$d" ]; then
-    pecho "$PASTEL_GREEN" "✓ $d: Installed"
-    
-    # Check SSH status if configured
-    if [ -f "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/port.txt" ]; then
-      p=$(cat "$PREFIX/var/lib/proot-distro/installed-rootfs/$d/root/port.txt")
-      if ss -ltn 2>/dev/null | grep -q ":$p "; then 
-        echo "  ✓ SSH: Listening on port $p"
-      else 
-        echo "  ✗ SSH: Not listening"
-      fi
-    fi
-  fi
-done
-
-# Check Sunshine remote desktop status
-if pgrep -f sunshine >/dev/null 2>&1; then 
-  pecho "$PASTEL_GREEN" "✓ Sunshine: Running"
-else 
-  echo "✗ Sunshine: Not running"
-fi
-
-echo ""
-
-# Display storage usage information
-df -h "$PREFIX" 2>/dev/null | tail -1 | awk '{print "Termux Storage: "$3"/"$2" ("$5" used)"}'
-
-# Show shared storage if available
-[ -d "$HOME/storage/shared" ] && df -h "$HOME/storage/shared" 2>/dev/null | tail -1 | awk '{print "Shared Storage: "$3"/"$2" ("$5" used)"}'
-STATUS_WIDGET_EOF
-
-  # Make all shortcuts executable
-  chmod +x "$shortcuts_dir"/*.sh 2>/dev/null || true
-  ok "Productivity widget shortcuts created"
 }
 
 # --- System Snapshot Functions ---
@@ -4329,7 +4460,7 @@ step_usercfg(){
   mark_step_status "success"
 }
 
-# Step 10: Enhanced ADB Wireless Setup with skip option
+# Step 10: Enhanced ADB Wireless Setup with phantom process killer support
 step_adb(){
   # Check if ADB is completely disabled or skipped
   if [ "$ENABLE_ADB" != "1" ] || [ "$SKIP_ADB" = "1" ]; then
@@ -4342,15 +4473,21 @@ step_adb(){
     return 0
   fi
   
-  # Ask user if they want to skip ADB setup (unless in non-interactive mode)
+  # Enhanced intro emphasizing phantom process killer importance
   if [ "$NON_INTERACTIVE" != "1" ]; then
     echo ""
+    draw_phase_header "ADB SETUP - CRITICAL FOR SYSTEM STABILITY"
+    echo ""
+    printf "${PASTEL_RED}IMPORTANT:${RESET} ${PASTEL_YELLOW}ADB setup is essential for disabling the phantom process killer!${RESET}\n"
+    printf "Without this step, your apps may be randomly terminated by Android.\n\n"
+    
     info "Android Debug Bridge (ADB) Wireless Setup"
-    format_body_text "ADB allows you to connect wirelessly to your device for development and debugging. This is useful for advanced development workflows but is optional for basic usage."
+    format_body_text "ADB allows wireless connection to your device for development and debugging. Most importantly, it lets us disable Android's phantom process killer, which can randomly terminate background apps including Termux processes."
     echo ""
     
-    if ! ask_yes_no "Set up ADB wireless debugging?" "y"; then
-      info "Skipping ADB wireless setup"
+    if ! ask_yes_no "Set up ADB wireless debugging? (HIGHLY RECOMMENDED)" "y"; then
+      warn "Skipping ADB setup - phantom process killer will remain active"
+      warn "Your apps may be unexpectedly terminated by Android"
       mark_step_status "skipped"
       return 0
     fi
@@ -4358,7 +4495,7 @@ step_adb(){
   
   info "Setting up Android Debug Bridge (ADB) wireless connection..."
   echo ""
-  format_body_text "This allows you to connect wirelessly to your device for development. You'll need to enable Developer Options and Wireless Debugging on your Android device."
+  format_body_text "This setup will enable wireless debugging and disable the phantom process killer for better app stability."
   echo ""
   
   if [ "$NON_INTERACTIVE" != "1" ]; then
@@ -4404,8 +4541,92 @@ step_adb(){
   info "5. Tap 'Pair device with pairing code'"
   
   # Now run the actual ADB helper with enhanced detection
-  adb_wireless_helper
+  if adb_wireless_helper; then
+    # CRITICAL: Disable phantom process killer for system stability
+    echo ""
+    printf "${PASTEL_YELLOW}Now disabling phantom process killer for better app stability...${RESET}\n"
+    sleep 2
+    
+    if disable_phantom_process_killer; then
+      ok "Phantom process killer disabled - your apps should run more reliably!"
+    else
+      warn "Could not disable phantom process killer - apps may still be terminated randomly"
+      warn "You can use the 'phantom-killer' widget later to disable it manually"
+    fi
+    
+    # Set up automatic phantom killer disable for future reboots
+    setup_phantom_killer_auto_disable
+  else
+    warn "ADB setup incomplete - phantom process killer remains active"
+  fi
+  
   mark_step_status "success"
+}
+
+# Disable Android phantom process killer via ADB
+disable_phantom_process_killer(){
+  info "Attempting to disable phantom process killer..."
+  
+  # Check if ADB is connected to any devices
+  if ! adb devices 2>/dev/null | grep -q "device$"; then
+    warn "No ADB devices connected - cannot disable phantom process killer"
+    return 1
+  fi
+  
+  # Try to disable phantom process killer
+  if adb shell "settings put global settings_enable_monitor_phantom_procs false" 2>/dev/null; then
+    # Verify the setting was applied
+    local setting_value
+    setting_value=$(adb shell "settings get global settings_enable_monitor_phantom_procs" 2>/dev/null | tr -d '\r')
+    
+    if [ "$setting_value" = "false" ] || [ "$setting_value" = "0" ]; then
+      printf "${PASTEL_GREEN}SUCCESS:${RESET} Phantom process killer disabled\n"
+      return 0
+    else
+      printf "${PASTEL_YELLOW}WARNING:${RESET} Setting may not have applied correctly (got: $setting_value)\n"
+      return 1
+    fi
+  else
+    printf "${PASTEL_RED}FAILED${RESET} to disable phantom process killer\n"
+    printf "This may be due to insufficient ADB permissions.\n"
+    printf "Try: Settings → Developer Options → Disable 'Remove background activities'\n"
+    return 1
+  fi
+}
+
+# Set up automatic phantom process killer disable
+setup_phantom_killer_auto_disable(){
+  info "Setting up automatic phantom process killer disable..."
+  
+  # Create boot directory for Termux:Boot integration
+  local boot_dir="$HOME/.termux/boot"
+  mkdir -p "$boot_dir" 2>/dev/null || true
+  
+  # Create boot script for phantom process killer disable
+  local boot_script="$boot_dir/disable-phantom-killer.sh"
+  cat > "$boot_script" << 'BOOT_SCRIPT_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# Auto-disable phantom process killer on device boot
+# This ensures the phantom process killer stays disabled
+
+# Wait for system to be ready
+sleep 30
+
+# Check if ADB is available and connected
+if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -q "device$"; then
+    # Try to disable phantom process killer
+    if adb shell "settings put global settings_enable_monitor_phantom_procs false" 2>/dev/null; then
+        echo "$(date): Phantom process killer disabled via boot script" >> ~/.termux/boot/phantom-killer.log
+    else
+        echo "$(date): Failed to disable phantom process killer - ADB not ready" >> ~/.termux/boot/phantom-killer.log
+    fi
+else
+    echo "$(date): ADB not available for phantom process killer disable" >> ~/.termux/boot/phantom-killer.log
+fi
+BOOT_SCRIPT_EOF
+
+  chmod +x "$boot_script" 2>/dev/null || true
+  ok "Automatic phantom process killer disable configured"
 }
 
 # Step 11: Pre-download core packages for faster installation
@@ -4559,6 +4780,7 @@ step_final(){
   
   # Configure Bash environment
   configure_bash_environment
+  configure_enhanced_bash_prompt
   
   # Configure Nano editor
   configure_nano_editor
@@ -4767,6 +4989,103 @@ setup_github_ssh_key_with_timeout(){
   else
     info "Non-interactive mode: GitHub setup instructions provided"
   fi
+}
+
+# Configure enhanced Bash prompt with modular improvements
+configure_enhanced_bash_prompt(){
+  local bashrc="$HOME/.bashrc"
+  
+  # Check if enhanced prompt is already configured
+  if grep -q "# CAD-Droid enhanced prompt theme" "$bashrc" 2>/dev/null; then
+    debug "Enhanced bash prompt theme already configured"
+    return 0
+  fi
+  
+  info "Configuring enhanced pink username and purple input theme..."
+  
+  # Persist current TERMUX_USERNAME/PHONETYPE to environment
+  if ! grep -q '^export TERMUX_USERNAME=' "$bashrc" 2>/dev/null; then
+    printf "export TERMUX_USERNAME=%q\n" "${TERMUX_USERNAME:-}" >> "$bashrc"
+  fi
+  if ! grep -q '^export TERMUX_PHONETYPE=' "$bashrc" 2>/dev/null; then
+    printf "export TERMUX_PHONETYPE=%q\n" "${TERMUX_PHONETYPE:-}" >> "$bashrc"
+  fi
+
+  # Add enhanced prompt configuration to ~/.bashrc
+  cat >> "$bashrc" << 'ENHANCED_BASH_PROMPT_EOF'
+
+# CAD-Droid enhanced prompt theme
+# Pastel pink username, pastel purple typed text with welcome screen
+cad_reset='\[\e[0m\]'
+cad_pastel_pink='\[\e[38;5;217m\]'    # Pastel pink for username
+cad_pastel_cyan='\[\e[38;5;159m\]'    # Pastel cyan for path
+cad_pastel_purple='\[\e[38;5;183m\]'  # Pastel purple for input text
+
+# Compose display name from TERMUX_USERNAME or fallback to \u@\h
+if [ -n "${TERMUX_USERNAME:-}" ]; then
+  cad_name="${TERMUX_USERNAME}"
+else
+  cad_name='\u@\h'
+fi
+
+# CAD-Droid intro screen (shown once per session)
+if [ -z "${CAD_INTRO_SHOWN:-}" ]; then
+  export CAD_INTRO_SHOWN=1
+  echo ""
+  
+  # Create a gradient-style title card
+  card_width=55
+  title="Welcome to CAD-Droid"
+  subtitle="Your Android development environment"
+  
+  # Create gradient border using equal signs
+  border_chars=""
+  i=0
+  while [ $i -lt $card_width ]; do
+    border_chars="${border_chars}="
+    i=$((i + 1))
+  done
+  
+  # Top border with gradient color (cyan)
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
+  
+  # Title - centered with lavender color
+  title_padding=$(( (card_width - ${#title}) / 2 ))
+  printf "%*s\033[38;2;230;220;255m%s\033[0m\n" $title_padding "" "$title"
+  
+  # Subtitle - centered with gradient mid-tone
+  subtitle_padding=$(( (card_width - ${#subtitle}) / 2 ))
+  printf "%*s\033[38;2;175;238;238m%s\033[0m\n" $subtitle_padding "" "$subtitle"
+  
+  # Bottom border with gradient color
+  printf "\033[38;2;175;238;238m%s\033[0m\n" "$border_chars"
+  
+  echo ""
+  if [ -f "$HOME/.cad-droid-installed" ] || [ -f "$PWD/.cad-setup-complete" ]; then
+    printf "\033[38;2;195;245;195mOK\033[0m CAD-Droid installation \033[38;2;195;245;195mcomplete\033[0m\n"
+    echo ""
+    printf "\033[38;2;175;238;238mAvailable commands:\033[0m\n"
+    printf "  \033[38;2;230;220;255m•\033[0m cad-droid - System management\n"
+    printf "  \033[38;2;230;220;255m•\033[0m pkg update - Update packages\n"
+    printf "  \033[38;2;230;220;255m•\033[0m nano ~/.bashrc - Customize shell\n"
+  else
+    printf "\033[38;2;255;235;169mWARN\033[0m CAD-Droid installation \033[38;2;255;235;169mnot detected\033[0m\n"
+    printf "Run \033[38;2;230;220;255m./usethisone.sh\033[0m to install CAD-Droid\n"
+  fi
+  echo ""
+fi
+
+# Enhanced prompt: <pastel_pink>name</pastel_pink>:<pastel_cyan>cwd</pastel_cyan> and leave pastel purple color active for typed text
+PS1="${cad_pastel_pink}\${cad_name}${cad_reset}:${cad_pastel_cyan}\w${cad_reset} ${cad_pastel_purple}"
+
+# Reset color after each command so output returns to normal
+PROMPT_COMMAND="echo -ne '\033[0m'"
+ENHANCED_BASH_PROMPT_EOF
+  
+  # Set proper permissions
+  chmod 644 "$bashrc" 2>/dev/null || true
+  
+  ok "Enhanced bash prompt theme configured in ~/.bashrc"
 }
 
 # Configure Bash environment with useful settings
@@ -5006,67 +5325,67 @@ PERSONAL_CONFIG_EOF
 
 # Configure Nano editor with useful settings
 configure_nano_editor(){
-  info "Setting up a nice text editor for you..."
+  info "Configuring nano editor with enhanced pastel colors..."
   
-  # Make Nano much more pleasant to use
-  cat > "$HOME/.nanorc" << 'NANO_CONFIG_EOF'
-# Your personal Nano editor configuration
-# This makes editing files much more enjoyable
-#
-# Load all the built-in syntax highlighting
+  local nanorc="$HOME/.nanorc"
+  
+  # Check if nano color configuration is already present
+  if grep -q "# CAD-Droid nano theme" "$nanorc" 2>/dev/null; then
+    debug "Nano color theme already configured"
+    return 0
+  fi
+  
+  # Create comprehensive nano configuration with pastel theme
+  cat > "$nanorc" << 'NANO_CONFIG_EOF'
+# CAD-Droid nano configuration - Enhanced development editor
+# This configuration provides a beautiful, functional editing experience
+
+# CAD-Droid nano theme
+# Unified purple pastel colors for better readability
+set titlecolor brightwhite,magenta
+set statuscolor brightwhite,lightcyan
+set selectedcolor brightwhite,lightblue
+set stripecolor yellow
+set numbercolor lightcyan
+set keycolor lightcyan
+set functioncolor lightgreen
+
+# Syntax highlighting with pastel colors
 include "/data/data/com.termux/files/usr/share/nano/*.nanorc"
 
-# Interface improvements that make editing easier
+# Enhanced editor behavior
+set tabsize 2
+set autoindent
+set smooth
+set mouse
+set linenumbers
+set constantshow
+
+# Additional productivity features
 set titlebar        # Show the filename at the top
 set statusbar       # Show helpful info at the bottom  
-set linenumbers     # Show line numbers on the left
 set softwrap        # Wrap long lines nicely
-set softwrap
-# Show cursor position constantly
-set constantshow
-# Enable smooth scrolling
-set smooth
+set tabstospaces    # Convert tabs to spaces
+set smarthome       # Smart home key behavior
+set cutfromcursor   # Cut from cursor to end of line
+set multibuffer     # Enable multi-file buffer editing
 
-# ===== EDITING BEHAVIOR =====
-# Set tab size to 2 spaces (common for development)
-set tabsize 2
-# Convert tabs to spaces
-set tabstospaces
-# Enable auto-indentation
-set autoindent
-# Enable smart home key
-set smarthome
-# Use cut-to-end-of-line by default
-set cutfromcursor
-
-# ===== MOUSE AND INPUT =====
-# Enable mouse support for selections and positioning
-set mouse
-# Enable multi-file buffer editing
-set multibuffer
-
-# ===== SEARCH SETTINGS =====
-# Case-sensitive search by default
-set casesensitive
-# Enable regular expression search
-set regexp
-
-# ===== FILE HANDLING =====
-# Create backup files
-set backup
-# Store backups in dedicated directory
+# Search and file handling
+set casesensitive   # Case-sensitive search by default
+set regexp          # Enable regular expression search
+set backup          # Create backup files
 set backupdir "~/.nano/backups"
-# Automatically save on exit
-set tempfile
-
-# ===== PASTEL COLOR THEME =====
-# Main interface colors (pastel cyan theme)
-set titlecolor white,cyan
-set statuscolor white,green
-set numbercolor cyan,black
-set keycolor white,blue
-
-# Text colors (enhanced readability)
+set tempfile        # Automatically save on exit
+NANO_CONFIG_EOF
+  
+  # Create backup directory
+  mkdir -p "$HOME/.nano/backups" 2>/dev/null || true
+  
+  # Set proper permissions
+  chmod 644 "$nanorc" 2>/dev/null || true
+  
+  ok "Nano editor configured with enhanced pastel colors"
+}
 set functioncolor magenta
 set stringscolor yellow
 set commentcolor brightblack
@@ -5180,7 +5499,7 @@ main_execution(){
   
   # Show final completion message
   show_completion_summary
-  show_final_completion
+  show_post_completion_intro
 }
 
 # Error handling for the main script
