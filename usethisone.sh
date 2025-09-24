@@ -2471,24 +2471,66 @@ fetch_termux_addon(){
     
     # Find and move APK files to proper names
     local found_apk=0
-    for apk_file in "$outdir"/*.apk; do
-      if [ -f "$apk_file" ]; then
-        local current_name
-        current_name=$(basename "$apk_file")
-        
-        # If the current name is not the target name, rename it
-        if [ "$current_name" != "$target_name" ]; then
-          if mv "$apk_file" "$target_path" 2>/dev/null; then
-            debug "Renamed $current_name to $target_name"
+    
+    # First, check if target already exists with correct name
+    if [ -f "$target_path" ]; then
+      debug "APK already has correct name: $target_name"
+      found_apk=1
+    else
+      # Look for any APK files that need renaming
+      for apk_file in "$outdir"/*.apk; do
+        if [ -f "$apk_file" ]; then
+          local current_name
+          current_name=$(basename "$apk_file")
+          
+          # Skip if this is already the target name
+          if [ "$current_name" = "$target_name" ]; then
             found_apk=1
             break
           fi
-        else
-          found_apk=1
-          break
+          
+          # Check if this APK file matches the expected pattern for this addon
+          local should_rename=0
+          case "$name" in
+            "Termux-API"|"Termux:API")
+              if [[ "$current_name" =~ api ]]; then
+                should_rename=1
+              fi
+              ;;
+            "Termux-X11"|"Termux:X11") 
+              if [[ "$current_name" =~ (x11|X11|universal) ]]; then
+                should_rename=1
+              fi
+              ;;
+            "Termux-GUI"|"Termux:GUI")
+              if [[ "$current_name" =~ gui ]]; then
+                should_rename=1
+              fi
+              ;;
+            "Termux-Widget"|"Termux:Widget")
+              if [[ "$current_name" =~ widget ]]; then
+                should_rename=1
+              fi
+              ;;
+            *)
+              # For other names, rename any APK file
+              should_rename=1
+              ;;
+          esac
+          
+          # Rename if this is the right APK for this addon
+          if [ $should_rename -eq 1 ]; then
+            if mv "$apk_file" "$target_path" 2>/dev/null; then
+              debug "Renamed $current_name to $target_name"
+              found_apk=1
+              break
+            else
+              warn "Failed to rename $current_name to $target_name"
+            fi
+          fi
         fi
-      fi
-    done
+      done
+    fi
     
     # Clean up temporary directory
     rm -rf "$temp_apk_dir" 2>/dev/null || true
@@ -3786,9 +3828,22 @@ main(){
   # Install desktop launcher scripts
   install_host_launcher
   
-  # Save configuration for later reference
+  # Save configuration for later reference and to Termux credentials
   echo "$SSH_PORT" > /root/port.txt
   echo "$NEW_USER" > /root/username.txt
+  
+  # Also save credentials to Termux environment for widget access
+  if [ -n "$SSH_PORT" ] && [ -n "$NEW_USER" ]; then
+    # Create credentials directory in Termux
+    mkdir -p /data/data/com.termux/files/home/.cad/credentials 2>/dev/null || true
+    
+    # Save SSH port and username for widgets
+    echo "$SSH_PORT" > /data/data/com.termux/files/home/.cad/credentials/ssh_port.cred 2>/dev/null || true
+    echo "$NEW_USER" > /data/data/com.termux/files/home/.cad/credentials/ssh_username.cred 2>/dev/null || true
+    
+    # Set proper permissions
+    chmod 600 /data/data/com.termux/files/home/.cad/credentials/*.cred 2>/dev/null || true
+  fi
 }
 
 # Execute main setup function
