@@ -1767,14 +1767,52 @@ ETA(){
 
 # Read a stored credential from secure storage
 # Parameter: credential_name
+# Read stored credential by name (supports both .cred and _password formats)
 # Returns: credential value or empty string
 read_credential(){ 
   local name="$1"
   [ -z "$name" ] && return 1
   
-  local f="$CRED_DIR/${name}_password"
-  if [ -f "$f" ] && [ -r "$f" ]; then
-    cat "$f" 2>/dev/null || true
+  # Try .cred format first (for SSH credentials)
+  local cred_file="$CRED_DIR/$name.cred"
+  if [ -f "$cred_file" ] && [ -r "$cred_file" ]; then
+    cat "$cred_file" 2>/dev/null && return 0
+  fi
+  
+  # Fallback to _password format (for passwords)
+  local pass_file="$CRED_DIR/${name}_password"
+  if [ -f "$pass_file" ] && [ -r "$pass_file" ]; then
+    cat "$pass_file" 2>/dev/null || true
+  fi
+}
+
+# Store credential securely with atomic writes
+# Parameters: credential_name, credential_value
+# Returns: 0 on success, 1 on failure
+store_credential() {
+  local name="$1" value="$2"
+  [ -z "$name" ] || [ -z "$value" ] && return 1
+  
+  local cred_file="$CRED_DIR/$name.cred"
+  local temp_file="$cred_file.tmp"
+  
+  # Ensure credentials directory exists with proper permissions
+  mkdir -p "$CRED_DIR" 2>/dev/null || return 1
+  chmod 700 "$CRED_DIR" 2>/dev/null || return 1
+  
+  # Atomic write using temporary file
+  umask 077  # Ensure restrictive permissions for temp file
+  if printf "%s" "$value" > "$temp_file" 2>/dev/null; then
+    if mv "$temp_file" "$cred_file" 2>/dev/null; then
+      chmod 600 "$cred_file" 2>/dev/null || true
+      return 0
+    else
+      rm -f "$temp_file" 2>/dev/null || true
+      return 1
+    fi
+  else
+    rm -f "$temp_file" 2>/dev/null || true
+    return 1
   fi
 }
 
@@ -3439,6 +3477,11 @@ configure_linux_env(){
   # Generate SSH port
   LINUX_SSH_PORT=$(random_port)
   
+  # Store SSH port immediately for widget access
+  if ! store_credential "ssh_port" "$LINUX_SSH_PORT"; then
+    warn "Failed to save SSH port credential, widgets may not work correctly"
+  fi
+  
   # Get user configuration
   read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
   
@@ -3447,6 +3490,11 @@ configure_linux_env(){
     if ! ask_yes_no "Confirm Linux username: $UBUNTU_USERNAME" "y"; then
       read_nonempty "Linux username" UBUNTU_USERNAME "caduser"
     fi
+  fi
+  
+  # Store SSH username immediately for widget access
+  if ! store_credential "ssh_username" "$UBUNTU_USERNAME"; then
+    warn "Failed to save SSH username credential, widgets may not work correctly"
   fi
   
   if ! read_password_confirm "Password for $UBUNTU_USERNAME (hidden)" "Confirm password" "linux_user"; then
@@ -3834,20 +3882,51 @@ SSH_CONFIG_EOF
   save_ssh_credentials_for_widgets
 }
 
-# Save SSH credentials for widget shortcuts
+# Save SSH credentials for widget shortcuts with validation
 save_ssh_credentials_for_widgets(){
-  # Create credentials directory in Termux
-  local cred_dir="$HOME/.cad/credentials"
-  mkdir -p "$cred_dir" 2>/dev/null || true
+  local ssh_port="${LINUX_SSH_PORT:-8022}"
+  local ssh_username="${UBUNTU_USERNAME:-caduser}"
+  local saved_count=0
   
-  # Save SSH port and username for widgets
-  echo "${LINUX_SSH_PORT:-8022}" > "$cred_dir/ssh_port.cred" 2>/dev/null || true
-  echo "${UBUNTU_USERNAME:-caduser}" > "$cred_dir/ssh_username.cred" 2>/dev/null || true
+  # Validate credentials exist
+  if [ -z "$ssh_port" ] || [ -z "$ssh_username" ]; then
+    warn "SSH credentials are empty, using fallback values"
+    ssh_port="${ssh_port:-8022}"
+    ssh_username="${ssh_username:-caduser}"
+  fi
   
-  # Set proper permissions
-  chmod 600 "$cred_dir"/*.cred 2>/dev/null || true
+  # Store SSH port using robust credential function
+  if store_credential "ssh_port" "$ssh_port"; then
+    saved_count=$((saved_count + 1))
+  else
+    err "Failed to save SSH port credential"
+  fi
   
-  info "SSH credentials saved for widget shortcuts"
+  # Store SSH username using robust credential function
+  if store_credential "ssh_username" "$ssh_username"; then
+    saved_count=$((saved_count + 1))
+  else
+    err "Failed to save SSH username credential"
+  fi
+  
+  # Verify credentials were saved correctly
+  if [ "$saved_count" -eq 2 ]; then
+    # Test reading back the credentials
+    local test_port test_username
+    test_port=$(read_credential "ssh_port")
+    test_username=$(read_credential "ssh_username")
+    
+    if [ "$test_port" = "$ssh_port" ] && [ "$test_username" = "$ssh_username" ]; then
+      info "SSH credentials saved and verified for widget shortcuts (Port: $ssh_port, User: $ssh_username)"
+    else
+      warn "SSH credentials saved but verification failed - widgets may not work correctly"
+    fi
+  else
+    err "Failed to save SSH credentials - widgets will not work correctly"
+    return 1
+  fi
+  
+  return 0
 }
 
 # Ensure SSH daemon is running in container
@@ -3972,7 +4051,7 @@ read_credential() {
 
 # Get SSH credentials with fallbacks
 SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
-SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "caduser")
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
 # Display connection info
@@ -4025,7 +4104,7 @@ read_credential() {
 
 # Get SSH credentials with fallbacks
 SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
-SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "caduser")
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
 # Display connection info
