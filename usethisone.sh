@@ -2743,19 +2743,39 @@ pair_adb_device(){
     return 1
   fi
   
+  # Check if adb command is available
+  if ! command -v adb >/dev/null 2>&1; then
+    warn "ADB command not found - installing android-tools..."
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y android-tools >/dev/null 2>&1 || {
+        err "Failed to install android-tools package"
+        return 1
+      }
+    else
+      err "Cannot install ADB - pkg command not available"
+      return 1
+    fi
+  fi
+  
   info "Attempting to pair with $ip:$port using code: $pairing_code"
   
-  # Attempt pairing with timeout
+  # Attempt pairing with longer timeout and better error handling
   local pair_result
-  if pair_result=$(timeout 30 adb pair "$ip:$port" 2>&1 <<< "$pairing_code"); then
+  if pair_result=$(timeout 45 adb pair "$ip:$port" 2>&1 <<< "$pairing_code"); then
     if echo "$pair_result" | grep -qi "successfully paired"; then
+      ok "ADB pairing successful with $ip:$port"
       return 0
     else
       warn "Pairing failed: $pair_result"
       return 1
     fi
   else
-    warn "Pairing timed out or failed"
+    local exit_code=$?
+    if [ $exit_code -eq 124 ]; then
+      warn "Pairing timed out after 45 seconds"
+    else
+      warn "Pairing command failed (exit code: $exit_code)"
+    fi
     return 1
   fi
 }
@@ -2828,8 +2848,24 @@ manual_adb_wireless_setup(){
       err "Device pairing failed. Please check the code and try again."
     fi
   else
-    info "Non-interactive mode: manual ADB setup required"
-    info "Run: adb pair <ip:port> then adb connect <ip:debug_port>"
+    # Non-interactive mode: try with common default values
+    info "Non-interactive mode: attempting ADB setup with defaults"
+    info "Using default values: IP=192.168.1.100, Port=37831, Code=123456"
+    
+    # Try common default values that might work
+    if pair_adb_device "$ip" "$pairing_port" "$pairing_code"; then
+      ok "ADB paired successfully with defaults!"
+      
+      # Try to connect with default debug port
+      local debug_port="37832"
+      if connect_adb_device "$ip" "$debug_port"; then
+        ok "ADB wireless debugging setup complete!"
+        return 0
+      fi
+    fi
+    
+    info "Default ADB setup failed - manual setup required after installation"
+    info "Use: adb pair <ip:port> <code> then adb connect <ip:debug_port>"
   fi
   
   return 1
@@ -5094,11 +5130,12 @@ step_adb(){
     
     # Set up automatic phantom killer disable for future reboots
     setup_phantom_killer_auto_disable
+    mark_step_status "success"
   else
     warn "ADB setup incomplete - phantom process killer remains active"
+    warn "System stability may be affected"
+    mark_step_status "warning"
   fi
-  
-  mark_step_status "success"
 }
 
 # Disable Android phantom process killer via ADB
