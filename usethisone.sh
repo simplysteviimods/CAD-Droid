@@ -3819,18 +3819,16 @@ create_widget_shortcuts(){
   local shortcuts_dir="$HOME/.shortcuts"
   mkdir -p "$shortcuts_dir" 2>/dev/null || return 1
 
-  info "Creating enhanced Termux widget shortcuts..."
+  info "Creating enhanced tmux-based Termux widget shortcuts..."
   
   # CRITICAL: Phantom Process Killer shortcut (most important for system stability)
   cat > "$shortcuts_dir/phantom-killer" << 'PHANTOM_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Phantom Process Killer - Critical for system stability
-echo -e "\033[1;33mDisabling phantom process killer...\033[0m"
+echo "Disabling phantom process killer..."
 adb shell "settings put global settings_enable_monitor_phantom_procs false"
-echo -e "\033[1;32mPhantom process killer disabled!\033[0m"
+echo "Phantom process killer disabled!"
 echo "Your apps should now run more reliably"
-echo "Press any key to continue..."
-read -n 1
 PHANTOM_EOF
   chmod +x "$shortcuts_dir/phantom-killer"
 
@@ -3838,48 +3836,22 @@ PHANTOM_EOF
   cat > "$shortcuts_dir/adb-connect" << 'ADB_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # ADB Wireless Connection
-echo -e "\033[1;36mConnecting ADB wirelessly...\033[0m"
-adb connect 127.0.0.1:5555 2>/dev/null || echo "ADB connection failed - ensure wireless debugging is enabled"
-echo ""
-echo -e "\033[1;33mADB device status:\033[0m"
+echo "Connecting ADB wirelessly..."
+adb connect 127.0.0.1:5555
 adb devices
-echo "Press any key to continue..."
-read -n 1
+echo "ADB connection status shown above"
 ADB_EOF
   chmod +x "$shortcuts_dir/adb-connect"
   
-  # Enhanced System Info shortcut with fallbacks
+  # System Info shortcut
   cat > "$shortcuts_dir/system-info" << 'SYSINFO_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # System Information Display
 echo -e "\033[1;36mCAD-Droid System Info\033[0m"
-echo "========================"
-
-# Battery info with fallback
-if command -v termux-battery-status >/dev/null 2>&1; then
-  echo "Battery: $(termux-battery-status 2>/dev/null | jq -r '.percentage' 2>/dev/null || echo 'N/A')%"
-else
-  echo "Battery: Termux:API not available"
-fi
-
-# Network info with fallback
-if command -v termux-wifi-connectioninfo >/dev/null 2>&1; then
-  echo "Network: $(termux-wifi-connectioninfo 2>/dev/null | jq -r '.ssid' 2>/dev/null || echo 'N/A')"
-else
-  echo "Network: Termux:API not available"
-fi
-
-# Storage info
-echo "Storage: $(df -h $HOME 2>/dev/null | tail -1 | awk '{print $4}' || echo 'N/A') free"
-
-# System load
-echo "Uptime: $(uptime | awk -F',' '{print $1}' | awk '{print $3,$4}' || echo 'N/A')"
-
-echo ""
-echo "Termux Username: ${TERMUX_USERNAME:-unknown}"
-echo "Git User: ${GIT_USERNAME:-not set}"
-echo "Press any key to continue..."
-read -n 1
+echo "Battery: $(termux-battery-status | jq -r '.percentage')%"
+echo "Network: $(termux-wifi-connectioninfo | jq -r '.ssid')"
+echo "Storage: $(df -h $HOME | tail -1 | awk '{print $4}') free"
+echo "Location: $(termux-location -p gps -r once | jq -r '.latitude, .longitude' | tr '\n' ',' | sed 's/,$//')"
 SYSINFO_EOF
   chmod +x "$shortcuts_dir/system-info"
   
@@ -3887,78 +3859,159 @@ SYSINFO_EOF
   cat > "$shortcuts_dir/file-manager" << 'FM_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Quick File Manager
-echo -e "\033[1;36mOpening file manager...\033[0m"
+echo "Opening file manager..."
 if command -v termux-open >/dev/null 2>&1; then
     termux-open $HOME
-    echo "File manager opened"
 else
-    echo -e "\033[1;33mTermux:API not available, showing directory listing:\033[0m"
     ls -la $HOME
 fi
-echo "Press any key to continue..."
-read -n 1
 FM_EOF
   chmod +x "$shortcuts_dir/file-manager"
   
-  # Package Update shortcut
+  # Package Manager shortcut
   cat > "$shortcuts_dir/pkg-update" << 'PKG_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Quick Package Update
-echo -e "\033[1;36mUpdating packages...\033[0m"
-if command -v pkg >/dev/null 2>&1; then
-    pkg update -y && pkg upgrade -y
-else
-    apt update && apt upgrade -y
-fi
-echo -e "\033[1;32mPackages updated successfully!\033[0m"
-echo "Press any key to continue..."
-read -n 1
+echo "Updating packages..."
+pkg update -y && pkg upgrade -y
+echo "Packages updated successfully!"
 PKG_EOF
   chmod +x "$shortcuts_dir/pkg-update"
 
-  # Create Linux Desktop shortcut (Portrait Mode for Productivity)
-  cat > "$shortcuts_dir/Linux Desktop.sh" <<'DESKTOP_WIDGET_EOF'
+  # Linux Desktop shortcut (portrait mode, X11 focus) with tmux and SSH
+  cat > "$shortcuts_dir/Linux Desktop" << 'LINUX_DESKTOP_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "Starting Linux Desktop (Portrait Mode)..."
+# Linux Desktop - X11 XFCE Desktop Environment with SSH Key Authentication
 
-# Start X11 server in portrait orientation for productive vertical screen space
-if ! pgrep -f termux-x11 >/dev/null 2>&1; then 
-  termux-x11 :0 -geometry 1080x1920 >/dev/null 2>&1 & 
-  sleep 2
-fi
+# Simple credential reader function
+read_credential() {
+    local name="$1"
+    local cred_file="$HOME/.cad/credentials/$name.cred"
+    if [ -f "$cred_file" ]; then
+        cat "$cred_file" 2>/dev/null
+    else
+        return 1
+    fi
+}
 
-# Start XFCE desktop environment optimized for portrait productivity
-if ! pgrep -f xfce4-session >/dev/null 2>&1; then 
-  DISPLAY=:0 xfce4-session >/dev/null 2>&1 & 
-  sleep 2
-fi
+# Get SSH credentials with fallbacks
+SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_KEY="$HOME/.ssh/id_ed25519"
 
-echo "Desktop started in Portrait Mode for optimal productivity."
-DESKTOP_WIDGET_EOF
-  chmod +x "$shortcuts_dir/Linux Desktop.sh"
+# Display connection info
+echo "Connecting to Linux Desktop..."
+echo "SSH Port: $SSH_PORT"
+echo "Username: $SSH_USERNAME"
 
-  # Create Linux Terminal shortcut
-  cat > "$shortcuts_dir/Linux Terminal.sh" <<'TERMINAL_WIDGET_EOF'
+# Start Termux:X11
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+
+# Create new tmux session for container setup
+tmux new -s rootlog -d
+
+# Send commands to tmux session to setup SSH daemon
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started' && tmux wait -S ssh_ready" enter
+
+# Wait for SSH daemon to be ready
+tmux wait ssh_ready
+
+# Connect to the container via SSH with X11 forwarding and start XFCE
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
+
+# Clean up tmux session when done
+tmux kill-session -t rootlog 2>/dev/null || true
+LINUX_DESKTOP_EOF
+  chmod +x "$shortcuts_dir/Linux Desktop"
+
+  # Linux Sunshine shortcut (landscape mode, includes Sunshine for remote access) with tmux
+  cat > "$shortcuts_dir/Linux Sunshine" << 'LINUX_SUNSHINE_EOF'
+#!/data/data/com.termux/files/usr/bin/bash  
+# Linux Sunshine - X11 Desktop with Remote Streaming and SSH Key Authentication
+
+# Force landscape orientation for better streaming experience
+am start -a android.intent.action.MAIN -c android.intent.category.HOME
+
+# Simple credential reader function
+read_credential() {
+    local name="$1"
+    local cred_file="$HOME/.cad/credentials/$name.cred"
+    if [ -f "$cred_file" ]; then
+        cat "$cred_file" 2>/dev/null
+    else
+        return 1
+    fi
+}
+
+# Get SSH credentials with fallbacks
+SSH_PORT=$(read_credential "ssh_port" 2>/dev/null || echo "8022")
+SSH_USERNAME=$(read_credential "ssh_username" 2>/dev/null || echo "${UBUNTU_USERNAME:-caduser}")
+SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Display connection info
+echo "Starting Linux Sunshine Desktop..."
+echo "SSH Port: $SSH_PORT"
+echo "Username: $SSH_USERNAME"
+
+# Start Termux:X11
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+
+# Create new tmux session for container setup
+tmux new -s sunshine_session -d
+
+# Setup SSH daemon and Sunshine in the container
+tmux send-keys "proot-distro login ubuntu --shared-tmp --fix-low-ports" enter
+tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & echo 'SSH daemon started'" enter
+tmux send-keys "sudo systemctl start sunshine || sudo sunshine --service & echo 'Sunshine started'" enter
+tmux send-keys "echo 'Services ready' && tmux wait -S services_ready" enter
+
+# Wait for services to be ready
+tmux wait services_ready
+
+# Connect with X11 forwarding and start XFCE with Sunshine
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" '
+export DISPLAY=:0
+sunshine --config-dir ~/.config/sunshine &
+termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"
+'
+
+# Clean up tmux session when done
+tmux kill-session -t sunshine_session 2>/dev/null || true
+LINUX_SUNSHINE_EOF
+  chmod +x "$shortcuts_dir/Linux Sunshine"
+
+  # Create Linux Terminal shortcut with tmux session management
+  cat > "$shortcuts_dir/Linux Terminal" << 'LINUX_TERMINAL_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "Connecting to Linux container..."
+# Linux Terminal - Direct container access with tmux session management
 
-# Try to connect to available Linux distributions
-proot-distro login ubuntu || proot-distro login debian || proot-distro login archlinux || proot-distro login alpine
-TERMINAL_WIDGET_EOF
-  chmod +x "$shortcuts_dir/Linux Terminal.sh"
+echo "Starting Linux Terminal session..."
 
-  ok "Enhanced productivity widget shortcuts created"
+# Check if tmux session already exists
+if tmux has-session -t linux_terminal 2>/dev/null; then
+    echo "Attaching to existing Linux terminal session..."
+    tmux attach -t linux_terminal
+else
+    echo "Creating new Linux terminal session..."
+    # Create new tmux session and connect to Ubuntu container
+    tmux new -s linux_terminal -d "proot-distro login ubuntu --shared-tmp --fix-low-ports"
+    
+    # Attach to the session
+    tmux attach -t linux_terminal
+fi
+LINUX_TERMINAL_EOF
+  chmod +x "$shortcuts_dir/Linux Terminal"
+
+  ok "Enhanced tmux-based widget shortcuts created"
   
   # Provide detailed widget setup instructions
   printf "\n${PASTEL_YELLOW}Widget Setup Instructions:${RESET}\n"
   printf "${PASTEL_CYAN}1.${RESET} Add Termux widgets to your home screen\n"
   printf "${PASTEL_CYAN}2.${RESET} ${PASTEL_RED}CRITICAL:${RESET} ${PASTEL_YELLOW}Add 'phantom-killer' widget first - essential for app stability!${RESET}\n"  
   printf "${PASTEL_CYAN}3.${RESET} Available widgets: phantom-killer, adb-connect, system-info, file-manager, pkg-update\n"
-  printf "${PASTEL_CYAN}4.${RESET} Long press home screen → Widgets → Termux:Widget → Select shortcut\n"
-  printf "${PASTEL_CYAN}5.${RESET} Desktop shortcuts: 'Linux Desktop.sh', 'Linux Terminal.sh'\n\n"
-
+  printf "${PASTEL_CYAN}4.${RESET} Linux shortcuts: 'Linux Desktop', 'Linux Sunshine', 'Linux Terminal'\n"
+  printf "${PASTEL_CYAN}5.${RESET} Long press home screen → Widgets → Termux:Widget → Select shortcut\n\n"
 }
 
 # --- System Snapshot Functions ---
