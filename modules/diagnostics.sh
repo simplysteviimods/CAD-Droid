@@ -182,11 +182,13 @@ diagnostic_package_status(){
         local repo_count
         repo_count=$(grep -c "^deb" "$PREFIX/etc/apt/sources.list" 2>/dev/null || echo '0')
         info "Configured repositories: $repo_count"
-    fi
-    
-    # Mirror status
-    if [ -n "${SELECTED_MIRROR_NAME:-}" ]; then
-        info "Active mirror: ${SELECTED_MIRROR_NAME}"
+        
+        # Show the main repository if available
+        local main_repo
+        main_repo=$(awk '/^deb/ {print $2; exit}' "$PREFIX/etc/apt/sources.list" 2>/dev/null || echo 'none')
+        if [ "$main_repo" != 'none' ]; then
+            info "Primary repository: $main_repo"
+        fi
     fi
 }
 

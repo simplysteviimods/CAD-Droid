@@ -26,34 +26,20 @@ install_adb_tools(){
   local installed=false
   
   for pkg in "${packages[@]}"; do
-    # Ensure selected mirror is applied before installing ADB packages
-    if command -v ensure_mirror_applied >/dev/null 2>&1; then
-      ensure_mirror_applied
-    fi
+    # Repository configuration is already handled by termux-change-repo
     
-    # Use appropriate package manager for installation
-    if command -v pkg >/dev/null 2>&1; then
-      if run_with_progress "Install $pkg (pkg)" 15 bash -c "
-        pkg install -y $pkg >/dev/null 2>&1
-      "; then
-        if command -v adb >/dev/null 2>&1; then
-          installed=true
-          ok "ADB installed successfully via pkg ($pkg)"
-          break
-        fi
+    # Use official Termux package installation with spinner and hidden output
+    if run_with_progress "Installing $pkg" 20 bash -c '
+      if command -v pkg >/dev/null 2>&1; then
+        pkg install -y "'$pkg'" >/dev/null 2>&1 || apt install -y "'$pkg'" >/dev/null 2>&1
+      else
+        apt install -y "'$pkg'" >/dev/null 2>&1
       fi
-    fi
-    
-    # Fallback to apt
-    if [ "$installed" = false ]; then
-      if run_with_progress "Install $pkg (apt)" 15 bash -c "
-        yes | apt install -y $pkg >/dev/null 2>&1
-      "; then
-        if command -v adb >/dev/null 2>&1; then
-          installed=true
-          ok "ADB installed successfully via apt ($pkg)"
-          break
-        fi
+    '; then
+      if command -v adb >/dev/null 2>&1; then
+        installed=true
+        ok "ADB installed successfully ($pkg)"
+        break
       fi
     fi
   done

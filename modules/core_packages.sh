@@ -72,77 +72,68 @@ initialize_apt_environment(){
 }
 
 # Safely run apt/pkg commands with lock handling and retry logic
-# Simple package installation using default Termux methods
+# Simple package installation using official Termux methods
 simple_pkg_install(){
   local pkg="$1"
   
-  # Ensure mirror configuration is applied
-  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
-    ensure_mirror_applied
-  fi
+  # Ensure APT environment is initialized
+  initialize_apt_environment
   
-  # Try pkg first (preferred Termux method)
+  # Try pkg first (preferred official Termux method)
   if command -v pkg >/dev/null 2>&1; then
-    debug "Installing $pkg using pkg"
-    if pkg install -y "$pkg" 2>/dev/null; then
+    debug "Installing $pkg using official pkg command"
+    if pkg install -y "$pkg" >/dev/null 2>&1; then
       return 0
     fi
   fi
   
-  # Fallback to apt
+  # Fallback to apt (also official)
   debug "Installing $pkg using apt"
-  if yes | apt install -y "$pkg" >/dev/null 2>&1; then
+  if apt install -y "$pkg" >/dev/null 2>&1; then
     return 0
   fi
   
   return 1
 }
 
-# Simple package update using default Termux methods
+# Simple package update using official Termux methods
 simple_pkg_update(){
-  # Ensure mirror configuration is applied
-  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
-    ensure_mirror_applied
-  fi
+  # Ensure APT environment is initialized
+  initialize_apt_environment
   
-  # Try pkg first (preferred Termux method)
+  # Try pkg first (preferred official Termux method)
   if command -v pkg >/dev/null 2>&1; then
-    debug "Updating package lists using pkg"
-    if pkg update 2>/dev/null; then
+    debug "Updating package lists using official pkg command"
+    if pkg update >/dev/null 2>&1; then
       return 0
     fi
   fi
   
-  # Fallback to apt
+  # Fallback to apt (also official)
   debug "Updating package lists using apt"
-  if yes | apt update >/dev/null 2>&1; then
+  if apt update >/dev/null 2>&1; then
     return 0
   fi
   
   return 1
 }
 
-# Simple package upgrade using default Termux methods
+# Simple package upgrade using official Termux methods
 simple_pkg_upgrade(){
-  # Ensure mirror configuration is applied
-  if [ -n "${SELECTED_MIRROR_URL:-}" ]; then
-    ensure_mirror_applied
-  fi
+  # Ensure APT environment is initialized
+  initialize_apt_environment
   
-  # Try pkg first (preferred Termux method)
+  # Try pkg first (preferred official Termux method)
   if command -v pkg >/dev/null 2>&1; then
-    debug "Upgrading packages using pkg"
-    if yes | pkg upgrade -y 2>/dev/null; then
+    debug "Upgrading packages using official pkg command"
+    if pkg upgrade -y >/dev/null 2>&1; then
       return 0
     fi
   fi
   
-  # Fallback to apt
+  # Fallback to apt (also official)
   debug "Upgrading packages using apt"
-  if yes | DEBIAN_FRONTEND=noninteractive apt upgrade -y \
-      -o Dpkg::Options::="--force-confdef" \
-      -o Dpkg::Options::="--force-confold" \
-      -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1; then
+  if apt upgrade -y >/dev/null 2>&1; then
     return 0
   fi
   
@@ -213,6 +204,7 @@ get_package_install_time(){
   esac
 }
 
+# Install package if needed using official Termux methods
 apt_install_if_needed(){
   local pkg="$1"
   
@@ -226,10 +218,18 @@ apt_install_if_needed(){
     return 1
   fi
   
-  info "Installing $pkg..."
-  
-  # Use simple installation method
-  if simple_pkg_install "$pkg"; then
+  # Use official installation method with hidden output
+  if run_with_progress "Installing $pkg" 20 bash -c '
+    # Ensure APT environment is initialized
+    mkdir -p "$PREFIX/var/lib/dpkg" "$PREFIX/etc/apt" >/dev/null 2>&1 || true
+    
+    # Try pkg first (official Termux method)
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y "'$pkg'" >/dev/null 2>&1 || apt install -y "'$pkg'" >/dev/null 2>&1
+    else
+      apt install -y "'$pkg'" >/dev/null 2>&1
+    fi
+  '; then
     ok "$pkg installed successfully"
     return 0
   else
@@ -238,25 +238,21 @@ apt_install_if_needed(){
   fi
 }
 
-# Fix broken APT packages using appropriate Termux commands
+# Fix broken APT packages using official Termux commands
 apt_fix_broken() {
-  info "Fixing broken packages..."
-  
-  # Ensure selected mirror is applied before fixing packages
-  ensure_mirror_applied
-  
-  run_with_progress "Fix broken packages" 30 bash -c '
+  run_with_progress "Fixing broken packages" 30 bash -c '
     # Try dpkg first
     dpkg --configure -a >/dev/null 2>&1
     
-    # Try pkg commands if available
+    # Try pkg commands if available (official Termux method)
     if command -v pkg >/dev/null 2>&1; then
-      pkg install -f -y >/dev/null 2>&1 || true
+      pkg install -f -y >/dev/null 2>&1 || apt install -f -y >/dev/null 2>&1
+    else
+      apt install -f -y >/dev/null 2>&1
     fi
     
-    # Fallback to apt commands
-    yes | apt install -f -y >/dev/null 2>&1 &&
-    apt autoremove -y >/dev/null 2>&1
+    # Clean up
+    apt autoremove -y >/dev/null 2>&1 || true
   '
 }
 
@@ -297,139 +293,8 @@ ensure_download_tool(){
 }
 
 # === Mirror Management ===
-
-# Enhanced mirror configuration that ensures both apt and pkg use the selected mirror
-configure_mirror_repositories(){
-  local mirror_url="$1"
-  local mirror_name="${2:-Selected Mirror}"
-  
-  if [ -z "$mirror_url" ]; then
-    warn "No mirror URL provided for repository configuration"
-    return 1
-  fi
-  
-  info "Configuring repositories for mirror: $mirror_name"
-  debug "Mirror URL: $mirror_url"
-  
-  # Initialize APT environment
-  initialize_apt_environment
-  
-  # Set up directory structure
-  local apt_dir="$PREFIX/etc/apt"
-  local sources_file="$apt_dir/sources.list"
-  local preferences_file="$apt_dir/preferences"
-  local sources_dir="$apt_dir/sources.list.d"
-  
-  mkdir -p "$apt_dir" "$sources_dir" 2>/dev/null || true
-  
-  # 1. Configure main sources.list for apt
-  debug "Writing main sources.list"
-  if ! echo "deb $mirror_url stable main" > "$sources_file" 2>/dev/null; then
-    warn "Failed to write sources.list"
-    return 1
-  fi
-  debug "Main sources.list written: $(cat "$sources_file" 2>/dev/null)"
-  
-  # 2. Create apt preferences to prioritize our selected mirror
-  debug "Creating apt preferences file"
-  cat > "$preferences_file" << EOF
-# CAD-Droid Mirror Preferences - Force use of selected mirror
-Package: *
-Pin: origin $(echo "$mirror_url" | sed 's|https://||' | sed 's|http://||' | cut -d'/' -f1)
-Pin-Priority: 1000
-
-# Fallback for any Termux packages
-Package: *
-Pin: origin packages.termux.dev
-Pin-Priority: 500
-
-Package: *
-Pin: origin packages-cf.termux.dev  
-Pin-Priority: 500
-EOF
-  
-  # 3. Set up pkg repository configuration by creating termux.list
-  debug "Creating termux repository list for pkg"
-  if echo "deb $mirror_url stable main" > "$sources_dir/termux.list"; then
-    debug "Termux repository list created: $(cat "$sources_dir/termux.list" 2>/dev/null)"
-  else
-    warn "Failed to create termux repository list"
-  fi
-  
-  # 4. Clean up any conflicting repository files
-  find "$sources_dir" -name "*.list" -type f ! -name "termux.list" ! -name "x11.list" 2>/dev/null | while read -r file; do
-    debug "Removing conflicting repo file: $(basename "$file")"
-    rm -f "$file" 2>/dev/null || true
-  done
-  
-  # 5. Export mirror configuration for pkg to use
-  export TERMUX_MAIN_REPO="$mirror_url"
-  
-  # 6. Apply configuration with termux-reload-settings
-  debug "Applying mirror configuration"
-  if command -v termux-reload-settings >/dev/null 2>&1; then
-    termux-reload-settings >/dev/null 2>&1 || true
-    debug "Termux settings reloaded"
-  fi
-  
-  # 7. Verify configuration was applied correctly
-  debug "Verifying mirror configuration"
-  if [ -f "$sources_file" ]; then
-    local configured_mirror
-    configured_mirror=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
-    if [ "$configured_mirror" = "$mirror_url" ]; then
-      debug "Mirror configuration verified: $configured_mirror"
-      ok "Mirror configuration applied: $mirror_name"
-      return 0
-    else
-      warn "Mirror configuration verification failed: expected $mirror_url, got $configured_mirror"
-    fi
-  else
-    warn "Sources file was not created: $sources_file"
-  fi
-  
-  debug "Sources file content: $(cat "$sources_file" 2>/dev/null || echo 'Could not read')"
-  debug "Preferences file exists: $([ -f "$preferences_file" ] && echo "yes" || echo "no")"
-  debug "Termux repo list exists: $([ -f "$sources_dir/termux.list" ] && echo "yes" || echo "no")"
-  
-  return 0
-}
-
-# Ensure the selected mirror is enforced for both apt and pkg
-ensure_mirror_applied(){
-  debug "Ensuring mirror is applied"
-  
-  # Ensure we have a valid mirror URL - set default if none selected
-  if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
-    debug "No mirror selected, using default Termux mirror"
-    SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
-    SELECTED_MIRROR_NAME="Default"
-    # Export default mirror settings
-    export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
-  fi
-  
-  debug "Applying mirror configuration: ${SELECTED_MIRROR_URL}"
-  
-  # Use enhanced mirror configuration
-  if configure_mirror_repositories "$SELECTED_MIRROR_URL" "$SELECTED_MIRROR_NAME"; then
-    debug "Mirror configuration applied successfully"
-  else
-    warn "Failed to apply mirror configuration, attempting basic setup"
-    # Fallback to basic configuration
-    initialize_apt_environment
-    local sources_file="$PREFIX/etc/apt/sources.list"
-    mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
-    echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
-  fi
-  
-  # Add user-facing info for transparency when mirror name is available (only once)
-  if [ "${SELECTED_MIRROR_NAME:-}" ] && [ "${SELECTED_MIRROR_NAME}" != "(current)" ] && [ "${MIRROR_INFO_SHOWN:-0}" != "1" ]; then
-    info "Using mirror: ${SELECTED_MIRROR_NAME} for package operations"
-    export MIRROR_INFO_SHOWN=1
-  fi
-  
-  return 0
-}
+# Note: Mirror selection is now handled by termux-change-repo in step_mirror()
+# Custom mirror configuration functions have been removed in favor of the official tool
 sanitize_sources_main_only(){
   local d="$PREFIX/etc/apt/sources.list.d"
   if [ ! -d "$d" ]; then
@@ -442,68 +307,6 @@ sanitize_sources_main_only(){
       rm -f "$f" 2>/dev/null || true
     fi
   done
-}
-
-# Verify and set package mirror configuration with comprehensive testing
-verify_mirror(){
-  local sources_file="$PREFIX/etc/apt/sources.list"
-  
-  # Initialize APT environment first to prevent lock errors  
-  initialize_apt_environment
-  
-  # Ensure we have a valid mirror selection (should be set by step_mirror)
-  if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
-    debug "No mirror selected, reading from sources.list or using default"
-    local url
-    if [ -f "$sources_file" ]; then
-      url=$(awk '/^deb /{print $2; exit}' "$sources_file" 2>/dev/null || true)
-    fi
-    
-    if [ -n "$url" ]; then 
-      SELECTED_MIRROR_URL="$url"
-      if [ -z "$SELECTED_MIRROR_NAME" ]; then
-        SELECTED_MIRROR_NAME="(current)"
-      fi
-      # Export the discovered mirror settings
-      export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
-    else
-      # Set default mirror if none configured
-      SELECTED_MIRROR_NAME="Default"
-      SELECTED_MIRROR_URL="https://packages.termux.dev/apt/termux-main"
-      # Export default mirror settings
-      export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
-    fi
-  fi
-  
-  # Apply comprehensive mirror configuration for both apt and pkg
-  debug "Applying comprehensive mirror configuration"
-  info "Configuring mirror: $SELECTED_MIRROR_NAME"
-  
-  if ! configure_mirror_repositories "$SELECTED_MIRROR_URL" "$SELECTED_MIRROR_NAME"; then
-    warn "Failed to apply comprehensive mirror configuration, using basic setup"
-    mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
-    echo "deb ${SELECTED_MIRROR_URL} stable main" > "$sources_file"
-    debug "Applied basic mirror configuration"
-  else
-    debug "Comprehensive mirror configuration applied successfully"
-  fi
-  
-  # Test mirror functionality with package list update (no curl dependency)
-  info "Verifying mirror configuration..."
-  debug "Testing mirror: $SELECTED_MIRROR_URL"
-  
-  local temp_dir="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
-  mkdir -p "$temp_dir" 2>/dev/null || true
-  local update_log="$temp_dir/mirror-test-$$"
-  
-  # Use simple update method for mirror verification
-  if simple_pkg_update; then
-    ok "Mirror verification successful: ${SELECTED_MIRROR_NAME}"
-    debug "Mirror verification: SUCCESS"
-  else
-    info "Mirror verification completed (configuration saved): ${SELECTED_MIRROR_NAME}"
-    debug "Mirror verification: PARTIAL (mirror configured but update had issues)"
-  fi
 }
 
 # === Core Package Installation ===
@@ -605,194 +408,115 @@ install_x11_packages(){
 
 # === System Updates ===
 
-# Update package lists using appropriate Termux commands
+# Update package lists using official Termux commands
 update_package_lists(){
   if [ "${PACKAGES_UPDATED:-0}" = "1" ]; then
     debug "Package lists already updated this session, skipping"
     return 0  # Already updated this session
   fi
   
-  info "Updating package lists..."
-  debug "Using mirror: ${SELECTED_MIRROR_URL:-default}"
-  
-  # Use simple update method
-  if simple_pkg_update; then
+  # Use official update method with spinner and hidden output
+  if run_with_progress "Updating package lists" 25 bash -c '
+    # Ensure repositories are configured
+    if [ ! -s "$PREFIX/etc/apt/sources.list" ]; then
+      echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
+    fi
+    
+    # Try pkg first (official Termux method)
+    if command -v pkg >/dev/null 2>&1; then
+      pkg update >/dev/null 2>&1 || apt update >/dev/null 2>&1
+    else
+      apt update >/dev/null 2>&1
+    fi
+  '; then
     ok "Package lists updated successfully"
     export PACKAGES_UPDATED=1
     debug "Package list update: SUCCESS"
     return 0
   else
-    warn "Package list update failed"
+    warn "Package list update failed, but continuing"
     debug "Package list update: FAILED"
     return 1
   fi
 }
 
-# Upgrade all packages using appropriate Termux commands
+# Upgrade all packages using official Termux commands
 upgrade_packages(){
-  info "Upgrading packages..."
-  
   # Try to update package lists first, but continue with upgrade even if it fails
   update_package_lists || {
     warn "Failed to update package lists before upgrade, but continuing with upgrade attempt"
     debug "Package list update: FAILED (exit code: $?)"
   }
   
-  # Proactively install essential libraries before upgrading to prevent CANNOT LINK EXECUTABLE errors
-  debug "Installing essential libraries before package upgrade"
-  if command -v detect_install_missing_libs >/dev/null 2>&1; then
-    detect_install_missing_libs || true
-  fi
-  
-  # Also directly install essential packages to ensure availability
-  local essential_libs=("libpcre2-8-0" "pcre2-utils" "openssl" "libssl3" "libcrypto3")
-  for lib in "${essential_libs[@]}"; do
-    if ! dpkg -l | grep -q "$lib" 2>/dev/null; then
-      info "Installing $lib to prevent upgrade errors..."
-      simple_run_with_progress "Install $lib" simple_pkg_install "$lib" || true
+  # Use official upgrade method with spinner and hidden output
+  if run_with_progress "Upgrading packages" 45 bash -c '
+    # Try pkg first (official Termux method)
+    if command -v pkg >/dev/null 2>&1; then
+      pkg upgrade -y >/dev/null 2>&1 || apt upgrade -y >/dev/null 2>&1
+    else
+      apt upgrade -y >/dev/null 2>&1
     fi
-  done
-  
-  # Use simple upgrade method with spinner
-  if simple_run_with_progress "Upgrading packages" simple_pkg_upgrade; then
+  '; then
     ok "Packages upgraded successfully"
     return 0
   else
-    warn "Package upgrade failed"
+    warn "Package upgrade completed with warnings"
     return 1
   fi
 }
 
 # === Step Functions ===
 
-# Step: Mirror selection for faster downloads
+# Step: Mirror selection using termux-change-repo
 step_mirror(){
-  pecho "$PASTEL_PURPLE" "Choose Termux mirror:"
+  pecho "$PASTEL_PURPLE" "Configuring Termux repository mirror:"
   
-  # Use static reliable mirror list (no auto-detection)
-  local -a urls names
-  urls=(
-    "https://packages.termux.dev/apt/termux-main"
-    "https://packages-cf.termux.dev/apt/termux-main"
-    "https://fau.mirror.termux.dev/apt/termux-main"
-    "https://mirror.bfsu.edu.cn/termux/apt/termux-main"
-    "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
-    "https://grimler.se/termux/termux-main"
-    "https://termux.mentality.rip/termux/apt/termux-main"
-  )
-  names=(
-    "Official Termux (Global CDN)"
-    "Official Termux (Cloudflare CDN)"
-    "FAU (Germany)"
-    "BFSU (China)"
-    "Tsinghua (China)"
-    "Grimler (Sweden)"
-    "Mentality (North America)"
-  )
-
-  # Ensure we have at least one mirror
-  if [ ${#urls[@]} -eq 0 ] || [ ${#names[@]} -eq 0 ]; then
-    err "No mirrors available"
-    return 1
-  fi
-
-  # Show recommendation
-  echo ""
-  pecho "$PASTEL_GREEN" "Recommended: Official mirrors (first two options) are usually fastest and most reliable"
-  echo ""
-  
-  # Display mirror options with colors  
-  local i
-  for i in "${!names[@]}"; do 
-    local seq
-    seq=$(color_for_index "$i")
-    # Display mirrors with consistent formatting
-    printf "%b[%d] %s%b\n" "$seq" "$i" "${names[$i]}" '\033[0m'
-  done
-  
-  # Auto-select option
-  echo ""
-  pecho "$PASTEL_CYAN" "Selection Options:"
-  info "  • Press Enter for auto-selection (tests speed and selects fastest)"
-  local max_idx=$((${#names[@]} - 1))
-  if [ "$max_idx" -gt 0 ]; then
-    info "  • Type a number (0 to $max_idx) for manual selection"
-  fi
-  
-  local idx=""
-  if [ "$NON_INTERACTIVE" = "1" ]; then
-    # Auto-select in non-interactive mode
-    idx="auto"
-  else
-    printf "%bMirror selection (0-$max_idx or Enter for auto): %b" "$PASTEL_PINK" '\033[0m'
-    read -r idx
-  fi
-  
-  # Handle auto-selection
-  if [ -z "$idx" ] || [ "$idx" = "auto" ]; then
-    info "Auto-selecting fastest mirror..."
-    if command -v select_fastest_mirror >/dev/null 2>&1; then
-      local best_mirror
-      if best_mirror=$(select_fastest_mirror "main"); then
-        SELECTED_MIRROR_URL="$best_mirror"
-        # Find the corresponding name
-        local j
-        for j in "${!urls[@]}"; do
-          if [ "${urls[$j]}" = "$best_mirror" ]; then
-            SELECTED_MIRROR_NAME="${names[$j]}"
-            break
-          fi
-        done
-        [ -z "$SELECTED_MIRROR_NAME" ] && SELECTED_MIRROR_NAME="Auto-selected"
-        # Export auto-selected mirror
-        export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
-        info "Auto-selected mirror: $SELECTED_MIRROR_NAME"
+  # Use the official termux-change-repo command for mirror selection
+  if command -v termux-change-repo >/dev/null 2>&1; then
+    info "Using termux-change-repo for optimal mirror selection..."
+    
+    if [ "$NON_INTERACTIVE" = "1" ]; then
+      # In non-interactive mode, let termux-change-repo auto-select
+      if run_with_progress "Auto-selecting fastest mirror" 15 termux-change-repo >/dev/null 2>&1; then
+        ok "Repository mirror configured successfully"
+        return 0
       else
-        warn "Auto-selection failed, using default mirror"
-        idx=0
+        warn "termux-change-repo failed, setting up default configuration"
       fi
     else
-      warn "Auto-selection not available, using default mirror"
-      idx=0
+      # Interactive mode - let user choose via termux-change-repo interface
+      pecho "$PASTEL_CYAN" "The official Termux mirror selection tool will now start."
+      info "• Choose your preferred mirror or let it auto-select"
+      info "• This will configure both main and X11 repositories"
+      echo ""
+      if termux-change-repo; then
+        ok "Repository mirror configured successfully"
+        return 0
+      else
+        warn "termux-change-repo failed, setting up default configuration"
+      fi
     fi
+  else
+    info "termux-change-repo not available, setting up default repository configuration"
   fi
   
-  # Manual selection fallback
-  if [ -n "$idx" ] && [ "$idx" != "auto" ]; then
-    # Validate selection
-    case "$idx" in
-      *[!0-9]*) idx=0 ;;
-      *) [ "$idx" -ge "${#urls[@]}" ] && idx=0 ;;
-    esac
+  # Fallback: Ensure basic repository configuration exists
+  run_with_progress "Setting up default repository configuration" 10 bash -c '
+    # Initialize APT environment
+    mkdir -p "$PREFIX/etc/apt/sources.list.d" 2>/dev/null || true
+    mkdir -p "$PREFIX/var/lib/apt/lists" 2>/dev/null || true
+    mkdir -p "$PREFIX/var/cache/apt/archives" 2>/dev/null || true
     
-    # Ensure we have valid arrays and index
-    if [ ${#names[@]} -gt 0 ] && [ ${#urls[@]} -gt 0 ] && [ "$idx" -lt "${#names[@]}" ]; then
-      SELECTED_MIRROR_NAME="${names[$idx]}"
-      SELECTED_MIRROR_URL="${urls[$idx]}"
-    else
-      warn "Invalid selection, using first available mirror"
-      SELECTED_MIRROR_NAME="${names[0]}"
-      SELECTED_MIRROR_URL="${urls[0]}"
+    # Create basic sources.list if it doesn'\''t exist or is empty
+    if [ ! -s "$PREFIX/etc/apt/sources.list" ]; then
+      echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$PREFIX/etc/apt/sources.list"
     fi
-  fi
+    
+    # Ensure we have a basic package list
+    pkg update >/dev/null 2>&1 || apt update >/dev/null 2>&1 || true
+  '
   
-  # Ensure we have a valid mirror selection
-  if [ -z "${SELECTED_MIRROR_URL:-}" ]; then
-    # Fallback to first mirror if nothing selected
-    SELECTED_MIRROR_NAME="${names[0]}"
-    SELECTED_MIRROR_URL="${urls[0]}"
-    debug "No mirror selected, using first available: $SELECTED_MIRROR_NAME"
-  fi
-  
-  # Export mirror selection for global use
-  export SELECTED_MIRROR_NAME SELECTED_MIRROR_URL
-  info "Mirror selected: $SELECTED_MIRROR_NAME"
-  debug "Mirror URL: $SELECTED_MIRROR_URL"
-  
-  # Clean up sources and verify mirror (verify_mirror will handle sources.list writing)
-  sanitize_sources_main_only
-  verify_mirror
-  
+  ok "Default repository configuration applied"
   mark_step_status "success"
 }
 
@@ -805,14 +529,18 @@ step_bootstrap(){
 
 # Step: Add X11 repository
 step_x11repo(){
-  # Mirror should already be configured in step_mirror, only ensure if not available
-  if [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
-    debug "Sources file missing, applying mirror configuration"
-    ensure_mirror_applied
-  fi
+  # Repository configuration is already handled by termux-change-repo in step_mirror
   
-  # Use apt directly as pkg is not reliable for x11-repo
-  simple_run_with_progress "Add X11 repository" bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1' || true
+  # Use official method to add X11 repository with spinner and hidden output
+  run_with_progress "Adding X11 repository" 15 bash -c '
+    # Install x11-repo using official methods
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y x11-repo >/dev/null 2>&1 || apt install -y x11-repo >/dev/null 2>&1
+    else
+      apt install -y x11-repo >/dev/null 2>&1
+    fi
+  ' || true
+  
   mark_step_status "success"
 }
 
@@ -828,16 +556,9 @@ step_aptni(){
 # Step: System update
 step_systemup(){
   debug "Starting system update (step 6)..."
-  debug "Current mirror: ${SELECTED_MIRROR_URL:-not set}"
   debug "Packages updated flag: ${PACKAGES_UPDATED:-0}"
   
-  # Mirror should already be configured in step_mirror, only ensure if not set
-  if [ -z "${SELECTED_MIRROR_URL:-}" ] || [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
-    debug "Mirror not configured, applying mirror configuration"
-    ensure_mirror_applied
-  else
-    debug "Using existing mirror configuration: ${SELECTED_MIRROR_NAME:-unknown}"
-  fi
+  # Package repositories are already configured by termux-change-repo in step_mirror
   
   if update_package_lists; then
     debug "Package list update: SUCCESS"
@@ -873,17 +594,13 @@ step_coreinst(){
 step_xfce_termux(){
   info "Installing XFCE desktop environment for Termux..."
   
-  # Mirror should already be configured, only ensure if sources.list doesn't exist
-  if [ ! -f "$PREFIX/etc/apt/sources.list" ]; then
-    debug "Sources file missing, applying mirror configuration"
-    ensure_mirror_applied
-  fi
+  # Repository configuration is already handled by termux-change-repo in step_mirror
   
   # Install X11 repo if not already installed
   if ! dpkg_is_installed "x11-repo"; then
     simple_run_with_progress "Add X11 repository" bash -c 'yes | apt install -y x11-repo >/dev/null 2>&1' || true
     
-    # Update indexes after adding X11 repo - don't need ensure_mirror_applied
+    # Update indexes after adding X11 repo
     debug "Updating package indexes after X11 repo installation"
     update_package_lists || true
   fi

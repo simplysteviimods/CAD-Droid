@@ -128,10 +128,6 @@ GIT_EMAIL=""                 # Git configuration email
 DOWNLOAD_COUNT=0         # Number of packages processed
 TERMUX_API_VERIFIED="no" # Whether Termux:API app is available
 
-# Mirror and network configuration
-SELECTED_MIRROR_NAME=""  # Human-readable mirror name
-SELECTED_MIRROR_URL=""   # Mirror URL for package downloads
-
 # Tool availability flags
 WGET_READY=0            # Whether wget is installed and working
 

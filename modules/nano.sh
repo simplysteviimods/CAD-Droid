@@ -184,21 +184,17 @@ install_nano(){
   
   info "Installing nano text editor..."
   
-  # Ensure selected mirror is applied before installing nano
-  if command -v ensure_mirror_applied >/dev/null 2>&1; then
-    ensure_mirror_applied
-  fi
+  # Repository configuration is already handled by termux-change-repo
   
-  if command -v pkg >/dev/null 2>&1; then
-    if run_with_progress "Install nano (pkg)" 10 bash -c 'pkg install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
-      ok "Nano installed successfully via pkg"
-      return 0
+  # Use official Termux package installation with spinner and hidden output
+  if run_with_progress "Installing nano" 15 bash -c '
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y nano >/dev/null 2>&1 || apt install -y nano >/dev/null 2>&1
+    else
+      apt install -y nano >/dev/null 2>&1
     fi
-  fi
-  
-  # Fallback to apt - also handle exit code 100
-  if run_with_progress "Install nano (apt)" 10 bash -c 'yes | apt install -y nano >/dev/null 2>&1 || [ $? -eq 100 ]'; then
-    ok "Nano installed successfully via apt"
+  '; then
+    ok "Nano installed successfully"
     return 0
   else
     warn "Failed to install nano"
@@ -304,16 +300,16 @@ setup_vim_alternative(){
   if ! command -v vim >/dev/null 2>&1; then
     info "Installing vim as alternative editor..."
     
-    # Ensure selected mirror is applied before installing vim
-    if command -v ensure_mirror_applied >/dev/null 2>&1; then
-      ensure_mirror_applied
-    fi
+    # Repository configuration is already handled by termux-change-repo
     
-    if command -v pkg >/dev/null 2>&1; then
-      run_with_progress "Install vim (pkg)" 15 bash -c 'pkg install -y vim >/dev/null 2>&1' || true
-    else
-      run_with_progress "Install vim (apt)" 15 bash -c 'yes | apt install -y vim >/dev/null 2>&1' || true
-    fi
+    # Use official Termux package installation with spinner and hidden output
+    run_with_progress "Installing vim" 20 bash -c '
+      if command -v pkg >/dev/null 2>&1; then
+        pkg install -y vim >/dev/null 2>&1 || apt install -y vim >/dev/null 2>&1
+      else
+        apt install -y vim >/dev/null 2>&1
+      fi
+    ' || true
   fi
   
   # Create basic vim config
