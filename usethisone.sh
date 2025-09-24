@@ -2393,7 +2393,7 @@ fetch_github_release(){
   fi
 }
 
-# NEW: Enhanced Termux add-on fetch that preserves original APK names and prioritizes GitHub
+# NEW: Enhanced Termux add-on fetch with unique temp folders for guaranteed renaming
 # Parameters: addon_name, package_id, github_repo, filename_pattern, output_directory
 # Returns: 0 if successful, 1 if failed
 fetch_termux_addon(){
@@ -2404,8 +2404,15 @@ fetch_termux_addon(){
     return 1
   fi
   
+  # Create unique temporary directory for this APK
+  local temp_dir="$TMPDIR/temp-$name"
+  if ! mkdir -p "$temp_dir" 2>/dev/null; then
+    return 1
+  fi
+  
   # Ensure output directory exists
   if ! mkdir -p "$outdir" 2>/dev/null; then
+    rm -rf "$temp_dir" 2>/dev/null
     return 1
   fi
   
@@ -2421,13 +2428,13 @@ fetch_termux_addon(){
   # Always prioritize GitHub unless F-Droid is explicitly preferred
   if [ "$prefer" = "1" ]; then
     # Try F-Droid first if preferred
-    if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+    if fetch_fdroid_api "$pkg" "$temp_dir/${name}.apk" || fetch_fdroid_page "$pkg" "$temp_dir/${name}.apk"; then
       success=1
     fi
   else
     # Try GitHub first by default (preserves original names)
     if [ -n "$repo" ] && [ -n "$patt" ]; then
-      if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+      if fetch_github_release "$repo" "$patt" "$temp_dir" "$name"; then
         success=1
       fi
     fi
@@ -2438,24 +2445,20 @@ fetch_termux_addon(){
     if [ "$prefer" = "1" ]; then
       # F-Droid was preferred but failed, try GitHub
       if [ -n "$repo" ] && [ -n "$patt" ]; then
-        if fetch_github_release "$repo" "$patt" "$outdir" "$name"; then
+        if fetch_github_release "$repo" "$patt" "$temp_dir" "$name"; then
           success=1
         fi
       fi
     else
       # GitHub was preferred but failed, try F-Droid
-      if fetch_fdroid_api "$pkg" "$outdir/${name}.apk" || fetch_fdroid_page "$pkg" "$outdir/${name}.apk"; then
+      if fetch_fdroid_api "$pkg" "$temp_dir/${name}.apk" || fetch_fdroid_page "$pkg" "$temp_dir/${name}.apk"; then
         success=1
       fi
     fi
   fi
   
-  # Rename APK to proper name if download was successful using temp directories for isolation
+  # Rename and move APK to final location if download was successful
   if [ $success -eq 1 ]; then
-    # Create temporary directory for this specific APK to avoid conflicts
-    local temp_apk_dir="/tmp/cad-apk-$$-$(date +%s)"
-    mkdir -p "$temp_apk_dir" 2>/dev/null || temp_apk_dir="/tmp"
-    
     # Handle special renaming cases first
     local proper_name
     case "$name" in
@@ -2469,80 +2472,27 @@ fetch_termux_addon(){
     local target_name="${proper_name}.apk"
     local target_path="$outdir/$target_name"
     
-    # Find and move APK files to proper names
-    local found_apk=0
+    # Find the downloaded APK in temp directory and move it to final location
+    local found_file
+    found_file=$(find "$temp_dir" -name "*.apk" -type f | head -1)
     
-    # First, check if target already exists with correct name
-    if [ -f "$target_path" ]; then
-      debug "APK already has correct name: $target_name"
-      found_apk=1
+    if [ -n "$found_file" ] && [ -f "$found_file" ]; then
+      if mv "$found_file" "$target_path" 2>/dev/null; then
+        success=1
+      else
+        success=0
+      fi
     else
-      # Look for any APK files that need renaming
-      for apk_file in "$outdir"/*.apk; do
-        if [ -f "$apk_file" ]; then
-          local current_name
-          current_name=$(basename "$apk_file")
-          
-          # Skip if this is already the target name
-          if [ "$current_name" = "$target_name" ]; then
-            found_apk=1
-            break
-          fi
-          
-          # Check if this APK file matches the expected pattern for this addon
-          local should_rename=0
-          case "$name" in
-            "Termux-API"|"Termux:API")
-              if [[ "$current_name" =~ api ]]; then
-                should_rename=1
-              fi
-              ;;
-            "Termux-X11"|"Termux:X11") 
-              if [[ "$current_name" =~ (x11|X11|universal) ]]; then
-                should_rename=1
-              fi
-              ;;
-            "Termux-GUI"|"Termux:GUI")
-              if [[ "$current_name" =~ gui ]]; then
-                should_rename=1
-              fi
-              ;;
-            "Termux-Widget"|"Termux:Widget")
-              if [[ "$current_name" =~ widget ]]; then
-                should_rename=1
-              fi
-              ;;
-            *)
-              # For other names, rename any APK file
-              should_rename=1
-              ;;
-          esac
-          
-          # Rename if this is the right APK for this addon
-          if [ $should_rename -eq 1 ]; then
-            if mv "$apk_file" "$target_path" 2>/dev/null; then
-              debug "Renamed $current_name to $target_name"
-              found_apk=1
-              break
-            else
-              warn "Failed to rename $current_name to $target_name"
-            fi
-          fi
-        fi
-      done
+      success=0
     fi
-    
-    # Clean up temporary directory
-    rm -rf "$temp_apk_dir" 2>/dev/null || true
-    
-    # Ensure proper permissions on all APK files
+  fi
+  
+  # Clean up temp directory
+  rm -rf "$temp_dir" 2>/dev/null
+  
+  # Ensure downloaded APK has proper permissions
+  if [ $success -eq 1 ]; then
     find "$outdir" -name "*.apk" -exec chmod 644 {} \; 2>/dev/null || true
-    
-    if [ $found_apk -eq 1 ]; then
-      debug "Successfully processed APK: $target_name"
-    else
-      warn "No APK file found to rename for $name"
-    fi
   fi
   
   return $((1 - success))
@@ -3742,63 +3692,63 @@ harden_sshd(){
 install_host_launcher(){
   # Create desktop launcher using printf to avoid here-document conflicts in container script
   printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    '# Launch desktop in portrait mode for productivity' \
-    'export DISPLAY=:0' \
-    '' \
-    '# Termux installation prefix' \
-    'TP="/data/data/com.termux/files/usr"' \
-    '' \
-    '# Start X11 server in portrait mode if not running' \
-    'if ! pgrep -f termux-x11 >/dev/null 2>&1; then' \
-    '  "$TP/bin/termux-x11" :0 -geometry 1080x1920 >/dev/null 2>&1 &' \
-    '  sleep 2' \
-    'fi' \
-    '' \
-    '# Start XFCE desktop session if not running' \
-    'if ! pgrep -f xfce4-session >/dev/null 2>&1; then' \
-    '  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 &' \
-    '  sleep 2' \
-    'fi' \
-    '' \
-    '# Start D-Bus session for inter-process communication' \
-    'dbus-daemon --session --fork >/dev/null 2>&1 || true' \
-    '' \
-    'echo "Desktop environment active (Portrait Mode)."' \
+    "#!/usr/bin/env bash" \
+    "# Launch desktop in portrait mode for productivity" \
+    "export DISPLAY=:0" \
+    "" \
+    "# Termux installation prefix" \
+    "TP=\"/data/data/com.termux/files/usr\"" \
+    "" \
+    "# Start X11 server in portrait mode if not running" \
+    "if ! pgrep -f termux-x11 >/dev/null 2>&1; then" \
+    "  \"\$TP/bin/termux-x11\" :0 -geometry 1080x1920 >/dev/null 2>&1 &" \
+    "  sleep 2" \
+    "fi" \
+    "" \
+    "# Start XFCE desktop session if not running" \
+    "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
+    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  sleep 2" \
+    "fi" \
+    "" \
+    "# Start D-Bus session for inter-process communication" \
+    "dbus-daemon --session --fork >/dev/null 2>&1 || true" \
+    "" \
+    "echo \"Desktop environment active (Portrait Mode).\"" \
     > /usr/local/bin/launch_host_desktop.sh
   chmod +x /usr/local/bin/launch_host_desktop.sh
 
   # Create landscape version for Sunshine streaming
   printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    '# Launch desktop in landscape mode for remote streaming' \
-    'export DISPLAY=:0' \
-    '' \
-    '# Termux installation prefix' \
-    'TP="/data/data/com.termux/files/usr"' \
-    '' \
-    '# Stop existing X11 server' \
-    'pkill -f termux-x11 2>/dev/null || true' \
-    'sleep 1' \
-    '' \
-    '# Start X11 server in landscape mode for streaming' \
-    '"$TP/bin/termux-x11" :0 -geometry 1920x1080 >/dev/null 2>&1 &' \
-    'sleep 3' \
-    '' \
-    '# Configure display resolution' \
-    'export DISPLAY=:0' \
-    'xrandr --output default --mode 1920x1080 2>/dev/null || true' \
-    '' \
-    '# Start XFCE desktop session if not running' \
-    'if ! pgrep -f xfce4-session >/dev/null 2>&1; then' \
-    '  DISPLAY=:0 "$TP/bin/xfce4-session" >/dev/null 2>&1 &' \
-    '  sleep 3' \
-    'fi' \
-    '' \
-    '# Start D-Bus session' \
-    'dbus-daemon --session --fork >/dev/null 2>&1 || true' \
-    '' \
-    'echo "Desktop environment active (Landscape Mode for Streaming)."' \
+    "#!/usr/bin/env bash" \
+    "# Launch desktop in landscape mode for remote streaming" \
+    "export DISPLAY=:0" \
+    "" \
+    "# Termux installation prefix" \
+    "TP=\"/data/data/com.termux/files/usr\"" \
+    "" \
+    "# Stop existing X11 server" \
+    "pkill -f termux-x11 2>/dev/null || true" \
+    "sleep 1" \
+    "" \
+    "# Start X11 server in landscape mode for streaming" \
+    "\"\$TP/bin/termux-x11\" :0 -geometry 1920x1080 >/dev/null 2>&1 &" \
+    "sleep 3" \
+    "" \
+    "# Configure display resolution" \
+    "export DISPLAY=:0" \
+    "xrandr --output default --mode 1920x1080 2>/dev/null || true" \
+    "" \
+    "# Start XFCE desktop session if not running" \
+    "if ! pgrep -f xfce4-session >/dev/null 2>&1; then" \
+    "  DISPLAY=:0 \"\$TP/bin/xfce4-session\" >/dev/null 2>&1 &" \
+    "  sleep 3" \
+    "fi" \
+    "" \
+    "# Start D-Bus session" \
+    "dbus-daemon --session --fork >/dev/null 2>&1 || true" \
+    "" \
+    "echo \"Desktop environment active (Landscape Mode for Streaming).\"" \
     > /usr/local/bin/launch_sunshine_desktop.sh
   chmod +x /usr/local/bin/launch_sunshine_desktop.sh
 }
@@ -4030,6 +3980,9 @@ echo "Connecting to Linux Desktop..."
 echo "SSH Port: $SSH_PORT"
 echo "Username: $SSH_USERNAME"
 
+# Kill any existing X11 sessions
+pkill -f "termux-x11" 2>/dev/null || true
+
 # Start Termux:X11
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 
@@ -4044,7 +3997,7 @@ tmux send-keys "sudo service ssh start && sudo /usr/sbin/sshd -D -p $SSH_PORT & 
 tmux wait ssh_ready
 
 # Connect to the container via SSH with X11 forwarding and start XFCE
-ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
+ssh -tt -X -i "$SSH_KEY" -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USERNAME@localhost" 'export DISPLAY=:0 && termux-x11 :0 -xstartup "dbus-launch --exit-with-session xfce4-session"'
 
 # Clean up tmux session when done
 tmux kill-session -t rootlog 2>/dev/null || true
