@@ -3831,19 +3831,6 @@ main(){
   # Save configuration for later reference and to Termux credentials
   echo "$SSH_PORT" > /root/port.txt
   echo "$NEW_USER" > /root/username.txt
-  
-  # Also save credentials to Termux environment for widget access
-  if [ -n "$SSH_PORT" ] && [ -n "$NEW_USER" ]; then
-    # Create credentials directory in Termux
-    mkdir -p /data/data/com.termux/files/home/.cad/credentials 2>/dev/null || true
-    
-    # Save SSH port and username for widgets
-    echo "$SSH_PORT" > /data/data/com.termux/files/home/.cad/credentials/ssh_port.cred 2>/dev/null || true
-    echo "$NEW_USER" > /data/data/com.termux/files/home/.cad/credentials/ssh_username.cred 2>/dev/null || true
-    
-    # Set proper permissions
-    chmod 600 /data/data/com.termux/files/home/.cad/credentials/*.cred 2>/dev/null || true
-  fi
 }
 
 # Execute main setup function
@@ -3892,6 +3879,25 @@ Host cad-container
   ServerAliveCountMax 2
 SSH_CONFIG_EOF
   fi
+  
+  # Save credentials for widget shortcuts in Termux environment  
+  save_ssh_credentials_for_widgets
+}
+
+# Save SSH credentials for widget shortcuts
+save_ssh_credentials_for_widgets(){
+  # Create credentials directory in Termux
+  local cred_dir="$HOME/.cad/credentials"
+  mkdir -p "$cred_dir" 2>/dev/null || true
+  
+  # Save SSH port and username for widgets
+  echo "${LINUX_SSH_PORT:-8022}" > "$cred_dir/ssh_port.cred" 2>/dev/null || true
+  echo "${UBUNTU_USERNAME:-caduser}" > "$cred_dir/ssh_username.cred" 2>/dev/null || true
+  
+  # Set proper permissions
+  chmod 600 "$cred_dir"/*.cred 2>/dev/null || true
+  
+  info "SSH credentials saved for widget shortcuts"
 }
 
 # Ensure SSH daemon is running in container
